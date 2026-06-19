@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated output
+output/
+
+# Reference images — copyrighted game screenshots / cover art.
+# Used locally for personal IP-Adapter reference only; NEVER published.
+references/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
