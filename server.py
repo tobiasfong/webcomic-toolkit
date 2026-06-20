@@ -1,9 +1,9 @@
 """
-Grimdark Background MCP Server
-==============================
-A local Model Context Protocol server that generates grimdark-industrial
-background art for comic panels, wrapping a local ComfyUI + Stable Diffusion
-pipeline (checkpoint + ControlNet + IP-Adapter).
+Webcomic Background Generator — MCP Server
+==========================================
+A local Model Context Protocol server that generates stylised background
+art for comic panels in any aesthetic the user references, wrapping a local
+ComfyUI + Stable Diffusion pipeline (checkpoint + ControlNet + IP-Adapter).
 
 Exposes one tool:
   generate_background(prompt, sketch_path?, style_ref_path?, ...)
@@ -19,10 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import workflow
 
-mcp = FastMCP("grimdark-background")
+mcp = FastMCP("webcomic-background-generator")
 
 # Where finished backgrounds are written
-OUTPUT_DIR = os.environ.get("GRIMDARK_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
+OUTPUT_DIR = os.environ.get("WEBCOMIC_BG_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
 
 
 @mcp.tool()
@@ -36,12 +36,12 @@ def generate_background(
     ipa_weight: float = 0.7,
     controlnet_strength: float = 1.0,
 ) -> str:
-    """Generate a grimdark-industrial background image for a comic panel.
+    """Generate a stylised background image for a comic panel, in any aesthetic.
 
     Args:
-        prompt: Description of the scene (e.g. "hive city corridor, gothic
-            machinery, oppressive smog"). Avoid describing characters — this
-            tool makes empty backgrounds to draw over.
+        prompt: Description of the scene (e.g. "medieval great hall", "cyberpunk
+            neon alley", "hive city corridor"). Avoid describing characters —
+            this tool makes empty backgrounds to draw over.
         sketch_path: Optional path to a rough perspective sketch (white lines
             on black). When given, ControlNet forces the output to match this
             composition/angle.

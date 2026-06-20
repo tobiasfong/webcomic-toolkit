@@ -1,5 +1,5 @@
 """
-workflow.py — builds and runs the Grimdark Background generation pipeline
+workflow.py — builds and runs the Webcomic Background generation pipeline
 against a running ComfyUI instance via its HTTP API.
 
 The pipeline is the one validated interactively:
@@ -17,7 +17,7 @@ import requests
 COMFY_URL = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")
 
 # Model filenames as installed in ComfyUI/models/*
-CHECKPOINT = os.environ.get("GRIMDARK_CHECKPOINT", "Counterfeit_V3.safetensors")
+CHECKPOINT = os.environ.get("WEBCOMIC_BG_CHECKPOINT", "Counterfeit_V3.safetensors")
 CONTROLNET_SCRIBBLE = "control_v11p_sd15_scribble_fp16.safetensors"
 
 
@@ -98,7 +98,7 @@ def build_graph(
     g["8"] = {"class_type": "VAEDecode",
               "inputs": {"samples": ["3", 0], "vae": ["4", 2]}}
     g["9"] = {"class_type": "SaveImage",
-              "inputs": {"images": ["8", 0], "filename_prefix": "grimdark"}}
+              "inputs": {"images": ["8", 0], "filename_prefix": "background"}}
     return g
 
 
@@ -144,7 +144,7 @@ def generate(
             params = {"filename": img["filename"], "subfolder": img["subfolder"], "type": img["type"]}
             data = requests.get(f"{COMFY_URL}/view", params=params, timeout=30).content
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"grimdark_{seed}.png")
+            out_path = os.path.join(out_dir, f"background_{seed}.png")
             with open(out_path, "wb") as f:
                 f.write(data)
             return out_path

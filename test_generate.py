@@ -4,9 +4,9 @@ from mcp.client.stdio import stdio_client
 
 async def main():
     params = StdioServerParameters(
-        command=r"C:\AI\grimdark-background-mcp\.venv\Scripts\python.exe",
-        args=[r"C:\AI\grimdark-background-mcp\server.py"],
-        cwd=r"C:\AI\grimdark-background-mcp",
+        command=r"C:\AI\webcomic-background-mcp\.venv\Scripts\python.exe",
+        args=[r"C:\AI\webcomic-background-mcp\server.py"],
+        cwd=r"C:\AI\webcomic-background-mcp",
     )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:

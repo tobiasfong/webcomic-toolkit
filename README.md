@@ -1,8 +1,9 @@
-# Grimdark Background MCP Server
+# Webcomic Background Generator — MCP Server
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server that generates
-grimdark-industrial **background art for comic panels**, wrapping a local
-ComfyUI + Stable Diffusion pipeline.
+**background art for comic panels** in any aesthetic you reference — grimdark sci-fi,
+medieval fantasy, cyberpunk, you name it — wrapping a local ComfyUI + Stable Diffusion
+pipeline.
 
 It exists to solve one concrete problem in making an illustrated webcomic:
 drawing detailed environment backgrounds is slow. This tool lets the artist
@@ -94,7 +95,7 @@ Drop each file into the matching folder under `ComfyUI/models/`:
 | CLIP vision encoder | `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | `clip_vision/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/tree/main/models/image_encoder) (the `image_encoder/model.safetensors` — **rename it to exactly this**) |
 
 > Any SD 1.5 checkpoint works (DreamShaper 8 is another good pick) — set the
-> `GRIMDARK_CHECKPOINT` env var to point at it. The pipeline is SD 1.5, so don't
+> `WEBCOMIC_BG_CHECKPOINT` env var to point at it. The pipeline is SD 1.5, so don't
 > mix in SDXL models.
 
 ## Step 3 — Install the custom nodes
@@ -133,14 +134,14 @@ python -m venv .venv
   ```json
   {
     "mcpServers": {
-      "grimdark-background": {
+      "webcomic-background-generator": {
         "command": "C:/path/to/.venv/Scripts/python.exe",
         "args": ["C:/path/to/server.py"]
       }
     }
   }
   ```
-- **Claude Code:** `claude mcp add grimdark-background -- /path/to/.venv/bin/python /path/to/server.py`
+- **Claude Code:** `claude mcp add webcomic-background-generator -- /path/to/.venv/bin/python /path/to/server.py`
 - **Newer "Cowork"-style desktop builds:** these manage MCP servers through an
   **Extensions/Connectors UI** or per-project config rather than the classic key —
   check your client's MCP/Extensions settings.
@@ -162,8 +163,8 @@ just closing the window often isn't enough).
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `COMFY_URL` | `http://127.0.0.1:8188` | ComfyUI backend address |
-| `GRIMDARK_CHECKPOINT` | `Counterfeit_V3.safetensors` | SD checkpoint to use |
-| `GRIMDARK_OUTPUT` | `./output` | Where finished PNGs are written |
+| `WEBCOMIC_BG_CHECKPOINT` | `Counterfeit_V3.safetensors` | SD checkpoint to use |
+| `WEBCOMIC_BG_OUTPUT` | `./output` | Where finished PNGs are written |
 
 ## Troubleshooting
 
