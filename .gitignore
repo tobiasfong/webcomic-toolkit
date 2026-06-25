@@ -7,9 +7,20 @@ __pycache__/
 # Generated output
 output/
 
-# Reference images — copyrighted game screenshots / cover art.
-# Used locally for personal IP-Adapter reference only; NEVER published.
+# World Builder canon — user-specific established locations + manifest.
+# Like references/, each user accumulates their own; not redistributed.
+world/
+
+# Reference images — copyrighted game screenshots / manhwa panels / cover art.
+# Used locally as personal sketch/composition references only; NEVER published.
+# Each user curates their own asset library here.
 references/
+
+# Throwaway test artifacts (contact sheets, sketch previews, comparison renders)
+tools/_*.png
+
+# Dev/aesthetic-testing throwaway scripts (not part of the shipped tool)
+tools/test_*.py
 
 # OS / editor noise
 .DS_Store
