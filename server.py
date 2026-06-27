@@ -38,7 +38,7 @@ def generate_background(
     controlnet_strength: float = 1.0,
     extra_negative: str | None = None,
     location: str | None = None,
-    location_denoise: float = 0.55,
+    location_denoise: float = 0.65,
 ) -> str:
     """Generate a manhwa/anime-style background plate for a comic panel.
 
@@ -49,9 +49,16 @@ def generate_background(
     World Builder: pass `location` (an id registered via register_location) to
     generate a NEW panel of an ALREADY-established place. The location's canonical
     image seeds the render (img2img) so it stays recognisably the same scene from a
-    new angle / time of day. Lower `location_denoise` (≈0.4) hugs the canon closely;
-    higher (≈0.7) allows more variation. Omit `location` for a brand-new place
-    (then register the keeper afterwards).
+    new angle / time of day. Omit `location` for a brand-new place (then register
+    the keeper afterwards).
+
+    `location_denoise` tuning (validated against test panels):
+      • 0.40–0.48 — subtle variation / relight; hugs the canon tightly
+      • 0.52–0.58 — new lighting or time of day, structure well preserved
+      • 0.65 (default) — new angle with richer variation; still on-location
+      • ≥0.70 — drifts off the location AND the checkpoint's character bias
+        returns (a stray figure appears); not recommended
+    Figure suppression is automatically reinforced whenever a location is used.
 
     Args:
         prompt: Description of the scene (e.g. "hive city corridor at night, deep

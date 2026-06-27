@@ -4,6 +4,26 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-06-27
+
+World Builder tuning and two fixes found while validating it.
+
+### Changed
+- **Default `location_denoise` is now 0.65** (was 0.55), after sweeping 0.35–0.75
+  against a test canon. Validated band: 0.40–0.48 relight / hugs the canon;
+  0.52–0.58 new lighting or time of day; 0.65 a new angle with richer variation
+  while staying on-location; ≥0.70 drifts off the location and the checkpoint's
+  character bias returns. The tool docstring documents this band.
+
+### Fixed
+- **Output filename collision** — same-seed renders (e.g. a fixed-seed denoise
+  sweep) overwrote each other at `background_{seed}.png`. A numeric suffix is now
+  added when the name already exists.
+- **Stray figures in World Builder mode** — partial img2img denoise let the manhwa
+  checkpoint reassert its character training and drop a figure into the scene. A
+  reinforced figure-suppression negative is now appended automatically whenever a
+  location reference is used.
+
 ## [1.1.0] — 2026-06-25
 
 The first major iteration since launch: a more authentic, model-native manhwa look,
@@ -63,5 +83,6 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.1.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.1
 [1.1.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.0.0

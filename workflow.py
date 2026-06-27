@@ -183,7 +183,7 @@ def build_graph(
     char_rgb_name: str | None = None,
     char_mask_name: str | None = None,
     location_ref_name: str | None = None,
-    location_denoise: float = 0.55,
+    location_denoise: float = 0.65,
 ) -> dict:
     """Assemble the ComfyUI API graph. Style comes from the checkpoint (+ optional
     LoRA); composition from an optional ControlNet sketch. (No IP-Adapter — the
@@ -295,6 +295,15 @@ DEFAULT_NEGATIVE = (
     "blurry, low quality"
 )
 
+# Extra suppression for World Builder (img2img) mode. At higher location_denoise
+# (~0.65+) the manhwa checkpoint reasserts its character training and drops a
+# figure into the scene; these terms are appended on top of DEFAULT_NEGATIVE when
+# a location reference is used.
+LOCATION_EXTRA_NEGATIVE = (
+    "1girl, 1boy, woman, man, person, character, figure, portrait, "
+    "standing figure, foreground person, anime girl, anime boy"
+)
+
 
 def generate(
     prompt: str,
@@ -310,7 +319,7 @@ def generate(
     model: str = DEFAULT_MODEL,
     controlnet_strength: float = 1.0,
     location_ref_path: str | None = None,
-    location_denoise: float = 0.55,
+    location_denoise: float = 0.65,
     timeout: int = 300,
 ) -> str:
     """Run the pipeline; return the path to the saved PNG."""
@@ -326,6 +335,10 @@ def generate(
 
     sketch_name = _upload_image(sketch_path) if sketch_path else None
     location_ref_name = _upload_image(location_ref_path) if location_ref_path else None
+    # In World Builder mode, partial denoise lets the checkpoint reassert its
+    # character bias — reinforce the figure suppression.
+    if location_ref_name:
+        negative = f"{negative}, {LOCATION_EXTRA_NEGATIVE}"
 
     char_rgb_name = char_mask_name = None
     if character_path:
@@ -356,7 +369,14 @@ def generate(
             params = {"filename": img["filename"], "subfolder": img["subfolder"], "type": img["type"]}
             data = requests.get(f"{COMFY_URL}/view", params=params, timeout=30).content
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"background_{seed}.png")
+            # Avoid clobbering an earlier render with the same seed (e.g. a
+            # fixed-seed denoise sweep) — add a numeric suffix if the name exists.
+            base = os.path.join(out_dir, f"background_{seed}")
+            out_path = base + ".png"
+            n = 1
+            while os.path.exists(out_path):
+                out_path = f"{base}_{n}.png"
+                n += 1
             with open(out_path, "wb") as f:
                 f.write(data)
             return out_path
