@@ -8,14 +8,20 @@ is stateless; each call reinvents the scene. The bible fixes that: every approve
 environment becomes permanent canon, and future panels of that place are generated
 *against* the canon instead of from scratch.
 
+Projects:
+  A single artist may work on several comics at once. Each is a separate "project"
+  with its own canon, so a location id like "academy" in one comic never collides
+  with a different "academy" in another. References (the shared sketch library) are
+  NOT namespaced — they're common input; only the established canon is per-project.
+
 Storage (mirrors how a novel grows in one file):
-  world/                     <- canonical PNGs you approved (you own these)
-  world/world.json           <- manifest: metadata pointing at each canonical image
+  world/<project>/                <- canonical PNGs you approved (you own these)
+  world/<project>/world.json      <- manifest: metadata pointing at each canonical image
 
 A location entry:
   {
     "name":        "Saint Selena Cathedral district",
-    "canonical":   "world/saint_selena_district.png",   (path, relative to repo)
+    "canonical":   "starry_knight/saint_selena_district.png",  (relative to WORLD_ROOT)
     "description": "Grimdark gothic cathedral, twin spires, fog",
     "palette":     ["#2b3a4a", "#8a9bb0", "#d4c9a8"],
     "tags":        ["exterior", "cathedral", "hive"],
@@ -34,8 +40,10 @@ import shutil
 import datetime
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-WORLD_DIR = os.environ.get("WEBCOMIC_BG_WORLD", os.path.join(_HERE, "world"))
-MANIFEST = os.path.join(WORLD_DIR, "world.json")
+# Root that holds per-project canon folders. Each project is a subfolder.
+WORLD_ROOT = os.environ.get("WEBCOMIC_BG_WORLD", os.path.join(_HERE, "world"))
+# Project used when a caller doesn't specify one.
+DEFAULT_PROJECT = os.environ.get("WEBCOMIC_BG_PROJECT", "default")
 
 
 class WorldError(RuntimeError):
@@ -45,25 +53,35 @@ class WorldError(RuntimeError):
 def _slug(text: str) -> str:
     """A filesystem/key-safe id from free text."""
     s = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
-    return s or "location"
+    return s or "untitled"
 
 
-def _load() -> dict:
-    if not os.path.isfile(MANIFEST):
+def _project_dir(project: str | None) -> str:
+    return os.path.join(WORLD_ROOT, _slug(project or DEFAULT_PROJECT))
+
+
+def _manifest(project: str | None) -> str:
+    return os.path.join(_project_dir(project), "world.json")
+
+
+def _load(project: str | None) -> dict:
+    path = _manifest(project)
+    if not os.path.isfile(path):
         return {}
     try:
-        with open(MANIFEST, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError) as e:
-        raise WorldError(f"Could not read world manifest {MANIFEST}: {e}") from e
+        raise WorldError(f"Could not read world manifest {path}: {e}") from e
 
 
-def _save(data: dict) -> None:
-    os.makedirs(WORLD_DIR, exist_ok=True)
-    tmp = MANIFEST + ".tmp"
+def _save(project: str | None, data: dict) -> None:
+    os.makedirs(_project_dir(project), exist_ok=True)
+    path = _manifest(project)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, MANIFEST)
+    os.replace(tmp, path)
 
 
 def _extract_palette(image_path: str, n: int = 5) -> list[str]:
@@ -89,26 +107,28 @@ def register_location(
     tags: list[str] | None = None,
     panel: str = "",
     palette: list[str] | None = None,
+    project: str | None = None,
 ) -> dict:
-    """Add (or update) a canonical environment in the bible.
+    """Add (or update) a canonical environment in a project's bible.
 
-    Copies `image_path` into world/ as the location's canonical image and records
-    its metadata. If `palette` is omitted it's auto-extracted from the image. If
-    `location_id` is omitted it's slugged from `name` or the filename. Re-registering
-    an existing id overwrites its canonical image and merges metadata.
+    Copies `image_path` into world/<project>/ as the location's canonical image and
+    records its metadata. If `palette` is omitted it's auto-extracted from the image.
+    If `location_id` is omitted it's slugged from `name` or the filename. Re-registering
+    an existing id in the same project overwrites its canonical image and merges metadata.
     """
     if not os.path.isfile(image_path):
         raise WorldError(f"Image not found: {image_path}")
 
+    proj = _slug(project or DEFAULT_PROJECT)
     base = os.path.splitext(os.path.basename(image_path))[0]
     loc_id = _slug(location_id or name or base)
     name = name or base.replace("_", " ").title()
 
-    os.makedirs(WORLD_DIR, exist_ok=True)
-    canonical_rel = os.path.join("world", f"{loc_id}.png")
-    canonical_abs = os.path.join(_HERE, canonical_rel)
+    os.makedirs(_project_dir(project), exist_ok=True)
+    canonical_rel = f"{proj}/{loc_id}.png"               # relative to WORLD_ROOT
+    canonical_abs = os.path.join(WORLD_ROOT, proj, f"{loc_id}.png")
 
-    # Normalise to PNG in the world folder.
+    # Normalise to PNG in the project's world folder.
     try:
         from PIL import Image
         Image.open(image_path).convert("RGB").save(canonical_abs)
@@ -118,11 +138,11 @@ def register_location(
     if palette is None:
         palette = _extract_palette(canonical_abs)
 
-    data = _load()
+    data = _load(project)
     entry = data.get(loc_id, {})
     entry.update({
         "name": name,
-        "canonical": canonical_rel.replace("\\", "/"),
+        "canonical": canonical_rel,
         "description": description or entry.get("description", ""),
         "palette": palette,
         "tags": tags if tags is not None else entry.get("tags", []),
@@ -130,35 +150,47 @@ def register_location(
         "added": entry.get("added", datetime.datetime.now().isoformat(timespec="seconds")),
     })
     data[loc_id] = entry
-    _save(data)
-    return {"id": loc_id, **entry}
+    _save(project, data)
+    return {"id": loc_id, "project": proj, **entry}
 
 
-def get_location(location_id: str) -> dict | None:
+def get_location(location_id: str, project: str | None = None) -> dict | None:
     """Return a location entry (with an absolute `canonical_path`), or None."""
-    entry = _load().get(_slug(location_id))
+    entry = _load(project).get(_slug(location_id))
     if entry is None:
         return None
     entry = dict(entry)
-    entry["canonical_path"] = os.path.join(_HERE, entry["canonical"])
+    entry["canonical_path"] = os.path.join(WORLD_ROOT, entry["canonical"])
     return entry
 
 
-def list_locations() -> dict:
-    """All location entries, keyed by id."""
-    return _load()
+def list_locations(project: str | None = None) -> dict:
+    """All location entries in a project, keyed by id."""
+    return _load(project)
 
 
-def forget_location(location_id: str, delete_image: bool = False) -> bool:
-    """Remove a location from the bible. Returns True if it existed."""
+def list_projects() -> list[str]:
+    """All projects that have a bible (a world.json), sorted."""
+    if not os.path.isdir(WORLD_ROOT):
+        return []
+    out = []
+    for name in os.listdir(WORLD_ROOT):
+        if os.path.isfile(os.path.join(WORLD_ROOT, name, "world.json")):
+            out.append(name)
+    return sorted(out)
+
+
+def forget_location(location_id: str, delete_image: bool = False,
+                    project: str | None = None) -> bool:
+    """Remove a location from a project's bible. Returns True if it existed."""
     loc_id = _slug(location_id)
-    data = _load()
+    data = _load(project)
     entry = data.pop(loc_id, None)
     if entry is None:
         return False
     if delete_image:
-        img = os.path.join(_HERE, entry.get("canonical", ""))
+        img = os.path.join(WORLD_ROOT, entry.get("canonical", ""))
         if os.path.isfile(img):
             os.remove(img)
-    _save(data)
+    _save(project, data)
     return True

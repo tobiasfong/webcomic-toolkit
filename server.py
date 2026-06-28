@@ -39,6 +39,7 @@ def generate_background(
     extra_negative: str | None = None,
     location: str | None = None,
     location_denoise: float = 0.65,
+    project: str = world.DEFAULT_PROJECT,
 ) -> str:
     """Generate a manhwa/anime-style background plate for a comic panel.
 
@@ -46,11 +47,16 @@ def generate_background(
     palette and content through the prompt; drive composition with an optional
     sketch.
 
-    World Builder: pass `location` (an id registered via register_location) to
-    generate a NEW panel of an ALREADY-established place. The location's canonical
-    image seeds the render (img2img) so it stays recognisably the same scene from a
-    new angle / time of day. Omit `location` for a brand-new place (then register
-    the keeper afterwards).
+    Projects: `project` namespaces the World Builder canon and the output folder so
+    you can work on several comics from one server without their locations colliding
+    (e.g. "starry_knight" vs "rxr"). References (sketch library) are shared, not
+    namespaced. Defaults to WEBCOMIC_BG_PROJECT or "default".
+
+    World Builder: pass `location` (an id registered via register_location in the
+    SAME project) to generate a NEW panel of an ALREADY-established place. The
+    location's canonical image seeds the render (img2img) so it stays recognisably
+    the same scene from a new angle / time of day. Omit `location` for a brand-new
+    place (then register the keeper afterwards).
 
     `location_denoise` tuning (validated against test panels):
       • 0.40–0.48 — subtle variation / relight; hugs the canon tightly
@@ -81,6 +87,7 @@ def generate_background(
         seed: Fixed seed for reproducibility; omit for a random one.
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
+        project: Which comic's canon/output to use (e.g. "starry_knight", "rxr").
 
     Returns:
         The filesystem path to the generated PNG.
@@ -91,17 +98,19 @@ def generate_background(
 
     location_ref_path = None
     if location:
-        loc = world.get_location(location)
+        loc = world.get_location(location, project=project)
         if loc is None:
-            known = ", ".join(world.list_locations()) or "(none registered yet)"
-            return (f"Unknown location '{location}'. Registered: {known}. "
+            known = ", ".join(world.list_locations(project)) or "(none registered yet)"
+            return (f"Unknown location '{location}' in project '{project}'. "
+                    f"Registered: {known}. "
                     f"Generate it as a new place, then register the keeper.")
         location_ref_path = loc["canonical_path"]
 
+    out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
         out_path = workflow.generate(
             prompt=prompt,
-            out_dir=OUTPUT_DIR,
+            out_dir=out_dir,
             negative=negative,
             width=width,
             height=height,
@@ -127,6 +136,7 @@ def register_location(
     description: str = "",
     tags: list[str] | None = None,
     panel: str = "",
+    project: str = world.DEFAULT_PROJECT,
 ) -> str:
     """Add an approved background to the World Builder bible as canonical for a place.
 
@@ -135,7 +145,8 @@ def register_location(
     finally picked (after discarding the ones you didn't like).
 
     Args:
-        image_path: The finished background PNG to canonise (copied into world/).
+        image_path: The finished background PNG to canonise (copied into
+            world/<project>/).
         location_id: Short id to reference later (e.g. "iron_cross_slum"). Auto-
             slugged from name/filename if omitted.
         name: Human name (e.g. "Iron Cross slum, Mikhail's first posting").
@@ -143,6 +154,8 @@ def register_location(
             this is your authorial canon, so be specific.
         tags: Optional labels, e.g. ["exterior", "slum", "hive"].
         panel: Where it first appears, e.g. "ch1_p27" (free-form, for your records).
+        project: Which comic this location belongs to (e.g. "starry_knight", "rxr").
+            Ids only need to be unique within a project. Defaults to "default".
 
     Returns:
         A summary of the registered entry (id, canonical path, auto-extracted palette).
@@ -150,28 +163,39 @@ def register_location(
     try:
         entry = world.register_location(
             image_path=image_path, location_id=location_id, name=name,
-            description=description, tags=tags, panel=panel,
+            description=description, tags=tags, panel=panel, project=project,
         )
-        return (f"Registered '{entry['id']}' — {entry['name']}\n"
+        return (f"Registered '{entry['id']}' in project '{entry['project']}' — {entry['name']}\n"
                 f"  canonical: {entry['canonical']}\n"
                 f"  palette:   {', '.join(entry['palette']) or '(none)'}\n"
-                f"Generate consistent panels of it with location='{entry['id']}'.")
+                f"Generate consistent panels of it with location='{entry['id']}', "
+                f"project='{entry['project']}'.")
     except world.WorldError as e:
         return f"Could not register location: {e}"
 
 
 @mcp.tool()
-def list_world() -> str:
-    """List the established locations in the World Builder bible."""
-    locs = world.list_locations()
+def list_world(project: str = world.DEFAULT_PROJECT) -> str:
+    """List the established locations in a project's World Builder bible."""
+    locs = world.list_locations(project)
     if not locs:
-        return "The world bible is empty. Register an approved background with register_location."
+        return (f"The world bible for project '{project}' is empty. "
+                f"Register an approved background with register_location.")
     lines = []
     for lid, e in locs.items():
         tags = f" [{', '.join(e.get('tags', []))}]" if e.get("tags") else ""
         desc = f" — {e['description']}" if e.get("description") else ""
         lines.append(f"• {lid}: {e['name']}{tags}{desc}")
-    return "Established locations:\n" + "\n".join(lines)
+    return f"Established locations in '{project}':\n" + "\n".join(lines)
+
+
+@mcp.tool()
+def list_projects() -> str:
+    """List the comic projects that have a World Builder bible."""
+    projs = world.list_projects()
+    if not projs:
+        return "No projects yet. Register a background with register_location (set `project`)."
+    return "Projects with established canon:\n" + "\n".join(f"• {p}" for p in projs)
 
 
 @mcp.tool()

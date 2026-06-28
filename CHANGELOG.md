@@ -4,6 +4,19 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Targeted for **1.2.0** (will be released together with the depth-map parallax tool).
+
+### Added
+- **Multi-project support.** A `project` argument on `generate_background`,
+  `register_location`, and `list_world` namespaces the World Builder canon and the
+  output folder per comic, so the same location id (e.g. `academy`) in different
+  comics never collides. Canon lives under `world/<project>/`, renders under
+  `output/<project>/`. References (the shared sketch library) are NOT namespaced.
+  New `list_projects` tool lists comics that have a bible. Default project is
+  `WEBCOMIC_BG_PROJECT` or `"default"`.
+
 ## [1.1.1] — 2026-06-27
 
 World Builder tuning and two fixes found while validating it.
