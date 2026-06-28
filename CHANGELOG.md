@@ -4,9 +4,7 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-Targeted for **1.2.0** (will be released together with the depth-map parallax tool).
+## [1.2.0] — 2026-06-28
 
 ### Added
 - **Multi-project support.** A `project` argument on `generate_background`,
@@ -96,6 +94,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.2.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.2.0
 [1.1.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.1
 [1.1.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.0
 [1.0.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.0.0
