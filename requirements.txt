@@ -3,3 +3,5 @@ requests>=2.31.0
 # Only needed for the character_path mode (mask prep). Core tool works without.
 pillow>=10.0.0
 numpy>=1.24.0
+# Needed by the helper tools (tools/make_sketch.py edge maps, fix_green, inpaint_region).
+opencv-python-headless>=4.8.0
