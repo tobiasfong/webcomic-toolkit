@@ -4,6 +4,39 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-30
+
+"Metropolis mode": giant city establishing panels from a procedural 3D city,
+plus the tuned manhwa render recipe as first-class parameters.
+
+### Added
+- **`generate_city_scene` tool** — builds a seeded, reproducible 3D gothic city
+  (street canyon converging on a landmark cathedral, layered skyline), renders it
+  **headless** (a small software rasterizer in `citygen.py` — no GPU, no browser,
+  no 3D engine) to a flat lineart pass, extracts a Canny composition sketch, and
+  paints it with the validated manhwa recipe. Same `city_seed` = same city from
+  any `camera` (vista / high / canyon / street) — structurally consistent giant
+  panels across a story. Best for wide establishing shots.
+- **Per-call LoRA** — `lora` / `lora_strength` arguments on `generate_background`
+  (and the workflow API), overriding the `WEBCOMIC_BG_LORA` env default. Pass
+  `""` to force a LoRA off for one call.
+- **Hi-res finishing pass** — `hires=True` upscales the base render 1.5× (lanczos)
+  and re-details it with a light img2img pass (denoise 0.35). Fixes the softness
+  of dense architectural panels at native SD1.5 resolution. Default-on for city
+  scenes, opt-in elsewhere.
+
+### Changed
+- The tuned "manhwa background" recipe is baked into city scenes: manhwa LoRA +
+  ControlNet 0.6 + webtoon prompt/negative language. (High ControlNet strength on
+  hard synthetic edges was the cause of the flat "comic book" look.)
+
+### Notes
+- Palette guidance: derive prompt color language from reference images — the
+  World Builder's palette extractor (`world._extract_palette`) reads dominant hex
+  colours from any reference for the harness to translate into prompt words.
+  Validated: one 3D city rendered in three completely different reference-derived
+  moods while staying structurally identical.
+
 ## [1.2.0] — 2026-06-28
 
 ### Added
@@ -94,6 +127,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.3.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.3.0
 [1.2.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.2.0
 [1.1.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.1
 [1.1.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.0

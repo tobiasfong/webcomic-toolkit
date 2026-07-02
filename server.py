@@ -19,11 +19,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import workflow
 import world
+import citygen
 
 mcp = FastMCP("webcomic-background-generator")
 
 # Where finished backgrounds are written
 OUTPUT_DIR = os.environ.get("WEBCOMIC_BG_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
+
+# --- The validated "manhwa background" recipe (tuned 2026-06-30) -------------
+# Used by generate_city_scene; fixes the flat comic-book/cel look that hard
+# synthetic edges otherwise produce. See CHANGELOG v1.3.0.
+RECIPE_LORA = "ManhwaUltimate.safetensors"        # trigger word: fantasy-style
+RECIPE_PROMPT_SUFFIX = ("painterly soft lighting, atmospheric perspective, "
+                        "korean webtoon background art, no outlines, soft gradients, "
+                        "cinematic, masterpiece")
+RECIPE_NEGATIVE = ("comic book, thick outlines, heavy linework, flat colors, "
+                   "western cartoon, cel border")
+RECIPE_CONTROLNET = 0.6                            # 0.85+ causes the cel-outline look
 
 
 @mcp.tool()
@@ -40,6 +52,9 @@ def generate_background(
     location: str | None = None,
     location_denoise: float = 0.65,
     project: str = world.DEFAULT_PROJECT,
+    lora: str | None = None,
+    lora_strength: float | None = None,
+    hires: bool = False,
 ) -> str:
     """Generate a manhwa/anime-style background plate for a comic panel.
 
@@ -88,6 +103,13 @@ def generate_background(
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
         project: Which comic's canon/output to use (e.g. "starry_knight", "rxr").
+        lora: Style LoRA filename in models/loras (e.g. "ManhwaUltimate.safetensors",
+            trigger word "fantasy-style"). Omit for the server default
+            (WEBCOMIC_BG_LORA env); pass "" to force the LoRA off.
+        lora_strength: LoRA strength (default 0.8 / WEBCOMIC_BG_LORA_STRENGTH).
+        hires: After the base render, upscale 1.5x and re-detail with a light
+            img2img pass — recommended for dense architectural panels that come
+            out soft at native SD resolution.
 
     Returns:
         The filesystem path to the generated PNG.
@@ -121,8 +143,99 @@ def generate_background(
             controlnet_strength=controlnet_strength,
             location_ref_path=location_ref_path,
             location_denoise=location_denoise,
+            lora=lora,
+            lora_strength=lora_strength,
+            hires=hires,
         )
         return f"Background generated: {out_path}"
+    except workflow.ComfyUIError as e:
+        return (f"Generation failed: {e}\n"
+                f"Is ComfyUI running at {workflow.COMFY_URL}?")
+
+
+@mcp.tool()
+def generate_city_scene(
+    prompt: str,
+    camera: str = "vista",
+    city_seed: int = 40001,
+    model: str = workflow.DEFAULT_MODEL,
+    width: int = 896,
+    height: int = 488,
+    seed: int | None = None,
+    hires: bool = True,
+    lora: str | None = RECIPE_LORA,
+    controlnet_strength: float = RECIPE_CONTROLNET,
+    extra_negative: str | None = None,
+    project: str = world.DEFAULT_PROJECT,
+) -> str:
+    """Generate a giant city establishing panel from a procedural 3D city
+    ("Metropolis mode").
+
+    Builds a seeded 3D gothic city (street canyon converging on a landmark
+    cathedral, layered skyline), renders it headless to a composition sketch,
+    and paints it with the validated manhwa recipe (webtoon prompt language,
+    manhwa LoRA, soft ControlNet, hi-res finishing pass). The 3D city is
+    deterministic per `city_seed`: the SAME city can be re-rendered from any
+    camera for structurally consistent panels across a story.
+
+    Best for wide vista/establishing shots — street-level close-ups tend to
+    regress to a hard cel look (use a photo-reference sketch for those).
+
+    Args:
+        prompt: Scene mood + palette (e.g. "grimdark hive city at dusk, toxic
+            amber smog, furnace-orange windows"). Derive color language from
+            your reference images for the strongest palettes. The webtoon
+            recipe wording is appended automatically.
+        camera: "vista" (elevated 3/4, default), "high" (aerial establishing),
+            "canyon" (looking up between buildings), or "street" (see caveat).
+        city_seed: Which city. Same seed = same geometry, forever. Record it
+            when you register the result as a World Builder location.
+        model / width / height / seed: As generate_background.
+        hires: Finish with the 1.5x upscale + re-detail pass (default True —
+            these dense panels need it).
+        lora: Defaults to the manhwa LoRA; pass "" to disable.
+        controlnet_strength: Default 0.6 (higher causes a comic-book look).
+        extra_negative: Extra negative terms.
+        project: Which comic's output folder to write to.
+
+    Returns:
+        The filesystem path to the generated PNG (plus the sketch path, for reuse).
+    """
+    out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
+    try:
+        # 3D city -> composition sketch, rendered at 1.5x the gen size
+        sketch_path, _ = citygen.city_sketch(
+            os.path.join(out_dir, "city_sketches"),
+            city_seed=city_seed, camera=camera,
+            width=int(width * 1.5), height=int(height * 1.5),
+        )
+    except ValueError as e:
+        return f"City render failed: {e}"
+
+    full_prompt = f"fantasy-style, {prompt}, {RECIPE_PROMPT_SUFFIX}"
+    negative = f"{workflow.DEFAULT_NEGATIVE}, {RECIPE_NEGATIVE}"
+    if extra_negative:
+        negative = f"{negative}, {extra_negative}"
+
+    try:
+        out_path = workflow.generate(
+            prompt=full_prompt,
+            out_dir=out_dir,
+            negative=negative,
+            width=width,
+            height=height,
+            seed=seed,
+            sketch_path=sketch_path,
+            model=model,
+            controlnet_strength=controlnet_strength,
+            lora=lora,
+            hires=hires,
+        )
+        return (f"City panel generated: {out_path}\n"
+                f"  city_seed: {city_seed}  camera: {camera}\n"
+                f"  sketch (reusable): {sketch_path}\n"
+                f"Re-render the SAME city from another angle by keeping city_seed "
+                f"and changing camera.")
     except workflow.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
                 f"Is ComfyUI running at {workflow.COMFY_URL}?")
