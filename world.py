@@ -180,6 +180,66 @@ def list_projects() -> list[str]:
     return sorted(out)
 
 
+# ------------------------------------------------------------ 3D city plans --
+# The plan is the project's *growable 3D model*: a JSON list of districts, each
+# with its own seed/origin/params. Appending a district grows the city while every
+# earlier district re-renders identically (per-district RNG streams). The 2D
+# canonical images in the bible are snapshots OF the plan; the plan is the
+# structural truth. Stored beside the bible: world/<project>/city_plan.json.
+
+def _city_plan_path(project: str | None) -> str:
+    return os.path.join(_project_dir(project), "city_plan.json")
+
+
+def load_city_plan(project: str | None = None) -> dict | None:
+    path = _city_plan_path(project)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        raise WorldError(f"Could not read city plan {path}: {e}") from e
+
+
+def save_city_plan(plan: dict, project: str | None = None) -> str:
+    os.makedirs(_project_dir(project), exist_ok=True)
+    path = _city_plan_path(project)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+    return path
+
+
+def add_city_district(
+    district_id: str,
+    x: float,
+    z: float,
+    type: str = "block",
+    seed: int | None = None,
+    project: str | None = None,
+    **params,
+) -> dict:
+    """Append (or update) a district in the project's city plan; create the plan
+    if this is the city's first district. Returns the full plan."""
+    plan = load_city_plan(project) or {"name": _slug(project or DEFAULT_PROJECT),
+                                       "districts": []}
+    did = _slug(district_id)
+    if seed is None:
+        seed = abs(hash((did, len(plan["districts"])))) % 2147483647 or 1
+    entry = {"id": did, "type": type, "origin": [x, z], "seed": seed, **params}
+    for i, d in enumerate(plan["districts"]):
+        if d.get("id") == did:
+            entry["seed"] = d.get("seed", seed)   # never reroll an existing district
+            plan["districts"][i] = entry
+            break
+    else:
+        plan["districts"].append(entry)
+    save_city_plan(plan, project)
+    return plan
+
+
 def forget_location(location_id: str, delete_image: bool = False,
                     project: str | None = None) -> bool:
     """Remove a location from a project's bible. Returns True if it existed."""

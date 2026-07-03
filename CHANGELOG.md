@@ -4,6 +4,27 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-06-30
+
+The growable city: World Builder's persistent 3D model.
+
+### Added
+- **Persistent city plans** — each project can now own a *growable 3D city*:
+  `world/<project>/city_plan.json`, a small human-readable list of districts
+  (each with its own seed, position, and parameters). The plan — not a mesh
+  file — is the editable master: meshes are rebuilt from it on every render,
+  so the city can start as one neighborhood and grow district by district while
+  every earlier district re-renders identically. The 2D locations registered in
+  the bible are snapshots *of* the plan; the plan is the structural truth.
+- **`add_city_district` tool** — grow the city by one district: `old_city`
+  (flanked avenue converging on a cathedral + skyline; a good founding core) or
+  `block` (rectangular building fill with size/tier/density/landmark knobs).
+  Updating an existing district never re-rolls its seed.
+- **`list_city` tool** — show a project's plan.
+- **Plan rendering** — `generate_city_scene(use_plan=True, focus="<district>")`
+  renders the persistent city instead of a one-shot seed, with the camera
+  presets re-aimed at any district (or the whole-city centroid).
+
 ## [1.3.0] — 2026-06-30
 
 "Metropolis mode": giant city establishing panels from a procedural 3D city,
@@ -127,6 +148,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.4.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.4.0
 [1.3.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.3.0
 [1.2.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.2.0
 [1.1.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.1.1

@@ -76,54 +76,128 @@ def _grey(i: int) -> int:
 def build_city(seed: int = 40001):
     """Procedural city: flanked avenue -> landmark cathedral -> far skyline.
     Returns a list of _Mesh. Same seed = same city, forever."""
-    rng = _Rng(seed)
     meshes = []
-    mi = [0]
+    add = _adder(meshes)
+    rng = _Rng(seed)
+    _district_old_city(rng, add, (0.0, 0.0))
+    return meshes
 
+
+def _adder(meshes):
+    """Appender that assigns each mesh its distinct flat grey."""
     def add(v, f):
-        meshes.append(_Mesh(v, f, _grey(mi[0])))
-        mi[0] += 1
+        meshes.append(_Mesh(v, f, _grey(len(meshes))))
+    return add
 
-    def building(x, z, tier):
-        w, d = rng.rr(8, 22), rng.rr(8, 22)
-        h = rng.rr(14, 42) * (1 + tier * 0.55)      # taller further back
-        add(*_box(x, 0, z, w, h, d))
-        add(*_pyramid(x, h, z, w * 0.72, rng.rr(4, 9), d * 0.72))   # gabled roof
-        for _ in range(rng.ri(0, 2)):                                # chimneys
-            cw = 1.2
-            add(*_box(x + rng.rr(-w/3, w/3), h, z + rng.rr(-d/3, d/3),
-                      cw, rng.rr(3, 6), cw))
-        if rng.rand() < 0.30:                                        # side tower
-            tw, th = rng.rr(3, 6), h * rng.rr(1.25, 1.8)
-            tx, tz = x + w/2 + tw/2 - 1, z + rng.rr(-d/3, d/3)
-            add(*_box(tx, 0, tz, tw, th, tw))
-            add(*_pyramid(tx, th, tz, tw * 0.8, rng.rr(8, 16), tw * 0.8))
 
-    def cathedral(x, z, s):
-        add(*_box(x, 0, z, 26*s, 46*s, 60*s))                        # nave
-        add(*_box(x, 46*s, z, 27*s, 8*s, 62*s))                      # roof block
-        for sx in (-11*s, 11*s):                                     # twin towers
-            add(*_box(x+sx, 0, z+34*s, 9*s, 78*s, 9*s))
-            add(*_pyramid(x+sx, 78*s, z+34*s, 8.5*s, 30*s, 8.5*s))
-        add(*_pyramid(x, 46*s, z-6*s, 6*s, 38*s, 6*s))               # fleche
+def _building(rng, add, x, z, tier):
+    w, d = rng.rr(8, 22), rng.rr(8, 22)
+    h = rng.rr(14, 42) * (1 + tier * 0.55)          # taller tiers = taller mass
+    add(*_box(x, 0, z, w, h, d))
+    add(*_pyramid(x, h, z, w * 0.72, rng.rr(4, 9), d * 0.72))       # gabled roof
+    for _ in range(rng.ri(0, 2)):                                    # chimneys
+        add(*_box(x + rng.rr(-w/3, w/3), h, z + rng.rr(-d/3, d/3),
+                  1.2, rng.rr(3, 6), 1.2))
+    if rng.rand() < 0.30:                                            # side tower
+        tw, th = rng.rr(3, 6), h * rng.rr(1.25, 1.8)
+        tx, tz = x + w/2 + tw/2 - 1, z + rng.rr(-d/3, d/3)
+        add(*_box(tx, 0, tz, tw, th, tw))
+        add(*_pyramid(tx, th, tz, tw * 0.8, rng.rr(8, 16), tw * 0.8))
 
-    # flanked avenue, denser + taller with distance
+
+def _cathedral(rng, add, x, z, s):
+    add(*_box(x, 0, z, 26*s, 46*s, 60*s))                            # nave
+    add(*_box(x, 46*s, z, 27*s, 8*s, 62*s))                          # roof block
+    for sx in (-11*s, 11*s):                                         # twin towers
+        add(*_box(x+sx, 0, z+34*s, 9*s, 78*s, 9*s))
+        add(*_pyramid(x+sx, 78*s, z+34*s, 8.5*s, 30*s, 8.5*s))
+    add(*_pyramid(x, 46*s, z-6*s, 6*s, 38*s, 6*s))                   # fleche
+
+
+# ------------------------------------------------------------ district types --
+def _district_old_city(rng, add, origin, rows=26, landmark=True):
+    """The founding layout: flanked avenue converging on a cathedral + far skyline."""
+    ox, oz = origin
     AVE = 26
-    for row in range(26):
-        z = -30 - row * 26 + rng.rr(-4, 4)
+    for row in range(rows):
+        z = oz - 30 - row * 26 + rng.rr(-4, 4)
         tier = 0 if row < 6 else 1 if row < 14 else 2
         for side in (-1, 1):
             off = AVE/2 + rng.rr(4, 10)
             for _ in range(2 if tier == 0 else 3):
-                building(side * (off + rng.rr(0, 6)), z, tier)
+                _building(rng, add, ox + side * (off + rng.rr(0, 6)), z, tier)
                 off += rng.rr(16, 30)
-
-    cathedral(6, -560, 2.1)                                          # landmark
-
+    if landmark:
+        _cathedral(rng, add, ox + 6, oz - 560, 2.1)
     for _ in range(70):                                              # far skyline
-        building(rng.rr(-500, 500), rng.rr(-620, -900), 2)
+        _building(rng, add, ox + rng.rr(-500, 500), oz + rng.rr(-620, -900), 2)
 
+
+def _district_block(rng, add, origin, size=(220, 220), tier=0, density=1.0,
+                    landmark=False):
+    """A rectangular fill of buildings — the growable unit (neighborhood/district).
+    origin is the block's near corner; buildings fill [-size] in z, [+size] in x."""
+    ox, oz = origin
+    w, d = size
+    step = 34 / max(0.25, density)
+    for gz in np.arange(oz - d, oz, step):
+        for gx in np.arange(ox, ox + w, step):
+            if rng.rand() < 0.85 * density:
+                _building(rng, add, gx + rng.rr(-6, 6), gz + rng.rr(-6, 6), tier)
+    if landmark:
+        _cathedral(rng, add, ox + w/2, oz - d/2, rng.rr(1.3, 1.9))
+
+
+DISTRICT_TYPES = {"old_city": _district_old_city, "block": _district_block}
+
+
+def build_from_plan(plan: dict):
+    """Assemble the whole persistent city from its plan (the editable master file).
+
+    The plan is the World Builder's growable 3D model: a JSON list of districts,
+    each with its own seed, position and parameters. Appending a district grows
+    the city; every earlier district re-renders identically because each has its
+    own RNG stream. Returns a list of _Mesh."""
+    meshes = []
+    add = _adder(meshes)
+    for d in plan.get("districts", []):
+        kind = d.get("type", "block")
+        if kind not in DISTRICT_TYPES:
+            raise ValueError(f"unknown district type '{kind}'; options: {', '.join(DISTRICT_TYPES)}")
+        rng = _Rng(d.get("seed", 1))
+        origin = tuple(d.get("origin", (0, 0)))
+        if kind == "old_city":
+            _district_old_city(rng, add, origin,
+                               rows=int(d.get("rows", 26)),
+                               landmark=bool(d.get("landmark", True)))
+        else:
+            _district_block(rng, add, origin,
+                            size=tuple(d.get("size", (220, 220))),
+                            tier=int(d.get("tier", 0)),
+                            density=float(d.get("density", 1.0)),
+                            landmark=bool(d.get("landmark", False)))
     return meshes
+
+
+def plan_centroid(plan: dict, focus: str | None = None):
+    """A point worth looking at: a named district's centre, or the plan centroid."""
+    ds = plan.get("districts", [])
+    if not ds:
+        return (0.0, -400.0)
+    if focus:
+        for d in ds:
+            if d.get("id") == focus:
+                ox, oz = d.get("origin", (0, 0))
+                if d.get("type", "block") == "old_city":
+                    return (ox, oz - 400.0)          # mid-avenue, toward the cathedral
+                w, dd = d.get("size", (220, 220))
+                return (ox + w / 2, oz - dd / 2)
+        raise ValueError(f"no district with id '{focus}' in the plan")
+    pts = []
+    for d in ds:
+        ox, oz = d.get("origin", (0, 0))
+        pts.append((ox, oz - 300.0))
+    return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
 
 
 # ------------------------------------------------------------------- cameras --
@@ -133,6 +207,27 @@ CAMERAS = {
     "high":   {"pos": (0, 150, 120),  "look": (0, 20, -500),  "fov": 48},
     "canyon": {"pos": (26, 5, -120),  "look": (-40, 60, -420), "fov": 65},
 }
+
+# Preset geometry expressed relative to a focus point, so the same four shot
+# types work anywhere in a growing city: (pos - look) delta, look height, fov.
+_CAM_REL = {
+    "street": {"delta": (0, -17, 590),   "look_y": 26, "fov": 58},
+    "vista":  {"delta": (-96, 30, 520),  "look_y": 40, "fov": 50},
+    "high":   {"delta": (0, 130, 620),   "look_y": 20, "fov": 48},
+    "canyon": {"delta": (66, -55, 300),  "look_y": 60, "fov": 65},
+}
+
+
+def camera_for(preset: str, focus) -> dict:
+    """Build an absolute camera from a relative preset aimed at `focus` (x, z)."""
+    if preset not in _CAM_REL:
+        raise ValueError(f"unknown camera '{preset}'; options: {', '.join(_CAM_REL)}")
+    c = _CAM_REL[preset]
+    fx, fz = focus
+    look = (fx, c["look_y"], fz)
+    d = c["delta"]
+    return {"pos": (fx + d[0], c["look_y"] + d[1], fz + d[2]),
+            "look": look, "fov": c["fov"]}
 
 
 # ---------------------------------------------------------------- rasterizer --
@@ -185,21 +280,26 @@ def render_lineart(meshes, camera="vista", width=1344, height=732,
 # ------------------------------------------------------------------ pipeline --
 def city_sketch(out_dir: str, city_seed: int = 40001, camera: str = "vista",
                 width: int = 1344, height: int = 732,
-                low: int = 60, high: int = 140) -> tuple[str, str]:
-    """Build city -> render lineart -> Canny sketch. Returns (sketch, lineart)."""
+                low: int = 60, high: int = 140,
+                meshes=None, tag: str | None = None) -> tuple[str, str]:
+    """Build city -> render lineart -> Canny sketch. Returns (sketch, lineart).
+    Pass `meshes` (e.g. from build_from_plan) to render a persistent plan city
+    instead of the one-shot seeded city."""
     if isinstance(camera, str) and camera not in CAMERAS:
         raise ValueError(f"unknown camera '{camera}'; options: {', '.join(CAMERAS)}")
     os.makedirs(out_dir, exist_ok=True)
-    meshes = build_city(city_seed)
+    if meshes is None:
+        meshes = build_city(city_seed)
     lineart = render_lineart(meshes, camera, width, height)
 
     cam_name = camera if isinstance(camera, str) else "custom"
-    line_path = os.path.join(out_dir, f"city_{city_seed}_{cam_name}_lineart.png")
+    stem = tag or f"city_{city_seed}"
+    line_path = os.path.join(out_dir, f"{stem}_{cam_name}_lineart.png")
     cv2.imwrite(line_path, lineart)
 
     blurred = cv2.GaussianBlur(lineart, (3, 3), 0)
     edges = cv2.Canny(blurred, low, high)
-    sketch_path = os.path.join(out_dir, f"city_{city_seed}_{cam_name}_sketch.png")
+    sketch_path = os.path.join(out_dir, f"{stem}_{cam_name}_sketch.png")
     cv2.imwrite(sketch_path, edges)
     return sketch_path, line_path
 

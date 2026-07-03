@@ -167,16 +167,24 @@ def generate_city_scene(
     controlnet_strength: float = RECIPE_CONTROLNET,
     extra_negative: str | None = None,
     project: str = world.DEFAULT_PROJECT,
+    use_plan: bool = False,
+    focus: str | None = None,
 ) -> str:
     """Generate a giant city establishing panel from a procedural 3D city
     ("Metropolis mode").
 
-    Builds a seeded 3D gothic city (street canyon converging on a landmark
-    cathedral, layered skyline), renders it headless to a composition sketch,
-    and paints it with the validated manhwa recipe (webtoon prompt language,
-    manhwa LoRA, soft ControlNet, hi-res finishing pass). The 3D city is
-    deterministic per `city_seed`: the SAME city can be re-rendered from any
-    camera for structurally consistent panels across a story.
+    Builds a 3D gothic city, renders it headless to a composition sketch, and
+    paints it with the validated manhwa recipe (webtoon prompt language, manhwa
+    LoRA, soft ControlNet, hi-res finishing pass). Two sources of geometry:
+
+    • One-shot (`use_plan=False`, default): a self-contained city from
+      `city_seed`. Same seed = same city, forever.
+    • Persistent (`use_plan=True`): the project's GROWABLE city — the plan in
+      world/<project>/city_plan.json built with add_city_district. Start with a
+      neighborhood, keep appending districts as the story expands; every earlier
+      district re-renders identically. Aim the camera with `focus` (a district
+      id). This is the World Builder's structural canon: the 2D locations you
+      register are snapshots of it.
 
     Best for wide vista/establishing shots — street-level close-ups tend to
     regress to a hard cel look (use a photo-reference sketch for those).
@@ -188,28 +196,44 @@ def generate_city_scene(
             recipe wording is appended automatically.
         camera: "vista" (elevated 3/4, default), "high" (aerial establishing),
             "canyon" (looking up between buildings), or "street" (see caveat).
-        city_seed: Which city. Same seed = same geometry, forever. Record it
-            when you register the result as a World Builder location.
+        city_seed: One-shot mode only: which city. Record it when you register
+            the result as a World Builder location.
         model / width / height / seed: As generate_background.
         hires: Finish with the 1.5x upscale + re-detail pass (default True —
             these dense panels need it).
         lora: Defaults to the manhwa LoRA; pass "" to disable.
         controlnet_strength: Default 0.6 (higher causes a comic-book look).
         extra_negative: Extra negative terms.
-        project: Which comic's output folder to write to.
+        project: Which comic's plan/output to use.
+        use_plan: Render the project's persistent city plan instead of a
+            one-shot seeded city.
+        focus: Plan mode: district id to aim the camera at (default: whole-city
+            centroid).
 
     Returns:
         The filesystem path to the generated PNG (plus the sketch path, for reuse).
     """
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
+        meshes, tag, cam, plan_note = None, None, camera, ""
+        if use_plan:
+            plan = world.load_city_plan(project)
+            if plan is None:
+                return (f"Project '{project}' has no city plan yet. Create one by "
+                        f"adding a first district with add_city_district.")
+            meshes = citygen.build_from_plan(plan)
+            cam = citygen.camera_for(camera, citygen.plan_centroid(plan, focus))
+            tag = f"plan_{world._slug(project)}"
+            plan_note = (f"  persistent plan: {len(plan['districts'])} district(s)"
+                         f"{', focus: ' + focus if focus else ''}\n")
         # 3D city -> composition sketch, rendered at 1.5x the gen size
         sketch_path, _ = citygen.city_sketch(
             os.path.join(out_dir, "city_sketches"),
-            city_seed=city_seed, camera=camera,
+            city_seed=city_seed, camera=cam,
             width=int(width * 1.5), height=int(height * 1.5),
+            meshes=meshes, tag=tag,
         )
-    except ValueError as e:
+    except (ValueError, world.WorldError) as e:
         return f"City render failed: {e}"
 
     full_prompt = f"fantasy-style, {prompt}, {RECIPE_PROMPT_SUFFIX}"
@@ -231,14 +255,87 @@ def generate_city_scene(
             lora=lora,
             hires=hires,
         )
+        src = "plan" if use_plan else f"city_seed {city_seed}"
         return (f"City panel generated: {out_path}\n"
-                f"  city_seed: {city_seed}  camera: {camera}\n"
+                f"  source: {src}  camera: {camera}\n"
+                + plan_note +
                 f"  sketch (reusable): {sketch_path}\n"
-                f"Re-render the SAME city from another angle by keeping city_seed "
-                f"and changing camera.")
+                f"Re-render the SAME city from another angle by keeping the source "
+                f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")
     except workflow.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
                 f"Is ComfyUI running at {workflow.COMFY_URL}?")
+
+
+@mcp.tool()
+def add_city_district(
+    district_id: str,
+    x: float = 0,
+    z: float = 0,
+    type: str = "block",
+    seed: int | None = None,
+    size_w: float = 220,
+    size_d: float = 220,
+    tier: int = 0,
+    density: float = 1.0,
+    landmark: bool = False,
+    rows: int = 26,
+    project: str = world.DEFAULT_PROJECT,
+) -> str:
+    """Grow the project's persistent 3D city by one district.
+
+    The city plan (world/<project>/city_plan.json) is the World Builder's
+    growable 3D model: start with one neighborhood, keep appending districts as
+    the story expands — a neighborhood, then a district, eventually a full city.
+    Every earlier district re-renders identically (each has its own seed), so
+    established panels stay canon. Render it with
+    generate_city_scene(use_plan=True, focus="<district_id>").
+
+    Args:
+        district_id: Name to reference later (e.g. "old_town", "docks").
+        x / z: Where the district sits on the city map (world units; a typical
+            district is ~200-600 across; -z is "away from the default cameras").
+        type: "old_city" (flanked avenue converging on a cathedral + skyline —
+            good founding district) or "block" (rectangular fill of buildings —
+            the growable unit).
+        seed: District's own RNG seed (auto-assigned if omitted; an existing
+            district KEEPS its seed on update so it never re-rolls).
+        size_w / size_d: Block type: footprint in world units.
+        tier: Block type: 0 low-rise ... 2 tall massing.
+        density: Block type: building density (0.3 sparse ... 1.5 packed).
+        landmark: Drop a cathedral in this district.
+        rows: old_city type: avenue length in building rows.
+        project: Which comic's city.
+
+    Returns:
+        The updated plan summary.
+    """
+    try:
+        params = ({"rows": rows, "landmark": landmark} if type == "old_city"
+                  else {"size": [size_w, size_d], "tier": tier,
+                        "density": density, "landmark": landmark})
+        plan = world.add_city_district(district_id, x, z, type=type, seed=seed,
+                                       project=project, **params)
+    except world.WorldError as e:
+        return f"Could not add district: {e}"
+    lines = [f"• {d['id']}: {d.get('type','block')} at {tuple(d.get('origin',(0,0)))}"
+             f"{' [landmark]' if d.get('landmark') else ''}" for d in plan["districts"]]
+    return (f"City plan for '{project}' now has {len(plan['districts'])} district(s):\n"
+            + "\n".join(lines) +
+            f"\nRender it: generate_city_scene(use_plan=True, focus='{world._slug(district_id)}', ...)")
+
+
+@mcp.tool()
+def list_city(project: str = world.DEFAULT_PROJECT) -> str:
+    """Show the project's persistent 3D city plan (districts, positions, seeds)."""
+    plan = world.load_city_plan(project)
+    if plan is None:
+        return (f"Project '{project}' has no city plan yet. "
+                f"Found a city with add_city_district (type='old_city' makes a good core).")
+    lines = [f"• {d['id']}: {d.get('type','block')} at {tuple(d.get('origin',(0,0)))}, "
+             f"seed {d.get('seed')}"
+             f"{' [landmark]' if d.get('landmark') else ''}" for d in plan["districts"]]
+    return f"City plan '{plan.get('name', project)}' — {len(lines)} district(s):\n" + "\n".join(lines)
 
 
 @mcp.tool()
