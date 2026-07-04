@@ -4,6 +4,28 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-07-05
+
+Parallax: still illustrations become subtle 2.5D motion clips for promo videos.
+
+### Added
+- **`tools/make_depth.py`** — estimate a depth map from any illustration or
+  background plate via the Depth-Anything V2 preprocessor in the local ComfyUI
+  install (no new Python dependencies; the model auto-downloads, or place
+  `depth_anything_v2_vitl.pth` under the controlnet_aux `ckpts/` manually if the
+  auto-download flakes).
+- **`tools/parallax.py`** — render the illustration + depth map into a
+  camera-drift clip: near pixels shift more than far ones, so flat art gains
+  depth — the signature webnovel-promo-short look. Four motion presets
+  (`push`, `pan`, `drift`, `lift`), tunable duration/fps/strength, MP4 output
+  with an optional preview GIF. Clips are ingredients for a video pipeline
+  (e.g. Remotion) to assemble with music and text.
+
+### Fixed
+- Unique per-call output prefixes when talking to ComfyUI — resubmitting an
+  identical graph was served entirely from ComfyUI's cache, recording no output
+  and failing the poll.
+
 ## [1.4.0] — 2026-07-03
 
 The growable city: World Builder's persistent 3D model.
@@ -148,6 +170,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.5.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.0
 [1.4.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.4.0
 [1.3.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.3.0
 [1.2.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.2.0
