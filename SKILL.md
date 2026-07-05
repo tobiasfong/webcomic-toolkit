@@ -1,6 +1,6 @@
 ---
 name: anime-production
-description: アニメ動画・アニメMV・漫画/マンファ ティーザー動画の制作スキル。Anime/manhwa video production - turns finished illustrations or comic pages into vertical (9:16) YouTube Shorts-style videos with Ken Burns motion, crossfades, particle effects, credits text, and BGM, via a self-contained Remotion pipeline. Use when: (1) user says「アニメを作って」「アニメ動画」「アニメMV」or "make an anime video / teaser / manhwa short", (2) user wants a slideshow MV of their own artwork with music, (3) user mentions「キャラクターアニメーション」「アニメ制作」or animating comic panels. Do NOT use for: 実写動画、静止画像のみの生成 (this skill animates EXISTING art; it does not generate images).
+description: アニメ動画・アニメ広告・アニメMV・漫画/マンファ ティーザー動画の制作スキル。Anime/manhwa video production & marketing - turns finished illustrations or comic pages into vertical (9:16) YouTube Shorts-style teaser/ad/MV videos with Ken Burns motion, crossfades, particle effects, credits text, and BGM, via a self-contained Remotion pipeline. Use when: (1) user says「アニメを作って」「アニメ動画」「アニメ広告」「アニメMV」or "make an anime video / teaser / ad / marketing video / manhwa short", (2) user wants a slideshow MV of their own artwork with music, (3) user mentions「キャラクターアニメーション」「アニメ制作」or animating/promoting comic panels. Do NOT use for: 実写動画、静止画像のみの生成 (this skill animates EXISTING art; it does not generate images).
 user-invocable: true
 ---
 

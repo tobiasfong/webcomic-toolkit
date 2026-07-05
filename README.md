@@ -1,10 +1,17 @@
 # Anime Production Skill
 
-A self-contained [Claude Code](https://claude.com/claude-code) **agent skill** that turns finished
-illustrations and comic pages into vertical (9:16) anime-style teaser videos /
-MVs — Ken Burns camera motion, crossfades, ambient particle effects, bilingual
+*Anime teaser, ad & MV maker for AI coding agents.*
+
+A self-contained **agent skill** that turns finished illustrations and comic
+pages into vertical (9:16) anime-style teaser / marketing videos and MVs —
+Ken Burns camera motion, crossfades, ambient particle effects, bilingual
 credits text, and a music track, rendered programmatically with
 [Remotion](https://www.remotion.dev/).
+
+Built and tested with [Claude Code](https://claude.com/claude-code); works
+with **any harness that reads `AGENTS.md`** (OpenAI Codex, Google Antigravity,
+Gemini CLI, Cursor, …) — the instructions are plain markdown and the engine is
+plain Remotion/React with no harness-specific dependencies.
 
 Part of a [webcomic/anime production ecosystem](https://tobiasfong.github.io/)
 built with Claude Code — companion to the
@@ -47,16 +54,24 @@ This package bakes all of that in, so an AI harness can go from
 - **`assets/`** — the complete engine source (`Manhwa.tsx`, `Effects.tsx`,
   `manhwa-panels.ts` template), copied into any Remotion project in 3 files
 
-## Install (Claude Code)
+## Use with your AI agent
+
+**Claude Code** — copy the folder into your personal skills directory:
 
 ```
 git clone https://github.com/tobiasfong/anime-production-skill.git
-# copy the folder to your personal skills directory:
-#   ~/.claude/skills/anime-production/
+# → copy to ~/.claude/skills/anime-production/
 ```
 
 Then ask Claude Code to "make an anime video" — the skill walks the agent
 through everything else (Node, Remotion project, engine install, render).
+
+**Codex / Antigravity / Gemini CLI / Cursor / others** — clone the repo and
+point your agent at it. [`AGENTS.md`](AGENTS.md) (the cross-harness
+convention) is the entry point and routes the agent to
+[`SKILL.md`](SKILL.md) for full setup and usage. Alternatively, copy
+`SKILL.md` + `assets/` into your harness's own instructions/knowledge
+location.
 
 ## Credits
 
