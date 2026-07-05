@@ -57,7 +57,10 @@ def parallax(image, depth, out=None, motion="push", seconds=4.0, fps=30,
     scale = min(1.0, MAX_SIDE / max(w, h))
     if scale < 1.0:
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-        h, w = img.shape[:2]
+    # yuv420p (the web-compatible pixel format) requires even dimensions
+    h, w = img.shape[:2]
+    img = img[:h - h % 2, :w - w % 2]
+    h, w = img.shape[:2]
     dep = cv2.resize(dep, (w, h), interpolation=cv2.INTER_LINEAR)
 
     # normalised depth, softened so displacement stays smooth at object edges
@@ -69,9 +72,17 @@ def parallax(image, depth, out=None, motion="push", seconds=4.0, fps=30,
     base_zoom = 1.06   # constant crop margin that hides displaced borders
 
     out = out or os.path.splitext(image)[0] + f"_{motion}.mp4"
-    vw = cv2.VideoWriter(out, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-    if not vw.isOpened():
-        raise SystemExit("could not open video writer (mp4v)")
+    # H.264 + yuv420p + faststart so the clips are web/browser-ready out of the
+    # box (OpenCV's own mp4v codec plays in desktop players but NOT in browsers)
+    try:
+        from imageio_ffmpeg import write_frames
+    except ImportError:
+        raise SystemExit("parallax needs imageio-ffmpeg: "
+                         "<venv>/python -m pip install imageio-ffmpeg")
+    vw = write_frames(out, (w, h), fps=fps, codec="libx264",
+                      pix_fmt_in="bgr24", pix_fmt_out="yuv420p", quality=8,
+                      output_params=["-movflags", "+faststart"])
+    vw.send(None)   # seed the generator
 
     frames_for_gif = []
     n = max(2, int(round(seconds * fps)))
@@ -85,10 +96,10 @@ def parallax(image, depth, out=None, motion="push", seconds=4.0, fps=30,
         map_y = (ys - cy) / z + cy - oy
         frame = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
                           borderMode=cv2.BORDER_REFLECT)
-        vw.write(frame)
+        vw.send(np.ascontiguousarray(frame))
         if gif and i % 3 == 0:   # 10 fps gif
             frames_for_gif.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    vw.release()
+    vw.close()
 
     gif_path = None
     if gif:
