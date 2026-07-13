@@ -1,4 +1,4 @@
-# Novel Translation MCP — MVP
+# Novel Translation MCP
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server that answers
 **narrow, targeted questions about a novel manuscript** instead of ever putting the
@@ -14,22 +14,34 @@ question" — the same fix as the Artist Colony MCP server (`find_available_peop
 **Golden rule for every tool here: return small, targeted excerpts — never the whole
 manuscript.**
 
-**Scope:** this is the MVP only. It does NOT build EPUB/CBZ/PDF assembly, covers, or
-synopsis generation — that's the Publication MCP server, deferred until after the
-active translation backlog is done.
+**Multi-project:** one server instance serves every novel in your library, not just
+one. Each project is a slug (`rxr`, `absolute_zero`, ...) with its own manuscript and
+its own isolated `translation_state.json` — register a new one with `register_project`
+instead of registering a whole new MCP server per book.
+
+**Scope:** this does NOT build EPUB/CBZ/PDF assembly, covers, or synopsis generation
+— that's the Publication MCP server, deferred until after the active translation
+backlog is done.
 
 ## What it does
 
-Six tools, all reading/writing a `.docx` manuscript and a JSON state file next to it:
+Eight tools, all reading/writing a `.docx` manuscript and a per-project JSON state
+file next to it:
 
 | Tool | Purpose |
 |---|---|
-| `list_chapters(lang)` | Titles + translation status per chapter — a few dozen tokens, not the manuscript |
-| `get_chapter(number, lang)` | One chapter's text only (source language or a saved translation) |
-| `search_manuscript(query, lang)` | Grep-like search, returns chapter + snippet per hit, capped |
-| `get_glossary()` | Approved glossary terms, plus staged terms clearly marked pending |
-| `propose_glossary_term(term, translation, note)` | **Stages** a term — never auto-commits |
-| `save_translation(chapter, lang, text, status)` | Writes a chapter's translation, updates its status |
+| `list_projects()` | Every registered novel: slug, name, source language, chapter count |
+| `register_project(name, manuscript_path, ...)` | Register a new novel (or update an existing one's paths) |
+| `list_chapters(lang, project)` | Titles + translation status per chapter — a few dozen tokens, not the manuscript |
+| `get_chapter(number, lang, project)` | One chapter's text only (source language or a saved translation) |
+| `search_manuscript(query, lang, project)` | Grep-like search, returns chapter + snippet per hit, capped |
+| `get_glossary(project)` | Approved glossary terms, plus staged terms clearly marked pending |
+| `propose_glossary_term(term, translation, note, project)` | **Stages** a term — never auto-commits |
+| `save_translation(chapter, lang, text, status, project)` | Writes a chapter's translation, updates its status |
+
+`project` defaults to `NOVEL_MCP_DEFAULT_PROJECT` (currently `rxr`) when omitted, so
+existing single-novel calls keep working — every response echoes back the resolved
+`project` slug so it's never ambiguous which manuscript you actually hit.
 
 ## Design principle — human-in-the-loop, enforced at the tool level
 
@@ -43,18 +55,31 @@ purpose: approval is a deliberate manual act, not a mechanical one.
 
 ## Storage layout
 
-State lives **next to the manuscript**, not inside this repo — same pattern as the
-background generator's `world.json` living next to its canon images.
+Each project's state lives **next to its manuscript**, not inside this repo — same
+pattern as the background generator's `world.json` living next to its canon images.
+The registry mapping project slugs to those locations (`projects.json`) lives inside
+this server's folder and is gitignored (it's your personal library, not shipped code).
 
 ```
-<manuscript folder>/
+servers/novel-translation-mcp/
+  projects.json                # {"rxr": {...}, "absolute_zero": {...}, ...} — gitignored
+
+<manuscript A's folder>/
   <manuscript>.docx           # source of truth for chapter numbers/titles (you own this)
-  translation_state.json      # chapter status + glossary (approved + staged)
+  translation_state.json      # THIS PROJECT'S chapter status + glossary (approved + staged)
   translations/
     ja/
       ch01.txt … ch18.txt     # already-translated chapters (seeded by bootstrap.py)
       ch19.txt                # written by save_translation as work progresses
+
+<manuscript B's folder>/
+  translation_state.json      # a completely separate glossary/status — no cross-talk
+  ...
 ```
+
+Glossaries and chapter statuses are isolated per project on purpose: the same
+English term can legitimately need a different translation in a different novel's
+voice, and a term approved for one book should never silently leak into another.
 
 No caching: every tool call re-parses the `.docx` fresh. Parsing a ~50k-word
 manuscript with `python-docx` takes well under a second, and a stale in-memory copy
@@ -74,30 +99,43 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### One-time bootstrap
+### Adding a new novel
 
-If you already have translated chapters sitting in a separate manuscript (as this
-project did — 18 chapters already translated into a JA master docx), seed the state
-file from them once:
+For a brand-new novel with no prior translation, just call the `register_project`
+tool from chat (or run it via the MCP inspector) — nothing to seed:
+
+```
+register_project(name="Absolute Zero", manuscript_path="C:\...\Absolute Zero.docx")
+```
+
+This picks a slug (`absolute_zero`), defaults `state_dir` to the manuscript's own
+folder, sanity-checks that the heading regex actually finds chapters, and returns the
+chapter count it found. From then on, pass `project="absolute_zero"` to the other
+tools (or ask `list_projects()` if you forget the slug).
+
+### One-time bootstrap (only for a novel with pre-existing translated chapters)
+
+RxR specifically had 18 chapters already translated into a separate JA master docx
+before this server existed. `bootstrap.py` is what seeded that one:
 
 ```
 python bootstrap.py
 ```
 
-This splits the existing JA master into `translations/ja/chNN.txt` files (marked
-`approved` — they're already-settled prose, not open for revision by this MVP) and
-seeds the approved glossary from `TRANSLATION-LESSONS.md`'s core terminology table.
-It refuses to run if `translation_state.json` already exists (pass `--force` to
-re-seed on purpose). Skip this step entirely for a fresh manuscript with no prior
-translation — `list_chapters` will just report every chapter as `not_started`.
+It registers the project, splits the existing JA master into `translations/ja/chNN.txt`
+files (marked `approved` — they're already-settled prose, not open for revision by
+this tool), and seeds the approved glossary from `TRANSLATION-LESSONS.md`'s core
+terminology table. Seeding refuses to run if that project's `translation_state.json`
+already exists (pass `--force` to re-seed on purpose); registration always re-runs
+(idempotent). Pass `--project-slug`/`--project-name`/`--en-manuscript`/`--ja-master`
+to point it at a different novel that also has a pre-existing translated draft.
 
 ### Configuration (environment variables)
 
 | Var | Default | Purpose |
 |---|---|---|
-| `NOVEL_MCP_MANUSCRIPT` | (RxR draft 2 docx) | Path to the source-language manuscript |
-| `NOVEL_MCP_STATE_DIR` | manuscript's folder | Where `translation_state.json` + `translations/` live |
-| `NOVEL_MCP_SOURCE_LANG` | `en` | Which `lang` value reads directly from the manuscript vs. a saved translation file |
+| `NOVEL_MCP_DEFAULT_PROJECT` | `rxr` | Which project a tool call uses when `project` is omitted |
+| `NOVEL_MCP_PROJECTS_FILE` | `projects.json` next to this server | Where the project registry lives |
 
 ### Register with your MCP client
 
@@ -138,8 +176,8 @@ signal survives.
 - EPUB/CBZ/PDF assembly, covers, synopsis generation — Publication MCP server, later.
 - Automated linting (達/たち, orthography rules, register-per-character profiles,
   dictionary-backed word validation) — real, valuable ideas from
-  `TRANSLATION-LESSONS.md`, but out of MVP scope. Revisit when refining this server's
-  tool set further, per `ARCHITECTURE.md` §8a.
+  `TRANSLATION-LESSONS.md`, not yet built. Revisit when refining this server's tool
+  set further, per `ARCHITECTURE.md` §8a.
 - A glossary "approve" tool — approval is intentionally a manual JSON edit, not a
   mechanical one. See "Design principle" above.
 
@@ -153,3 +191,5 @@ signal survives.
 - **A chapter you know exists doesn't show up in `list_chapters`:** the parser found
   no heading match for it in the source manuscript — check that the chapter's heading
   text actually matches `Chapter N: ...` (see "Chapter heading conventions" above).
+- **"No project 'X' registered" error:** the slug doesn't exist in `projects.json` yet
+  — call `list_projects()` to see what's registered, or `register_project()` to add it.

@@ -1,20 +1,27 @@
 """
-bootstrap.py — one-time setup, NOT an MCP tool. Run this once (from this folder,
-with the server's venv active) to seed translation_state.json from manuscripts
-that already exist on disk:
+bootstrap.py — one-time-per-project setup, NOT an MCP tool. This is for
+seeding a project (usually RxR, the one that already had chapters translated
+elsewhere) that has pre-existing translated chapters sitting in a separate
+manuscript. For a brand-new novel with no prior translation, just call the
+`register_project` MCP tool instead — there's nothing to seed.
 
-  1. Splits the existing JA master docx into per-chapter translations/ja/chNN.txt
+Run this once (from this folder, with the server's venv active) to:
+
+  1. Register the project in projects.json (idempotent — safe to re-run).
+  2. Split the existing JA master docx into per-chapter translations/ja/chNN.txt
      files (chapters already translated and published elsewhere are marked
      "approved" — they're not up for revision by this MVP, just queryable).
-  2. Seeds the approved glossary from TRANSLATION-LESSONS.md §1.1's core
+  3. Seed the approved glossary from TRANSLATION-LESSONS.md §1.1's core
      terminology table (already human-decided; re-proposing these would be
      pointless busywork).
-  3. Leaves any chapter with no existing JA text as "not_started".
+  4. Leave any chapter with no existing JA text as "not_started".
 
 Safe to inspect before running: it only writes inside STATE_DIR (translations/
-+ translation_state.json) and never touches the source docx files. Refuses to
-run if translation_state.json already exists, to avoid clobbering real
-progress — delete it first (or pass --force) if you really want to re-seed.
++ translation_state.json) and projects.json, and never touches the source docx
+files. Step 2 refuses to run if translation_state.json already exists, to
+avoid clobbering real progress — delete it first (or pass --force) if you
+really want to re-seed. Project registration (step 1) always runs, since it's
+idempotent and safe to repeat.
 """
 
 import os
@@ -24,6 +31,7 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import manuscript
 import state
+import projects
 
 DEFAULT_EN_MANUSCRIPT = (
     r"C:\Users\Tomoy\Documents\Stories (Mine)\Reincarnator x Regressor I inadvertently "
@@ -58,15 +66,23 @@ def main():
     ap.add_argument("--en-manuscript", default=DEFAULT_EN_MANUSCRIPT)
     ap.add_argument("--ja-master", default=DEFAULT_JA_MASTER)
     ap.add_argument("--state-dir", default=None, help="defaults to the EN manuscript's folder")
+    ap.add_argument("--project-slug", default="rxr")
+    ap.add_argument("--project-name", default="Reincarnator x Regressor")
     ap.add_argument("--force", action="store_true", help="re-seed even if state file exists")
     args = ap.parse_args()
 
     state_dir = args.state_dir or os.path.dirname(args.en_manuscript)
     state_path = os.path.join(state_dir, state.STATE_FILENAME)
 
+    slug, entry = projects.register(
+        name=args.project_name, manuscript=args.en_manuscript,
+        source_lang="en", state_dir=state_dir, slug=args.project_slug,
+    )
+    print(f"Registered project '{slug}' -> {entry['manuscript']}")
+
     if os.path.isfile(state_path) and not args.force:
-        print(f"{state_path} already exists — refusing to overwrite. Pass --force to re-seed.")
-        return 1
+        print(f"{state_path} already exists — skipping seeding (already done). Pass --force to re-seed.")
+        return 0
 
     print(f"Parsing EN source: {args.en_manuscript}")
     en_chapters = manuscript.parse_chapters(args.en_manuscript, "en")

@@ -1,0 +1,7 @@
+# Project registry — user-specific story titles + personal file paths.
+# Each user registers their own novels; not redistributed. See projects.py.
+projects.json
+
+.venv/
+__pycache__/
+*.pyc
