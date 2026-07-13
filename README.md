@@ -78,6 +78,17 @@ for a personal creative tool. A hosted version would swap the ComfyUI backend fo
 a paid inference API (e.g. Replicate) behind rate limiting; the MCP layer above
 would be unchanged.
 
+## Part of a wider webcomic/animation toolkit
+
+This server produces still backgrounds and depth-parallax clips — it doesn't make videos.
+For turning finished panels (including this tool's parallax clips) into a vertical promo
+short or MV, see the companion
+**[Anime Production Skill](https://github.com/tobiasfong/anime-production-skill)** — a
+portable agent skill (works with Claude Code, Codex, Antigravity, and other AGENTS.md-aware
+harnesses) built on Remotion. More tools in the same ecosystem — including a novel/comic
+translation and lettering server — are listed on
+[tobiasfong.github.io](https://tobiasfong.github.io).
+
 ---
 
 # Setup Guide
