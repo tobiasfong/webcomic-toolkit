@@ -86,33 +86,38 @@ def _translation_file_rel(number: int, lang: str) -> str:
 
 def _source_chapters(entry: dict) -> dict[int, dict]:
     """The EN (or whatever source_lang is) chapters — the backbone list of
-    chapter numbers/titles every other language's status is checked against."""
+    chapter numbers/titles every other language's status is checked against.
+    Merges across every volume file registered for that language."""
     source_lang = entry.get("source_lang", "en")
-    return manuscript.parse_chapters(entry["manuscripts"][source_lang], source_lang)
+    return manuscript.parse_chapters_multi(entry["manuscripts"][source_lang], source_lang)
 
 
 def _lang_chapters(entry: dict, lang: str) -> dict[int, dict] | None:
-    """Chapters parsed from THIS language's own master docx, or None if no
-    master is registered for it (caller should fall back to translations/)."""
-    path = entry.get("manuscripts", {}).get(lang)
-    if not path:
+    """Chapters parsed from THIS language's own master docx/docxs (merged
+    across volumes), or None if no master is registered for it (caller should
+    fall back to translations/)."""
+    paths = entry.get("manuscripts", {}).get(lang)
+    if not paths:
         return None
-    return manuscript.parse_chapters(path, lang)
+    return manuscript.parse_chapters_multi(paths, lang)
 
 
 @mcp.tool()
 def list_projects() -> dict:
     """List every registered novel (project slug, display name, languages with
-    a real master docx, chapter counts per language). Call this first if
-    you're not sure which `project` slug to pass to the other tools."""
+    a real master docx, how many volume files per language, chapter counts per
+    language). Call this first if you're not sure which `project` slug to
+    pass to the other tools."""
     data = projects.load()
     out = []
     for slug, entry in sorted(data.items()):
         lang_counts = {}
+        file_counts = {}
         error = None
-        for lang, path in entry.get("manuscripts", {}).items():
+        for lang, paths in entry.get("manuscripts", {}).items():
+            file_counts[lang] = len(paths)
             try:
-                lang_counts[lang] = len(manuscript.parse_chapters(path, lang))
+                lang_counts[lang] = len(manuscript.parse_chapters_multi(paths, lang))
             except manuscript.ManuscriptError as e:
                 lang_counts[lang] = None
                 error = error or str(e)
@@ -121,6 +126,7 @@ def list_projects() -> dict:
             "name": entry["name"],
             "source_lang": entry.get("source_lang", "en"),
             "chapter_counts_by_lang": lang_counts,
+            "volume_file_counts_by_lang": file_counts,
             "error": error,
         })
     return {"projects": out}
@@ -129,27 +135,31 @@ def list_projects() -> dict:
 @mcp.tool()
 def register_project(
     name: str,
-    manuscripts: dict[str, str],
+    manuscripts: dict[str, str | list[str]],
     source_lang: str = "en",
     state_dir: str | None = None,
     slug: str | None = None,
 ) -> dict:
-    """Register a new novel (or update an existing one's paths). This is the
-    ONLY way to point the server at new manuscripts — there's no tool that
-    guesses a project from context, on purpose.
+    """Register a new novel (or fully replace an existing one's manuscript
+    paths — see add_manuscript_volume instead if you just want to ADD a
+    volume without risk of dropping an earlier one).
 
-    `manuscripts` maps language code -> docx path, e.g.
-    {"en": "C:\\...\\English draft.docx", "ja": "C:\\...\\Japanese master.docx"}.
-    ANY language in this map is read from its own docx directly (never from a
-    translations/<lang>/ export) — include a language here whenever a real
-    master document exists for it, not just for the source language.
+    `manuscripts` maps language code -> one docx path OR a list of them, e.g.
+    {"en": "C:\\...\\English draft.docx", "ja": "C:\\...\\Japanese master.docx"}
+    or {"en": ["C:\\...\\Vol1.docx", "C:\\...\\Vol2.docx"]}. ANY language in this
+    map is read from its own docx directly (never from a translations/<lang>/
+    export) — include a language here whenever a real master document exists
+    for it, not just for the source language. Multiple files for one language
+    are merged by chapter number (continuing numbering across volumes) — a
+    chapter number appearing in more than one file raises rather than picking
+    one silently.
 
     `source_lang` must be a key in `manuscripts` and marks which language is
     being translated FROM. `slug` defaults to a normalized version of `name`
     (e.g. "Absolute Zero" -> "absolute_zero") and is what you pass as `project`
     to every other tool. `state_dir` defaults to the source manuscript's own
-    folder. Re-registering an existing slug updates its paths but never
-    touches its existing translation_state.json.
+    folder. Re-registering an existing slug OVERWRITES `manuscripts` wholesale
+    but never touches its existing translation_state.json.
     """
     resolved_slug, entry = projects.register(
         name=name, manuscripts=manuscripts, source_lang=source_lang,
@@ -157,8 +167,8 @@ def register_project(
     )
     chapter_counts = {}
     warnings = []
-    for lang, path in entry["manuscripts"].items():
-        chapters = manuscript.parse_chapters(path, lang)
+    for lang, paths in entry["manuscripts"].items():
+        chapters = manuscript.parse_chapters_multi(paths, lang)
         chapter_counts[lang] = len(chapters)
         if not chapters:
             warnings.append(
@@ -171,6 +181,33 @@ def register_project(
         "entry": entry,
         "chapter_counts_by_lang": chapter_counts,
         "warnings": warnings or None,
+    }
+
+
+@mcp.tool()
+def add_manuscript_volume(project: str, lang: str, path: str) -> dict:
+    """Add a new volume's docx to an ALREADY-registered project/language —
+    e.g. Volume 2's docx once Volume 1's is already registered for that
+    language. This is the safe way to grow a project across volumes: unlike
+    register_project (which overwrites `manuscripts` wholesale), this only
+    APPENDS, so it can never drop an earlier volume's registration by
+    accident. Chapter numbering must continue across volumes (22, 23, ... not
+    a restart at 1) — a chapter number that collides with an already-
+    registered file is refused, checked BEFORE anything is saved.
+    """
+    slug, entry = _resolve(project)
+    existing_paths = entry.get("manuscripts", {}).get(lang, [])
+    if path in existing_paths:
+        raise ValueError(f"{path} is already registered for lang '{lang}' in project '{slug}'.")
+    if not os.path.isfile(path):
+        raise ValueError(f"Manuscript not found: {path}")
+    combined = manuscript.parse_chapters_multi(existing_paths + [path], lang)
+    projects.add_volume(slug, lang, path)
+    return {
+        "project": slug,
+        "lang": lang,
+        "manuscripts_for_lang": existing_paths + [path],
+        "chapter_count": len(combined),
     }
 
 

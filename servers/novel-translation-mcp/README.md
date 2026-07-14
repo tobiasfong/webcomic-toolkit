@@ -31,12 +31,13 @@ backlog is done.
 
 ## What it does
 
-Ten tools:
+Eleven tools:
 
 | Tool | Purpose |
 |---|---|
-| `list_projects()` | Every registered novel: slug, name, chapter count per language |
-| `register_project(name, manuscripts, ...)` | Register a new novel — `manuscripts` maps lang -> docx path |
+| `list_projects()` | Every registered novel: slug, name, chapter count + volume-file count per language |
+| `register_project(name, manuscripts, ...)` | Register a new novel — `manuscripts` maps lang -> docx path(s) |
+| `add_manuscript_volume(project, lang, path)` | Safely ADD a volume's docx to an already-registered project/language |
 | `list_chapters(lang, project)` | Titles + translation status per chapter — a few dozen tokens, not the manuscript |
 | `get_chapter(number, lang, project)` | One chapter's text only — from a language's master docx, or a saved translation |
 | `get_context(chapter, lang, project)` | One-call bundle: source text + previous chapter's translation + glossary |
@@ -52,7 +53,8 @@ existing single-novel calls keep working — every response echoes back the reso
 
 ## Multi-manuscript design (the correctness fix, not just ergonomics)
 
-`register_project`'s `manuscripts` parameter maps **language -> docx path**, e.g.:
+`register_project`'s `manuscripts` parameter maps **language -> one docx path, or a
+list of them**, e.g.:
 
 ```python
 register_project(
@@ -67,10 +69,36 @@ Any language present in `manuscripts` is read from **its own docx directly** by
 file. A language absent from `manuscripts` falls back to `translations/<lang>/chNN.txt`
 exports written by `save_translation`, for a language with no master document at all.
 
-**Why this matters:** an earlier version of this server only tracked one manuscript
+### Multi-volume novels
+
+A language's entry can be a **list** of docx files, not just one — this is for a
+novel that spans multiple volumes as separate files (rather than one ever-growing
+docx), with chapter numbering continuing across them (Volume 2 starts at chapter 22,
+not back at 1) and the SAME project/glossary shared across volumes, since it's still
+the same characters and world. Use `add_manuscript_volume` to add Volume 2 once
+Volume 1 is already registered:
+
+```python
+add_manuscript_volume(project="rxr", lang="en", path="C:\...\RxR Volume 2.docx")
+add_manuscript_volume(project="rxr", lang="ja", path="C:\...\RxR JA Volume 2.docx")
+```
+
+This only **appends** — unlike calling `register_project` again (which overwrites
+`manuscripts` wholesale and would silently drop Volume 1's registration), there's no
+way to lose an earlier volume's reference by accident. If a chapter number appears in
+more than one file for the same language, every tool refuses rather than picking one
+silently — that's virtually always a sign of the wrong file or a numbering mistake,
+not something to resolve automatically.
+
+If instead a novel just keeps growing in the SAME docx file (chapters simply added to
+the existing master as they're written), nothing needs to change at all —
+`list_chapters`/`get_chapter` already pick up new chapters as soon as they're added to
+a registered file.
+
+**Why the language -> docx(es) design matters:** an earlier version of this server only tracked one manuscript
 (the source language) and treated every other language as export-only text files
 written by `save_translation`. For a project where the author maintains a REAL
-Japanese master docx (as RxR's does — 18 chapters already exist there), that meant
+Japanese master docx (as RxR's does), that meant
 the tool was reading stale exported copies instead of the author's actual, current
 text. If the master and the exports ever diverged, the tool would audit the wrong
 one silently. Reading the master directly makes that class of bug impossible: there
