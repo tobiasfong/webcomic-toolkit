@@ -50,7 +50,16 @@ import state
 import projects
 import lint as lint_module
 
-mcp = FastMCP("novel-translation-mcp")
+# WORKFLOW.md is the single source of truth for the collaborative translation
+# loop this server is built for. Passing its content as `instructions` puts it
+# in the MCP protocol's own initialize handshake, so ANY connecting client
+# gets it automatically — the workflow travels with the tool, not with one
+# model's chat memory. Edit WORKFLOW.md, not this string.
+_WORKFLOW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WORKFLOW.md")
+with open(_WORKFLOW_PATH, "r", encoding="utf-8") as _f:
+    _WORKFLOW_INSTRUCTIONS = _f.read()
+
+mcp = FastMCP("novel-translation-mcp", instructions=_WORKFLOW_INSTRUCTIONS)
 
 # Convenience default so calls that omit `project` keep working for whichever
 # novel is the "current" one — but every response echoes back the resolved

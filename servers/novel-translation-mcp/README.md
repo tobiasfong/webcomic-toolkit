@@ -85,31 +85,18 @@ editor — not this tool. This is enforced in code, not by convention.
 ## Recommended workflow — draft → review → edit → audit, not one-shot polish
 
 This tooling is built for a specific collaborative loop, not fire-and-forget
-translation:
+translation — full loop in **[`WORKFLOW.md`](WORKFLOW.md)**, which is also served
+directly to any connecting MCP client as this server's `instructions` (part of the
+MCP protocol's own handshake — see `server.py`). That's deliberate: the workflow
+travels with the server, not with one model's chat memory.
 
-1. The model drafts a chapter **in chat**, not as a saved file.
-2. The draft is followed by: numbered judgment-call notes (every decision that could
-   have gone another way, and why), a register check (each speaking character's
-   pronoun/politeness level and any deviation from their default), and the furigana
-   manifest for that chapter.
-3. The model ends with an explicit handoff ("where do you want to push?") — not a
-   summary, and not a move to the next chapter.
-4. The human edits in their own master docx and saves it.
-5. The model reads the human's version back via `get_chapter(N, "ja")` — never a
-   re-upload, since it's reading the master directly (see above).
-6. The model runs the seven-class check (grammar, semantics, collocation, register,
-   word-existence, consistency, naturalness) on the **human's** version, treating
-   the human's edits as authoritative.
-7. Repeat until the human marks the chapter approved.
-
-The model should NOT self-polish pronoun density/rhythm/naturalness before the human
-has seen the draft (flag concerns, don't fix them), should NOT move to the next
-chapter without an explicit go-ahead, and should NOT reverse a human edit — if it
-thinks an edit introduced a problem, it says so once and defers. It SHOULD still
-enforce, unprompted: locked orthography (達/何故/貴方 in kanji — see `lint_chapter`),
-character register per the voice bible (one character, one voice, fixed by character
-not by listener), cross-chapter term consistency, search-before-render on cultural
-references, and no English leakage.
+The short version: draft in chat (not a file) → append judgment-call notes/register
+check/furigana manifest → explicit handoff, never auto-advance to the next chapter →
+human edits their own master docx → read it back via `get_chapter(N, "ja")` → check
+**collaboratively** (the human is JLPT N2, not native — his edits get the same
+scrutiny as the model's draft, not silent deference) → repeat until the model's check
+converges clean → only then does the human give final approval. See `WORKFLOW.md` for
+why that ordering matters and the full list of what to/not to do unprompted.
 
 `get_context` and `lint_chapter` exist to support this loop mechanically — the former
 cuts the round-trips needed to start a chapter, the latter moves the purely mechanical
