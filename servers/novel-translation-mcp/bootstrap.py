@@ -1,27 +1,22 @@
 """
-bootstrap.py — one-time-per-project setup, NOT an MCP tool. This is for
-seeding a project (usually RxR, the one that already had chapters translated
-elsewhere) that has pre-existing translated chapters sitting in a separate
-manuscript. For a brand-new novel with no prior translation, just call the
-`register_project` MCP tool instead — there's nothing to seed.
+bootstrap.py — one-time-per-project setup, NOT an MCP tool. For a novel that
+already has a real master docx in more than one language (like RxR: an EN
+draft and a JA master that's already 18 chapters in), this just registers
+both — get_chapter/search_manuscript then read each language directly from
+its own docx, so there's nothing to "seed" as export files anymore (an
+earlier version of this script split the JA master into translations/ja/
+export files; that's obsolete now that the JA master is read directly, and
+those old exports are stale duplicates that should be removed — see
+retire_stale_exports() below).
 
-Run this once (from this folder, with the server's venv active) to:
+For a brand-new novel with no prior translation at all, don't bother with this
+script — just call the `register_project` MCP tool with a single-language
+`manuscripts` map.
 
-  1. Register the project in projects.json (idempotent — safe to re-run).
-  2. Split the existing JA master docx into per-chapter translations/ja/chNN.txt
-     files (chapters already translated and published elsewhere are marked
-     "approved" — they're not up for revision by this MVP, just queryable).
-  3. Seed the approved glossary from TRANSLATION-LESSONS.md §1.1's core
-     terminology table (already human-decided; re-proposing these would be
-     pointless busywork).
-  4. Leave any chapter with no existing JA text as "not_started".
-
-Safe to inspect before running: it only writes inside STATE_DIR (translations/
-+ translation_state.json) and projects.json, and never touches the source docx
-files. Step 2 refuses to run if translation_state.json already exists, to
-avoid clobbering real progress — delete it first (or pass --force) if you
-really want to re-seed. Project registration (step 1) always runs, since it's
-idempotent and safe to repeat.
+This also seeds the approved glossary from TRANSLATION-LESSONS.md §1.1's core
+terminology table (already human-decided; re-proposing these would be
+pointless busywork). Safe to re-run: registration is idempotent, and glossary
+seeding skips terms already present (by `term` key) instead of duplicating them.
 """
 
 import os
@@ -61,6 +56,35 @@ CORE_GLOSSARY = [
 ]
 
 
+def seed_glossary(state_dir: str) -> int:
+    data = state.load(state_dir)
+    existing_terms = {t["term"] for t in data["glossary"]["approved"]}
+    added = 0
+    for term, translation, note in CORE_GLOSSARY:
+        if term in existing_terms:
+            continue
+        data["glossary"]["approved"].append({"term": term, "translation": translation, "note": note})
+        added += 1
+    state.save(state_dir, data)
+    return added
+
+
+def retire_stale_exports(state_dir: str, lang: str) -> list[str]:
+    """Remove translations/<lang>/*.txt export files now that `lang` is read
+    directly from its own master docx. These files were pure derived copies
+    (split out of that same docx) — deleting them loses nothing that isn't
+    already in the master, and leaving them around is a stale-duplicate risk
+    for anyone reading the folder by hand."""
+    tdir = os.path.join(state_dir, "translations", lang)
+    removed = []
+    if os.path.isdir(tdir):
+        for fname in os.listdir(tdir):
+            if fname.endswith(".txt"):
+                os.remove(os.path.join(tdir, fname))
+                removed.append(fname)
+    return removed
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--en-manuscript", default=DEFAULT_EN_MANUSCRIPT)
@@ -68,55 +92,30 @@ def main():
     ap.add_argument("--state-dir", default=None, help="defaults to the EN manuscript's folder")
     ap.add_argument("--project-slug", default="rxr")
     ap.add_argument("--project-name", default="Reincarnator x Regressor")
-    ap.add_argument("--force", action="store_true", help="re-seed even if state file exists")
     args = ap.parse_args()
 
     state_dir = args.state_dir or os.path.dirname(args.en_manuscript)
-    state_path = os.path.join(state_dir, state.STATE_FILENAME)
 
     slug, entry = projects.register(
-        name=args.project_name, manuscript=args.en_manuscript,
-        source_lang="en", state_dir=state_dir, slug=args.project_slug,
+        name=args.project_name,
+        manuscripts={"en": args.en_manuscript, "ja": args.ja_master},
+        source_lang="en",
+        state_dir=state_dir,
+        slug=args.project_slug,
     )
-    print(f"Registered project '{slug}' -> {entry['manuscript']}")
+    print(f"Registered project '{slug}':")
+    for lang, path in entry["manuscripts"].items():
+        chapters = manuscript.parse_chapters(path, lang)
+        print(f"  {lang}: {len(chapters)} chapters -> {path}")
 
-    if os.path.isfile(state_path) and not args.force:
-        print(f"{state_path} already exists — skipping seeding (already done). Pass --force to re-seed.")
-        return 0
+    removed = retire_stale_exports(state_dir, "ja")
+    if removed:
+        print(f"\nRetired {len(removed)} now-stale JA export file(s) (superseded by reading the master docx directly):")
+        for fname in sorted(removed):
+            print(f"  translations/ja/{fname}")
 
-    print(f"Parsing EN source: {args.en_manuscript}")
-    en_chapters = manuscript.parse_chapters(args.en_manuscript, "en")
-    print(f"  found {len(en_chapters)} chapters: {sorted(en_chapters)}")
-
-    print(f"Parsing JA master: {args.ja_master}")
-    ja_chapters = manuscript.parse_chapters(args.ja_master, "ja")
-    print(f"  found {len(ja_chapters)} chapters: {sorted(ja_chapters)}")
-
-    data = {"schema": 1, "chapters": {}, "glossary": {"approved": [], "staged": []}}
-
-    ja_dir = os.path.join(state_dir, "translations", "ja")
-    os.makedirs(ja_dir, exist_ok=True)
-
-    for number, chapter in sorted(en_chapters.items()):
-        rec = state.chapter_record(data, number)
-        rec["title_en"] = chapter["title"]
-        if number in ja_chapters:
-            text = manuscript.chapter_text(ja_chapters[number], include_title=False)
-            rel = f"translations/ja/ch{number:02d}.txt"
-            path = os.path.join(state_dir, rel)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(text)
-            state.set_translation_status(data, number, "ja", "approved", rel)
-            print(f"  ch{number:02d}: JA found ({manuscript.char_count(text)} chars) -> approved, wrote {rel}")
-        else:
-            print(f"  ch{number:02d}: no JA yet -> not_started")
-
-    for term, translation, note in CORE_GLOSSARY:
-        data["glossary"]["approved"].append({"term": term, "translation": translation, "note": note})
-
-    state.save(state_dir, data)
-    print(f"\nWrote {state_path}")
-    print(f"Seeded {len(CORE_GLOSSARY)} approved glossary terms from TRANSLATION-LESSONS.md.")
+    added = seed_glossary(state_dir)
+    print(f"\nSeeded {added} new approved glossary term(s) from TRANSLATION-LESSONS.md (skipped any already present).")
     return 0
 
 

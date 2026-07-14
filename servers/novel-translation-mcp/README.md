@@ -15,9 +15,15 @@ question" — the same fix as the Artist Colony MCP server (`find_available_peop
 manuscript.**
 
 **Multi-project:** one server instance serves every novel in your library, not just
-one. Each project is a slug (`rxr`, `absolute_zero`, ...) with its own manuscript and
-its own isolated `translation_state.json` — register a new one with `register_project`
-instead of registering a whole new MCP server per book.
+one. Each project is a slug (`rxr`, `absolute_zero`, ...) with its own manuscript(s)
+and its own isolated `translation_state.json` — register a new one with
+`register_project` instead of registering a whole new MCP server per book.
+
+**Multi-manuscript per project:** a language can have a REAL master docx, not just
+the source language. If you maintain a proper Japanese master document (not loose
+per-chapter export files), register it too — every tool then reads that language
+directly from its own docx, so there is no way to audit text that has silently
+drifted from what you actually wrote. See "Multi-manuscript design" below.
 
 **Scope:** this does NOT build EPUB/CBZ/PDF assembly, covers, or synopsis generation
 — that's the Publication MCP server, deferred until after the active translation
@@ -25,23 +31,91 @@ backlog is done.
 
 ## What it does
 
-Eight tools, all reading/writing a `.docx` manuscript and a per-project JSON state
-file next to it:
+Ten tools:
 
 | Tool | Purpose |
 |---|---|
-| `list_projects()` | Every registered novel: slug, name, source language, chapter count |
-| `register_project(name, manuscript_path, ...)` | Register a new novel (or update an existing one's paths) |
+| `list_projects()` | Every registered novel: slug, name, chapter count per language |
+| `register_project(name, manuscripts, ...)` | Register a new novel — `manuscripts` maps lang -> docx path |
 | `list_chapters(lang, project)` | Titles + translation status per chapter — a few dozen tokens, not the manuscript |
-| `get_chapter(number, lang, project)` | One chapter's text only (source language or a saved translation) |
+| `get_chapter(number, lang, project)` | One chapter's text only — from a language's master docx, or a saved translation |
+| `get_context(chapter, lang, project)` | One-call bundle: source text + previous chapter's translation + glossary |
 | `search_manuscript(query, lang, project)` | Grep-like search, returns chapter + snippet per hit, capped |
 | `get_glossary(project)` | Approved glossary terms, plus staged terms clearly marked pending |
 | `propose_glossary_term(term, translation, note, project)` | **Stages** a term — never auto-commits |
-| `save_translation(chapter, lang, text, status, project)` | Writes a chapter's translation, updates its status |
+| `save_translation(chapter, lang, text, status, project)` | Writes a translation — refuses if that language has a master docx |
+| `lint_chapter(text)` | Deterministic mechanical checks (orthography, brackets, non-words, Latin leakage, pronoun density) |
 
 `project` defaults to `NOVEL_MCP_DEFAULT_PROJECT` (currently `rxr`) when omitted, so
 existing single-novel calls keep working — every response echoes back the resolved
 `project` slug so it's never ambiguous which manuscript you actually hit.
+
+## Multi-manuscript design (the correctness fix, not just ergonomics)
+
+`register_project`'s `manuscripts` parameter maps **language -> docx path**, e.g.:
+
+```python
+register_project(
+    name="Reincarnator x Regressor",
+    manuscripts={"en": "...draft 2.docx", "ja": "...JA master.docx"},
+    source_lang="en",
+)
+```
+
+Any language present in `manuscripts` is read from **its own docx directly** by
+`get_chapter` and `search_manuscript` — never from a `translations/<lang>/` export
+file. A language absent from `manuscripts` falls back to `translations/<lang>/chNN.txt`
+exports written by `save_translation`, for a language with no master document at all.
+
+**Why this matters:** an earlier version of this server only tracked one manuscript
+(the source language) and treated every other language as export-only text files
+written by `save_translation`. For a project where the author maintains a REAL
+Japanese master docx (as RxR's does — 18 chapters already exist there), that meant
+the tool was reading stale exported copies instead of the author's actual, current
+text. If the master and the exports ever diverged, the tool would audit the wrong
+one silently. Reading the master directly makes that class of bug impossible: there
+is nothing to drift out of sync with, because there is only one JA artifact.
+
+**Consequence for `save_translation`:** it now refuses (raises an error, not a silent
+no-op) to write for any language that has a registered master docx. The error message
+says so explicitly. The author's docx is the only writable artifact for that
+language, and the author writes it — directly, in their own document, in their own
+editor — not this tool. This is enforced in code, not by convention.
+
+## Recommended workflow — draft → review → edit → audit, not one-shot polish
+
+This tooling is built for a specific collaborative loop, not fire-and-forget
+translation:
+
+1. The model drafts a chapter **in chat**, not as a saved file.
+2. The draft is followed by: numbered judgment-call notes (every decision that could
+   have gone another way, and why), a register check (each speaking character's
+   pronoun/politeness level and any deviation from their default), and the furigana
+   manifest for that chapter.
+3. The model ends with an explicit handoff ("where do you want to push?") — not a
+   summary, and not a move to the next chapter.
+4. The human edits in their own master docx and saves it.
+5. The model reads the human's version back via `get_chapter(N, "ja")` — never a
+   re-upload, since it's reading the master directly (see above).
+6. The model runs the seven-class check (grammar, semantics, collocation, register,
+   word-existence, consistency, naturalness) on the **human's** version, treating
+   the human's edits as authoritative.
+7. Repeat until the human marks the chapter approved.
+
+The model should NOT self-polish pronoun density/rhythm/naturalness before the human
+has seen the draft (flag concerns, don't fix them), should NOT move to the next
+chapter without an explicit go-ahead, and should NOT reverse a human edit — if it
+thinks an edit introduced a problem, it says so once and defers. It SHOULD still
+enforce, unprompted: locked orthography (達/何故/貴方 in kanji — see `lint_chapter`),
+character register per the voice bible (one character, one voice, fixed by character
+not by listener), cross-chapter term consistency, search-before-render on cultural
+references, and no English leakage.
+
+`get_context` and `lint_chapter` exist to support this loop mechanically — the former
+cuts the round-trips needed to start a chapter, the latter moves the purely mechanical
+checks out of the model's hands entirely (see `lint_chapter`'s docstring on
+"verification theater" — a regex-shaped scan is not a substitute for reading the
+prose, and this tool is built so the two are never conflated).
 
 ## Design principle — human-in-the-loop, enforced at the tool level
 
@@ -51,11 +125,12 @@ fire-and-forget batch translation. This isn't just a prompting convention:
 proposed term sits in `translation_state.json`'s `staged` array until a human
 explicitly moves it into `approved` — by editing the JSON directly, or asking the
 assistant to do so as an explicit, reviewed edit. There is no "approve" MCP tool on
-purpose: approval is a deliberate manual act, not a mechanical one.
+purpose: approval is a deliberate manual act, not a mechanical one. `lint_chapter`
+follows the same principle: it only flags, it never rewrites.
 
 ## Storage layout
 
-Each project's state lives **next to its manuscript**, not inside this repo — same
+Each project's state lives **next to its manuscript(s)**, not inside this repo — same
 pattern as the background generator's `world.json` living next to its canon images.
 The registry mapping project slugs to those locations (`projects.json`) lives inside
 this server's folder and is gitignored (it's your personal library, not shipped code).
@@ -64,24 +139,20 @@ this server's folder and is gitignored (it's your personal library, not shipped 
 servers/novel-translation-mcp/
   projects.json                # {"rxr": {...}, "absolute_zero": {...}, ...} — gitignored
 
-<manuscript A's folder>/
-  <manuscript>.docx           # source of truth for chapter numbers/titles (you own this)
-  translation_state.json      # THIS PROJECT'S chapter status + glossary (approved + staged)
+<manuscript folder>/
+  <EN manuscript>.docx         # source of truth for EN chapter numbers/titles/text
+  <JA master>.docx             # source of truth for JA text (if registered — read directly, never exported)
+  translation_state.json       # THIS PROJECT'S chapter status + glossary (approved + staged)
   translations/
-    ja/
-      ch01.txt … ch18.txt     # already-translated chapters (seeded by bootstrap.py)
-      ch19.txt                # written by save_translation as work progresses
-
-<manuscript B's folder>/
-  translation_state.json      # a completely separate glossary/status — no cross-talk
-  ...
+    <lang with no master>/
+      ch01.txt, ch02.txt, ...  # only exists for languages with NO registered master docx
 ```
 
 Glossaries and chapter statuses are isolated per project on purpose: the same
 English term can legitimately need a different translation in a different novel's
 voice, and a term approved for one book should never silently leak into another.
 
-No caching: every tool call re-parses the `.docx` fresh. Parsing a ~50k-word
+No caching: every tool call re-parses each `.docx` fresh. Parsing a ~50k-word
 manuscript with `python-docx` takes well under a second, and a stale in-memory copy
 is a worse bug than the reparse cost — a prior version of this manuscript's
 translation notes (`TRANSLATION-LESSONS.md` §5.5) explicitly flags "verify against the
@@ -101,34 +172,43 @@ pip install -r requirements.txt
 
 ### Adding a new novel
 
-For a brand-new novel with no prior translation, just call the `register_project`
-tool from chat (or run it via the MCP inspector) — nothing to seed:
+For a brand-new novel with no prior translation, just call `register_project` from
+chat — nothing to seed:
 
 ```
-register_project(name="Absolute Zero", manuscript_path="C:\...\Absolute Zero.docx")
+register_project(name="Absolute Zero", manuscripts={"en": "C:\...\Absolute Zero.docx"})
 ```
 
-This picks a slug (`absolute_zero`), defaults `state_dir` to the manuscript's own
-folder, sanity-checks that the heading regex actually finds chapters, and returns the
-chapter count it found. From then on, pass `project="absolute_zero"` to the other
-tools (or ask `list_projects()` if you forget the slug).
+If a real master docx already exists for another language too, include it:
+
+```
+register_project(
+    name="Absolute Zero",
+    manuscripts={"en": "C:\...\English.docx", "ja": "C:\...\Japanese master.docx"},
+)
+```
+
+This picks a slug (`absolute_zero`), defaults `state_dir` to the source manuscript's
+own folder, sanity-checks that the heading regex actually finds chapters in every
+registered language, and returns the chapter count per language. From then on, pass
+`project="absolute_zero"` to the other tools (or ask `list_projects()` if you forget
+the slug).
 
 ### One-time bootstrap (only for a novel with pre-existing translated chapters)
 
 RxR specifically had 18 chapters already translated into a separate JA master docx
-before this server existed. `bootstrap.py` is what seeded that one:
+before this server existed. `bootstrap.py` registers a project with both its EN and
+JA masters in one step, and seeds the approved glossary from
+`TRANSLATION-LESSONS.md`'s core terminology table:
 
 ```
 python bootstrap.py
 ```
 
-It registers the project, splits the existing JA master into `translations/ja/chNN.txt`
-files (marked `approved` — they're already-settled prose, not open for revision by
-this tool), and seeds the approved glossary from `TRANSLATION-LESSONS.md`'s core
-terminology table. Seeding refuses to run if that project's `translation_state.json`
-already exists (pass `--force` to re-seed on purpose); registration always re-runs
-(idempotent). Pass `--project-slug`/`--project-name`/`--en-manuscript`/`--ja-master`
-to point it at a different novel that also has a pre-existing translated draft.
+Safe to re-run: registration is idempotent, and glossary seeding skips terms already
+present instead of duplicating them. Pass `--project-slug`/`--project-name`/
+`--en-manuscript`/`--ja-master` to point it at a different novel with its own
+pre-existing EN+JA master pair.
 
 ### Configuration (environment variables)
 
@@ -171,11 +251,30 @@ the Japanese translation (`TRANSLATION-LESSONS.md` §1.5). Plain-text extraction
 like `pandoc -t plain` silently drop italics; this parser reads runs directly so that
 signal survives.
 
+## `lint_chapter` — what it checks (and what it deliberately doesn't)
+
+Deterministic, regex-based checks defined in `lint.py`:
+
+- **Orthography:** 達/たち (with かたち/たちどころに exceptions), 何故/なぜ,
+  貴方・貴女/あなた — this project's locked kanji-over-kana rules.
+- **Brackets:** unbalanced 「」『』（）, and the "drop the trailing 。before ）" rule.
+- **Non-word watchlist:** a hardcoded, growing list of confirmed hallucinated
+  compounds/non-standard collocations caught in past chapters (`TRANSLATION-LESSONS.md`
+  §3.2) — append to `lint.py`'s `_NONWORD_WATCHLIST` as new ones are confirmed.
+- **Latin-script leakage:** runs of 2+ Latin letters, likely un-translated English.
+- **Pronoun density:** 僕 per 100 characters, flagged above ~0.7 (measured target
+  0.3–0.6, per `TRANSLATION-LESSONS.md` §2.2).
+
+It deliberately does **not** check meaning-flips, register drift, wordplay adaptation,
+or cultural-reference calibration — those need an actual read, not a scan
+(`TRANSLATION-LESSONS.md` §2.3–§2.9, and especially §2.7's "verification theater"
+warning: a clean lint result is not evidence the chapter was read).
+
 ## What this deliberately does NOT do (v2, not now)
 
 - EPUB/CBZ/PDF assembly, covers, synopsis generation — Publication MCP server, later.
-- Automated linting (達/たち, orthography rules, register-per-character profiles,
-  dictionary-backed word validation) — real, valuable ideas from
+- Register-per-character profiles, dictionary-backed word validation against a real
+  JMdict/Weblio API, JA-authoritative line tagging — real, valuable ideas from
   `TRANSLATION-LESSONS.md`, not yet built. Revisit when refining this server's tool
   set further, per `ARCHITECTURE.md` §8a.
 - A glossary "approve" tool — approval is intentionally a manual JSON edit, not a
@@ -185,11 +284,15 @@ signal survives.
 
 - **Tool doesn't appear in Claude Code:** full quit via tray → Quit (not just close
   window), then relaunch.
-- **`get_chapter` returns `"status": "not_started"` with `text: null`:** that
-  chapter has no saved translation yet — this is not an error, it's `save_translation`
-  never having been called for that chapter/lang pair.
+- **`get_chapter` returns `"status": "not_started"` with `text: null`:** either that
+  chapter isn't in the language's master docx yet, or (for a language with no master)
+  `save_translation` was never called for that chapter/lang pair. Not an error.
+- **`save_translation` raises an error about a "registered master docx":** that
+  language is master-backed for this project — edit the author's docx directly
+  instead of calling this tool.
 - **A chapter you know exists doesn't show up in `list_chapters`:** the parser found
-  no heading match for it in the source manuscript — check that the chapter's heading
-  text actually matches `Chapter N: ...` (see "Chapter heading conventions" above).
+  no heading match for it in that language's manuscript — check that the chapter's
+  heading text actually matches the expected pattern (see "Chapter heading
+  conventions" above).
 - **"No project 'X' registered" error:** the slug doesn't exist in `projects.json` yet
   — call `list_projects()` to see what's registered, or `register_project()` to add it.

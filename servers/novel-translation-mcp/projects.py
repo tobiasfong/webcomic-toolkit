@@ -1,9 +1,8 @@
 """
 projects.py — the project registry: maps a short slug (e.g. "rxr",
-"absolute_zero") to a manuscript path + state directory, so ONE server instance
-serves every story in the Stories folder instead of needing a separate MCP
-server registration per novel (the original MVP only knew about one hardcoded
-manuscript — this is the generalization requested once a second novel came up).
+"absolute_zero") to a manuscript path (or paths, per language) + a state
+directory, so ONE server instance serves every story in the Stories folder
+instead of needing a separate MCP server registration per novel.
 
 Registry file: projects.json, next to this server's code — same idea as
 world.py's WORLD_ROOT living inside the background-mcp repo. Gitignored: it's
@@ -12,10 +11,19 @@ user-specific data (story titles, personal file paths), not shipped code.
 Each entry:
 {
   "name":        "Reincarnator x Regressor",   # display name
-  "manuscript":  "C:\\...\\draft 2.docx",      # source-language manuscript
+  "manuscripts": {"en": "C:\\...\\draft 2.docx", "ja": "C:\\...\\JA master.docx"},
   "state_dir":   "C:\\...\\",                  # translation_state.json + translations/ live here
   "source_lang": "en"
 }
+
+Multiple languages can have a real master docx — NOT just the source
+language. This matters when a translator maintains a proper master document in
+the target language too (as opposed to loose per-chapter export files): a
+language present in `manuscripts` is read from ITS OWN docx directly, never
+from translations/<lang>/ exports, so there is no way for the tool to read
+stale text that has drifted from what the author actually wrote. A language
+absent from `manuscripts` falls back to translations/<lang>/chNN.txt as
+before — that fallback exists for languages with no master document at all.
 
 Glossary and chapter status are per-project on purpose (each novel's
 translation_state.json is isolated) — the same English term can legitimately
@@ -44,9 +52,20 @@ def load() -> dict:
         return {}
     try:
         with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         raise ProjectError(f"Could not read project registry {PROJECTS_FILE}: {e}") from e
+    return {slug: _migrate(entry) for slug, entry in data.items()}
+
+
+def _migrate(entry: dict) -> dict:
+    """Old schema had a single `manuscript` string (source language only).
+    Upgrade in memory on load so old registry files (and old code that hasn't
+    been updated) don't break; `save()` always writes the new schema."""
+    if "manuscripts" not in entry and "manuscript" in entry:
+        entry = dict(entry)
+        entry["manuscripts"] = {entry.get("source_lang", "en"): entry.pop("manuscript")}
+    return entry
 
 
 def save(data: dict) -> None:
@@ -66,21 +85,31 @@ def resolve(slug: str) -> dict:
 
 def register(
     name: str,
-    manuscript: str,
+    manuscripts: dict[str, str],
     source_lang: str = "en",
     state_dir: str | None = None,
     slug: str | None = None,
 ) -> tuple[str, dict]:
-    """Add or update a project entry. Re-registering an existing slug overwrites
-    its paths (e.g. if the manuscript moved) but never touches its
-    translation_state.json — that lives at state_dir independently."""
-    if not os.path.isfile(manuscript):
-        raise ProjectError(f"Manuscript not found: {manuscript}")
+    """Add or update a project entry. `manuscripts` maps language code -> docx
+    path; any language present here is read from ITS master docx directly
+    (never from translations/<lang>/ exports — see module docstring).
+    `source_lang` must be a key in `manuscripts` and marks which language is
+    being translated FROM.
+
+    Re-registering an existing slug overwrites its paths (e.g. if a manuscript
+    moved) but never touches its translation_state.json — that lives at
+    state_dir independently.
+    """
+    if source_lang not in manuscripts:
+        raise ProjectError(f"source_lang '{source_lang}' must be a key in manuscripts {list(manuscripts)}")
+    for lang, path in manuscripts.items():
+        if not os.path.isfile(path):
+            raise ProjectError(f"Manuscript not found for lang '{lang}': {path}")
     resolved_slug = slug or slugify(name)
     entry = {
         "name": name,
-        "manuscript": manuscript,
-        "state_dir": state_dir or os.path.dirname(manuscript),
+        "manuscripts": dict(manuscripts),
+        "state_dir": state_dir or os.path.dirname(manuscripts[source_lang]),
         "source_lang": source_lang,
     }
     data = load()
