@@ -19,11 +19,17 @@ one. Each project is a slug (`rxr`, `absolute_zero`, ...) with its own manuscrip
 and its own isolated `translation_state.json` — register a new one with
 `register_project` instead of registering a whole new MCP server per book.
 
-**Multi-manuscript per project:** a language can have a REAL master docx, not just
-the source language. If you maintain a proper Japanese master document (not loose
-per-chapter export files), register it too — every tool then reads that language
-directly from its own docx, so there is no way to audit text that has silently
-drifted from what you actually wrote. See "Multi-manuscript design" below.
+**Multi-manuscript per project/volume:** a language can have a REAL master docx, not
+just the source language. If you maintain a proper Japanese master document (not
+loose per-chapter export files), register it too — every tool then reads that
+language directly from its own docx, so there is no way to audit text that has
+silently drifted from what you actually wrote. See "Multi-manuscript design" below.
+
+**Multi-volume:** a project can span more than one volume per language (Volume 1's
+docx, Volume 2's docx, ...). Volumes RESTART chapter numbering — Volume 2 chapter 1
+is a different chapter from Volume 1 chapter 1, same as a real published novel — so
+every per-chapter tool takes a `volume` argument (default 1). The glossary stays
+shared across a project's volumes. See "Multi-volume novels" below.
 
 **Scope:** this does NOT build EPUB/CBZ/PDF assembly, covers, or synopsis generation
 — that's the Publication MCP server, deferred until after the active translation
@@ -31,84 +37,90 @@ backlog is done.
 
 ## What it does
 
-Eleven tools:
+Twelve tools:
 
 | Tool | Purpose |
 |---|---|
-| `list_projects()` | Every registered novel: slug, name, chapter count + volume-file count per language |
-| `register_project(name, manuscripts, ...)` | Register a new novel — `manuscripts` maps lang -> docx path(s) |
-| `add_manuscript_volume(project, lang, path)` | Safely ADD a volume's docx to an already-registered project/language |
-| `list_chapters(lang, project)` | Titles + translation status per chapter — a few dozen tokens, not the manuscript |
-| `get_chapter(number, lang, project)` | One chapter's text only — from a language's master docx, or a saved translation |
-| `get_context(chapter, lang, project)` | One-call bundle: source text + previous chapter's translation + glossary |
-| `search_manuscript(query, lang, project)` | Grep-like search, returns chapter + snippet per hit, capped |
-| `get_glossary(project)` | Approved glossary terms, plus staged terms clearly marked pending |
+| `list_projects()` | Every registered novel: slug, name, chapter count per language PER VOLUME |
+| `register_project(name, manuscripts, ...)` | Register a new novel's Volume 1 — `manuscripts` maps lang -> docx path |
+| `add_manuscript_volume(project, lang, path, volume)` | Register a SPECIFIC volume (2, 3, ...) for an existing project/language |
+| `list_chapters(lang, project, volume)` | Titles + translation status for one volume's chapters — a few dozen tokens, not the manuscript |
+| `get_chapter(number, lang, project, volume)` | One chapter's text only — from a language's master docx, or a saved translation |
+| `get_context(chapter, lang, project, volume)` | One-call bundle: source text + previous chapter's translation (crosses volume boundaries) + glossary |
+| `search_manuscript(query, lang, project, volume)` | Grep-like search across one or every volume, returns chapter + snippet per hit, capped |
+| `get_glossary(project)` | Approved glossary terms (shared across volumes), plus staged terms clearly marked pending |
 | `propose_glossary_term(term, translation, note, project)` | **Stages** a term — never auto-commits |
-| `save_translation(chapter, lang, text, status, project)` | Writes a translation — refuses if that language has a master docx |
+| `save_translation(chapter, lang, text, status, project, volume)` | Writes a translation — refuses if that language/volume has a master docx |
 | `lint_chapter(text)` | Deterministic mechanical checks (orthography, brackets, non-words, Latin leakage, pronoun density) |
 
-`project` defaults to `NOVEL_MCP_DEFAULT_PROJECT` (currently `rxr`) when omitted, so
-existing single-novel calls keep working — every response echoes back the resolved
-`project` slug so it's never ambiguous which manuscript you actually hit.
+`project` defaults to `NOVEL_MCP_DEFAULT_PROJECT` (currently `rxr`) and `volume`
+defaults to `1` when omitted, so existing single-novel/single-volume calls keep
+working — every response echoes back the resolved `project`/`volume` so it's never
+ambiguous which manuscript you actually hit.
 
 ## Multi-manuscript design (the correctness fix, not just ergonomics)
 
-`register_project`'s `manuscripts` parameter maps **language -> one docx path, or a
-list of them**, e.g.:
+`register_project`'s `manuscripts` parameter maps **language -> docx path (Volume
+1)**, e.g.:
 
 ```python
 register_project(
     name="Reincarnator x Regressor",
-    manuscripts={"en": "...draft 2.docx", "ja": "...JA master.docx"},
+    manuscripts={"en": "...Vol1 draft.docx", "ja": "...Vol1 JA master.docx"},
     source_lang="en",
 )
 ```
 
 Any language present in `manuscripts` is read from **its own docx directly** by
 `get_chapter` and `search_manuscript` — never from a `translations/<lang>/` export
-file. A language absent from `manuscripts` falls back to `translations/<lang>/chNN.txt`
-exports written by `save_translation`, for a language with no master document at all.
+file. A language absent from `manuscripts` (for a given volume) falls back to
+`translations/<lang>/v{volume}_ch{NN}.txt` exports written by `save_translation`.
+
+**Why this matters:** an earlier version of this server only tracked one manuscript
+(the source language) and treated every other language as export-only text files
+written by `save_translation`. For a project where the author maintains a REAL
+Japanese master docx (as RxR's does), that meant the tool was reading stale exported
+copies instead of the author's actual, current text. If the master and the exports
+ever diverged, the tool would audit the wrong one silently. Reading the master
+directly makes that class of bug impossible: there is nothing to drift out of sync
+with, because there is only one JA artifact.
+
+**Consequence for `save_translation`:** it now refuses (raises an error, not a silent
+no-op) to write for any (language, volume) that has a registered master docx. The
+error message says so explicitly. The author's docx is the only writable artifact
+for it, and the author writes it — directly, in their own document, in their own
+editor — not this tool. This is enforced in code, not by convention.
 
 ### Multi-volume novels
 
-A language's entry can be a **list** of docx files, not just one — this is for a
-novel that spans multiple volumes as separate files (rather than one ever-growing
-docx), with chapter numbering continuing across them (Volume 2 starts at chapter 22,
-not back at 1) and the SAME project/glossary shared across volumes, since it's still
-the same characters and world. Use `add_manuscript_volume` to add Volume 2 once
-Volume 1 is already registered:
+A novel can have more than one volume per language — Volume 1's docx, Volume 2's
+docx, and so on. **Chapter numbering restarts at 1 for each volume**, exactly like a
+real published novel series (Volume 2 chapter 1 is NOT "chapter 22"). Chapter
+identity in every tool is therefore always `(volume, chapter number)` together —
+that's why every per-chapter tool takes a `volume` argument.
+
+Use `add_manuscript_volume` to register Volume 2 once Volume 1 already exists:
 
 ```python
-add_manuscript_volume(project="rxr", lang="en", path="C:\...\RxR Volume 2.docx")
-add_manuscript_volume(project="rxr", lang="ja", path="C:\...\RxR JA Volume 2.docx")
+add_manuscript_volume(project="rxr", lang="en", path="C:\...\RxR Volume 2 EN.docx", volume=2)
+add_manuscript_volume(project="rxr", lang="ja", path="C:\...\RxR Volume 2 JA master.docx", volume=2)
 ```
 
-This only **appends** — unlike calling `register_project` again (which overwrites
-`manuscripts` wholesale and would silently drop Volume 1's registration), there's no
-way to lose an earlier volume's reference by accident. If a chapter number appears in
-more than one file for the same language, every tool refuses rather than picking one
-silently — that's virtually always a sign of the wrong file or a numbering mistake,
-not something to resolve automatically.
+This only ever touches the given `(lang, volume)` pair — unlike calling
+`register_project` again (which would only ever set Volume 1 anyway; it never drops
+other volumes), there's no way to lose an earlier volume's registration by accident.
+The glossary and register bible stay shared across all of a project's volumes — it's
+still the same characters and world, so there's no reason to re-propose settled terms
+per volume.
+
+`get_context` crosses volume boundaries correctly: asking for chapter 1 of Volume 2
+pulls in the LAST chapter of Volume 1 as "previous" (continuity matters most right at
+a volume break, not less), rather than reporting no previous chapter at all.
 
 If instead a novel just keeps growing in the SAME docx file (chapters simply added to
-the existing master as they're written), nothing needs to change at all —
-`list_chapters`/`get_chapter` already pick up new chapters as soon as they're added to
-a registered file.
-
-**Why the language -> docx(es) design matters:** an earlier version of this server only tracked one manuscript
-(the source language) and treated every other language as export-only text files
-written by `save_translation`. For a project where the author maintains a REAL
-Japanese master docx (as RxR's does), that meant
-the tool was reading stale exported copies instead of the author's actual, current
-text. If the master and the exports ever diverged, the tool would audit the wrong
-one silently. Reading the master directly makes that class of bug impossible: there
-is nothing to drift out of sync with, because there is only one JA artifact.
-
-**Consequence for `save_translation`:** it now refuses (raises an error, not a silent
-no-op) to write for any language that has a registered master docx. The error message
-says so explicitly. The author's docx is the only writable artifact for that
-language, and the author writes it — directly, in their own document, in their own
-editor — not this tool. This is enforced in code, not by convention.
+the existing master as they're written, no separate volume files), nothing needs to
+change at all — `list_chapters`/`get_chapter` already pick up new chapters as soon as
+they're added to a registered file, and there's no need to touch `volume`.
 
 ## Recommended workflow — draft → review → edit → audit, not one-shot polish
 
@@ -155,17 +167,21 @@ servers/novel-translation-mcp/
   projects.json                # {"rxr": {...}, "absolute_zero": {...}, ...} — gitignored
 
 <manuscript folder>/
-  <EN manuscript>.docx         # source of truth for EN chapter numbers/titles/text
-  <JA master>.docx             # source of truth for JA text (if registered — read directly, never exported)
-  translation_state.json       # THIS PROJECT'S chapter status + glossary (approved + staged)
+  <EN Volume 1>.docx           # source of truth for EN Vol.1 chapter numbers/titles/text
+  <JA Volume 1 master>.docx    # source of truth for JA Vol.1 text (if registered — read directly, never exported)
+  <EN Volume 2>.docx           # a later volume, if any — registered via add_manuscript_volume
+  translation_state.json       # THIS PROJECT'S chapter status + glossary (approved + staged) — shared across volumes
   translations/
     <lang with no master>/
-      ch01.txt, ch02.txt, ...  # only exists for languages with NO registered master docx
+      v1_ch01.txt, v1_ch02.txt, ...  # Volume 1 chapters, only for a language with NO registered master
+      v2_ch01.txt, ...                # Volume 2 chapters — same lang, separate namespace (chapter numbers restart)
 ```
 
-Glossaries and chapter statuses are isolated per project on purpose: the same
-English term can legitimately need a different translation in a different novel's
-voice, and a term approved for one book should never silently leak into another.
+Glossaries are isolated per PROJECT (not per volume) on purpose: the same English
+term can legitimately need a different translation in a different novel's voice, and
+a term approved for one book should never silently leak into another — but a
+project's volumes all share one glossary, since Volume 2 is still the same
+characters and world as Volume 1.
 
 No caching: every tool call re-parses each `.docx` fresh. Parsing a ~50k-word
 manuscript with `python-docx` takes well under a second, and a stale in-memory copy
@@ -211,8 +227,8 @@ the slug).
 
 ### One-time bootstrap (only for a novel with pre-existing translated chapters)
 
-RxR specifically had 18 chapters already translated into a separate JA master docx
-before this server existed. `bootstrap.py` registers a project with both its EN and
+RxR specifically had chapters already translated into a separate JA master docx
+before this server existed. `bootstrap.py` registers Volume 1 with both its EN and
 JA masters in one step, and seeds the approved glossary from
 `TRANSLATION-LESSONS.md`'s core terminology table:
 
@@ -311,3 +327,7 @@ warning: a clean lint result is not evidence the chapter was read).
   conventions" above).
 - **"No project 'X' registered" error:** the slug doesn't exist in `projects.json` yet
   — call `list_projects()` to see what's registered, or `register_project()` to add it.
+- **"No volume N registered" error, or a chapter number seems wrong:** check you're
+  passing the `volume` you mean — chapter numbers restart at 1 per volume, so
+  `get_chapter(1, ...)` without specifying `volume` always means Volume 1's chapter 1,
+  never Volume 2's.

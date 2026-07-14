@@ -7,14 +7,22 @@ Schema:
 {
   "schema": 1,
   "chapters": {
-    "19": {"title_en": "...", "lang": {"ja": {"status": "draft", "file": "translations/ja/ch19.txt",
-                                               "updated": "2026-07-13T..."}}}
+    "v1c19": {"title_en": "...", "volume": 1, "chapter": 19,
+              "lang": {"ja": {"status": "draft", "file": "translations/ja/v1_ch19.txt",
+                              "updated": "2026-07-13T..."}}}
   },
   "glossary": {
     "approved": [{"term": "reincarnator", "translation": "転生者", "note": "..."}],
     "staged":   [{"term": "...", "translation": "...", "note": "...", "proposed": "2026-07-13T..."}]
   }
 }
+
+Chapter keys are "v{volume}c{number}", not the bare chapter number — Volume 2
+restarts chapter numbering at 1, same as a real published novel volume, so
+chapter identity is always (volume, chapter), never chapter number alone.
+This only matters for languages with NO registered master docx (tracked via
+translations/<lang>/ export files); a master-backed language's status is
+derived by parsing that volume's docx directly, never from this file.
 
 Human-in-the-loop enforcement point: nothing in this module ever moves an entry from
 `staged` to `approved`. That move is a deliberate manual edit of the JSON file (or an
@@ -60,12 +68,19 @@ def now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
-def chapter_record(data: dict, number: int) -> dict:
-    return data["chapters"].setdefault(str(number), {"title_en": "", "lang": {}})
+def chapter_key(volume: int, number: int) -> str:
+    return f"v{volume}c{number}"
 
 
-def set_translation_status(data: dict, number: int, lang: str, status: str, file_rel: str) -> None:
-    rec = chapter_record(data, number)
+def chapter_record(data: dict, volume: int, number: int) -> dict:
+    return data["chapters"].setdefault(
+        chapter_key(volume, number),
+        {"title_en": "", "volume": volume, "chapter": number, "lang": {}},
+    )
+
+
+def set_translation_status(data: dict, volume: int, number: int, lang: str, status: str, file_rel: str) -> None:
+    rec = chapter_record(data, volume, number)
     rec.setdefault("lang", {})[lang] = {
         "status": status,
         "file": file_rel,

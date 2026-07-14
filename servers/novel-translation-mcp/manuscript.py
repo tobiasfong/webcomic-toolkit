@@ -130,30 +130,6 @@ def parse_chapters(docx_path: str, lang: str) -> dict[int, dict]:
     return chapters
 
 
-def parse_chapters_multi(docx_paths: list[str], lang: str) -> dict[int, dict]:
-    """Parse and merge MULTIPLE docx files for one language — e.g. Volume 1 and
-    Volume 2 as separate files, with chapter numbering continuing across them
-    (22, 23, ... in Volume 2's file rather than restarting at 1). Order of
-    `docx_paths` doesn't affect the merge itself (chapters are merged by
-    number), but a chapter number appearing in more than one file is almost
-    certainly a mistake (wrong file, duplicated content) and raises rather
-    than silently picking one — this is a case where guessing wrong would be
-    worse than stopping.
-    """
-    merged: dict[int, dict] = {}
-    for path in docx_paths:
-        chapters = parse_chapters(path, lang)
-        collisions = set(chapters) & set(merged)
-        if collisions:
-            raise ManuscriptError(
-                f"Chapter number(s) {sorted(collisions)} appear in more than one manuscript "
-                f"file for lang '{lang}' (latest: {path}). Check the chapter numbering across "
-                "volume files — this is refused rather than silently overwritten."
-            )
-        merged.update(chapters)
-    return merged
-
-
 def chapter_text(chapter: dict, include_title: bool = True) -> str:
     body = "\n\n".join(p for p in chapter["paragraphs"] if p.strip())
     if include_title and chapter.get("title"):
