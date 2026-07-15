@@ -61,7 +61,29 @@ def load() -> dict:
             data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         raise ProjectError(f"Could not read project registry {PROJECTS_FILE}: {e}") from e
-    return {slug: _migrate(entry) for slug, entry in data.items()}
+    migrated = {}
+    for slug, entry in data.items():
+        try:
+            migrated[slug] = _migrate(entry)
+        except ProjectError:
+            raise
+        except Exception as e:
+            # Anything unexpected here (a raw KeyError from a shape _migrate()
+            # doesn't recognize, a non-dict entry, etc.) is a schema problem,
+            # not something a caller should ever see as a bare traceback —
+            # this is exactly the situation a long-running MCP server process
+            # hits after `projects.py` is updated underneath it without a
+            # restart: it may still be a genuinely old, unmigrated entry, or
+            # the registry may have been hand-edited into a shape this
+            # version doesn't expect. Either way, re-registering is the fix.
+            raise ProjectError(
+                f"Project '{slug}' could not be read from the registry ({type(e).__name__}: {e}). "
+                "This usually means either the server process is stale (fully quit and relaunch "
+                "your MCP client so a fresh process picks up the current code) or this project's "
+                "registry entry predates a schema change this version doesn't auto-migrate. Fix: "
+                "register_project(name=..., manuscripts={'en': '...', ...}) to re-register it."
+            ) from e
+    return migrated
 
 
 def _migrate(entry: dict) -> dict:
