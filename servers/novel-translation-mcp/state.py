@@ -92,3 +92,16 @@ def stage_glossary_term(data: dict, term: str, translation: str, note: str = "")
     entry = {"term": term, "translation": translation, "note": note, "proposed": now()}
     data.setdefault("glossary", {"approved": [], "staged": []}).setdefault("staged", []).append(entry)
     return entry
+
+
+def add_note(data: dict, note: str, volume: int | None = None, chapter: int | None = None) -> dict:
+    """Append a translation agreement/decision so future sessions inherit it.
+    Notes are append-only here; pruning/editing is a manual edit of the state
+    file, same philosophy as glossary approval."""
+    entry = {"note": note, "added": now()}
+    if volume is not None:
+        entry["volume"] = volume
+    if chapter is not None:
+        entry["chapter"] = chapter
+    data.setdefault("notes", []).append(entry)
+    return entry

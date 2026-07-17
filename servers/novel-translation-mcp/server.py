@@ -282,6 +282,7 @@ def get_context(chapter: int, lang: str = "ja", project: str | None = None, volu
             previous["note"] = "Tail only, for voice/continuity. Fetch the full chapter with get_chapter if genuinely needed."
 
     glossary = get_glossary(project=slug)
+    notes = state.load(entry["state_dir"]).get("notes", [])
 
     return {
         "project": slug,
@@ -291,6 +292,7 @@ def get_context(chapter: int, lang: str = "ja", project: str | None = None, volu
         "source": source,
         "previous_chapter_translation": previous,
         "glossary": glossary,
+        "session_notes": notes,
     }
 
 
@@ -405,6 +407,19 @@ def save_translation(chapter: int, lang: str, text: str, status: str = "draft", 
         "char_count": manuscript.char_count(text),
         "file": _translation_file_rel(volume, chapter, lang),
     }
+
+
+@mcp.tool()
+def record_note(note: str, project: str | None = None, volume: int | None = None, chapter: int | None = None) -> dict:
+    """Persist a translation agreement/decision (judgment call, style
+    agreement, JA-authoritative line) to disk so future fresh chats inherit it
+    via get_context. Keep each note to one or two sentences. Pruning is a
+    manual edit of translation_state.json."""
+    slug, entry = _resolve(project)
+    data = state.load(entry["state_dir"])
+    note_entry = state.add_note(data, note, volume=volume, chapter=chapter)
+    state.save(entry["state_dir"], data)
+    return {"project": slug, "recorded": note_entry, "total_notes": len(data["notes"])}
 
 
 @mcp.tool()

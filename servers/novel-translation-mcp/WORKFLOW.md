@@ -30,6 +30,9 @@ still gets full scrutiny — collaborative discussion, not deference.
 
 - Start a FRESH chat per chapter — state lives on disk; `get_context` restores it.
   Never continue a multi-day mega-chat.
+- When an agreement/decision is reached mid-session (a judgment call, a style
+  agreement, a JA-authoritative line), persist it with `record_note` — that's how
+  fresh chats inherit it.
 - In review rounds, quote ONLY the lines under discussion. Never re-print a full
   chapter the human already has.
 - Use `get_chapter`'s paragraph range for follow-ups on specific passages; a full

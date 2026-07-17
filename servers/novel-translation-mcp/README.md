@@ -50,6 +50,7 @@ Twelve tools:
 | `search_manuscript(query, lang, project, volume)` | Grep-like search across one or every volume, returns chapter + snippet per hit, capped |
 | `get_glossary(project)` | Approved glossary terms (shared across volumes), plus staged terms clearly marked pending |
 | `propose_glossary_term(term, translation, note, project)` | **Stages** a term — never auto-commits |
+| `record_note(note, project, volume, chapter)` | Persist a mid-session agreement/decision; fresh chats inherit it via `get_context` |
 | `save_translation(chapter, lang, text, status, project, volume)` | Writes a translation — refuses if that language/volume has a master docx |
 | `lint_chapter(text)` | Deterministic mechanical checks (orthography, brackets, non-words, Latin leakage, pronoun density) |
 
