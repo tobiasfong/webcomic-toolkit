@@ -32,6 +32,8 @@ MODELS = [
      "https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_scribble_fp16.safetensors"),
     ("loras", "ManhwaUltimate.safetensors",
      "https://civitai.com/api/download/models/14973"),
+    ("loras", "NijiV5Style.safetensors",
+     "https://civitai.com/api/download/models/144716"),          # optional: East-Asian architectural style
 ]
 
 

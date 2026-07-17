@@ -140,7 +140,15 @@ That fetches the stack below. Or place them manually under `ComfyUI/models/`:
 | **VAE** (Solstice is "NoEMA" — ships no VAE) | `vae-ft-mse-840000-ema-pruned.safetensors` | `vae/` | [stabilityai/sd-vae-ft-mse-original](https://huggingface.co/stabilityai/sd-vae-ft-mse-original) |
 | ControlNet (scribble) | `control_v11p_sd15_scribble_fp16.safetensors` | `controlnet/` | [comfyanonymous/ControlNet-v1-1_fp16](https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors) |
 | Manhwa LoRA (optional) | `ManhwaUltimate.safetensors` | `loras/` | [Manhwa 4-in-1 (Civitai)](https://civitai.com/models/5086) |
+| Niji V5 style LoRA (optional) | `NijiV5Style.safetensors` | `loras/` | [Niji V5 Style (Civitai)](https://civitai.com/models/131644/nijiyuanniji-v5-style-lora) |
 | Alt checkpoints (optional) | `Counterfeit_V3.safetensors`, `DreamShaper_8.safetensors` | `checkpoints/` | [Counterfeit-V3.0](https://huggingface.co/gsdf/Counterfeit-V3.0), [DreamShaper](https://huggingface.co/Lykon/DreamShaper) |
+
+> **Style LoRAs are per-call, not fixed at install.** Pass `lora="ManhwaUltimate.safetensors"`
+> (trigger word `fantasy-style`) for the gothic/western manhwa look, or
+> `lora="NijiV5Style.safetensors"` (trigger word `midjourney`) for a strong East-Asian
+> architectural bias (pagodas, lanterns) — great for stories with that setting, but it
+> will fight a gothic/western ControlNet sketch, so it's not the default. Remember to
+> include the trigger word in your prompt when you pick a LoRA.
 
 > SD 1.5 only — don't mix in SDXL models. Pick the render model per call with the
 > `model` arg (`solstice`/`counterfeit`/`dreamshaper`) or set `WEBCOMIC_BG_MODEL`.

@@ -4,6 +4,28 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> As of v1.7.0 this server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webcomic-toolkit)
+> monorepo (`servers/webcomic-background-mcp`) alongside its sibling servers; releases
+> are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
+> the standalone (now archived) repo.
+
+## [1.7.0] — 2026-07-10
+
+### Added
+- **Niji V5 Style LoRA** documented and added to `setup_models.py` as an
+  optional style choice — `lora="NijiV5Style.safetensors"` (trigger word
+  "midjourney"), for stories wanting a strong East-Asian architectural bias
+  (pagodas, lanterns). Selectable per-call via the existing `lora` argument, no
+  code changes needed — this release is documentation/installer only.
+- Considered and **rejected**: Midjourney Manga Art Style LoRA (SDXL-only,
+  incompatible with this server's SD 1.5 stack) and Vivid Midjourney Mimic
+  (general Midjourney-photoreal mimic, not manga-specific; superseded by the
+  already-tuned v1.3.0 recipe for the "picture-book" color problem).
+- A/B tested against the existing ManhwaUltimate recipe on the same city
+  sketch/seed: Niji V5 Style pulls architecture toward pagodas/lanterns even
+  against a gothic ControlNet sketch — a poor fit for Starry Knight's grimdark
+  hive city, but a good fit for Reincarnator x Regressor's setting.
+
 ## [1.6.0] — 2026-07-08
 
 ### Added
@@ -189,6 +211,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.7.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.7.0
 [1.6.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.6.0
 [1.5.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.1
 [1.5.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.0

@@ -103,9 +103,14 @@ def generate_background(
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
         project: Which comic's canon/output to use (e.g. "starry_knight", "rxr").
-        lora: Style LoRA filename in models/loras (e.g. "ManhwaUltimate.safetensors",
-            trigger word "fantasy-style"). Omit for the server default
-            (WEBCOMIC_BG_LORA env); pass "" to force the LoRA off.
+        lora: Style LoRA filename in models/loras. Known options: "ManhwaUltimate
+            .safetensors" (trigger "fantasy-style" — gothic/western manhwa, the
+            default aesthetic) or "NijiV5Style.safetensors" (trigger "midjourney"
+            — strong East-Asian architectural bias, pagodas/lanterns; good for
+            RxR-style settings, but it will override a gothic/western ControlNet
+            sketch's composition, so don't use it for Starry Knight/hive scenes).
+            Remember to include the trigger word in your prompt. Omit for the
+            server default (WEBCOMIC_BG_LORA env); pass "" to force the LoRA off.
         lora_strength: LoRA strength (default 0.8 / WEBCOMIC_BG_LORA_STRENGTH).
         hires: After the base render, upscale 1.5x and re-detail with a light
             img2img pass — recommended for dense architectural panels that come
