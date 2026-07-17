@@ -169,6 +169,8 @@ def generate_city_scene(
     project: str = world.DEFAULT_PROJECT,
     use_plan: bool = False,
     focus: str | None = None,
+    anchor_x: float | None = None,
+    anchor_z: float | None = None,
 ) -> str:
     """Generate a giant city establishing panel from a procedural 3D city
     ("Metropolis mode").
@@ -209,13 +211,20 @@ def generate_city_scene(
             one-shot seeded city.
         focus: Plan mode: district id to aim the camera at (default: whole-city
             centroid).
+        anchor_x / anchor_z: Optional character placement anchor — the world
+            position where a character will stand. Also writes an occlusion-aware
+            mask (white = where the character goes) and reports the on-screen
+            pixel height and feet line, so the artist draws the character at
+            exactly the right scale and perspective. The mask matches the hires
+            output resolution. A human is ~4.6 world units tall; streets are
+            ~26 units wide.
 
     Returns:
         The filesystem path to the generated PNG (plus the sketch path, for reuse).
     """
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
-        meshes, tag, cam, plan_note = None, None, camera, ""
+        tag, cam, plan_note = None, camera, ""
         if use_plan:
             plan = world.load_city_plan(project)
             if plan is None:
@@ -226,13 +235,30 @@ def generate_city_scene(
             tag = f"plan_{world._slug(project)}"
             plan_note = (f"  persistent plan: {len(plan['districts'])} district(s)"
                          f"{', focus: ' + focus if focus else ''}\n")
+        else:
+            meshes = citygen.build_city(city_seed)
         # 3D city -> composition sketch, rendered at 1.5x the gen size
+        sw, sh = int(width * 1.5), int(height * 1.5)
         sketch_path, _ = citygen.city_sketch(
             os.path.join(out_dir, "city_sketches"),
             city_seed=city_seed, camera=cam,
-            width=int(width * 1.5), height=int(height * 1.5),
-            meshes=meshes, tag=tag,
+            width=sw, height=sh, meshes=meshes, tag=tag,
         )
+        anchor_note = ""
+        if anchor_x is not None and anchor_z is not None:
+            import cv2
+            mask, info = citygen.render_anchor(meshes, cam, anchor_x, anchor_z,
+                                               width=sw, height=sh)
+            mask_path = sketch_path.replace("_sketch.png", "_anchor.png")
+            cv2.imwrite(mask_path, mask)
+            if info is None:
+                anchor_note = "  anchor: behind the camera — pick another spot\n"
+            else:
+                vis = "visible" if info["visible"] else "OCCLUDED by buildings"
+                anchor_note = (f"  anchor mask: {mask_path}\n"
+                               f"  character at ({anchor_x}, {anchor_z}): {vis}, "
+                               f"~{info['height_px']:.0f}px tall, feet at "
+                               f"y={info['feet_y_px']:.0f}px (at hires scale)\n")
     except (ValueError, world.WorldError) as e:
         return f"City render failed: {e}"
 
@@ -258,7 +284,7 @@ def generate_city_scene(
         src = "plan" if use_plan else f"city_seed {city_seed}"
         return (f"City panel generated: {out_path}\n"
                 f"  source: {src}  camera: {camera}\n"
-                + plan_note +
+                + plan_note + anchor_note +
                 f"  sketch (reusable): {sketch_path}\n"
                 f"Re-render the SAME city from another angle by keeping the source "
                 f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")

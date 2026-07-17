@@ -231,32 +231,41 @@ def camera_for(preset: str, focus) -> dict:
 
 
 # ---------------------------------------------------------------- rasterizer --
-def render_lineart(meshes, camera="vista", width=1344, height=732,
-                   near=0.5) -> np.ndarray:
-    """Flat-grey painter's-algorithm render on white — the lineart pass.
-    Good enough for Canny; not a beauty render (SD supplies the beauty)."""
-    cam = CAMERAS[camera] if isinstance(camera, str) else camera
+# One world unit ≈ 0.37 m (buildings are 14-42 units ≈ 4-12 storeys), so a
+# standing adult is ~4.6 units tall. Used by the character anchor.
+HUMAN_HEIGHT = 4.6
+
+
+def _resolve_cam(camera):
+    return CAMERAS[camera] if isinstance(camera, str) else camera
+
+
+def _cam_basis(cam, width, height):
     pos = np.array(cam["pos"], dtype=np.float64)
     look = np.array(cam["look"], dtype=np.float64)
-
     fwd = look - pos
     fwd /= np.linalg.norm(fwd)
     right = np.cross(fwd, np.array([0.0, 1.0, 0.0]))
     right /= np.linalg.norm(right)
     up = np.cross(right, fwd)
     focal = (height / 2) / math.tan(math.radians(cam["fov"]) / 2)
+    return pos, right, up, fwd, focal
 
-    img = np.full((height, width), 255, dtype=np.uint8)
 
-    # ground plane (ends just before the camera so it never straddles near)
+def _ground(pos):
+    """Ground plane quad, ending just before the camera so it never straddles near."""
     gz = pos[2] - 2
     gv = np.array([[-1500, 0, gz], [1500, 0, gz],
                    [1500, 0, -1500], [-1500, 0, -1500]], dtype=np.float64)
-    draw = [(gv, [(0, 1, 2, 3)], 110)]
-    draw += [(m.v, m.f, m.grey) for m in meshes]
+    return gv, [(0, 1, 2, 3)]
 
-    faces = []  # (mean_depth, pts2d, grey)
-    for verts, flist, grey in draw:
+
+def _rasterize(draw, cam, width, height, near, background):
+    """Painter's-algorithm flat fill: draw = [(verts, faces, value), ...]."""
+    pos, right, up, fwd, focal = _cam_basis(cam, width, height)
+    img = np.full((height, width), background, dtype=np.uint8)
+    faces = []  # (mean_depth, pts2d, value)
+    for verts, flist, val in draw:
         rel = verts - pos
         vc = np.stack([rel @ right, rel @ up, rel @ fwd], axis=1)  # camera space
         for face in flist:
@@ -269,12 +278,53 @@ def render_lineart(meshes, camera="vista", width=1344, height=732,
                     np.all(sy < 0) or np.all(sy >= height)):
                 continue
             pts = np.stack([sx, sy], axis=1).astype(np.int32)
-            faces.append((float(fv[:, 2].mean()), pts, grey))
-
+            faces.append((float(fv[:, 2].mean()), pts, val))
     faces.sort(key=lambda t: -t[0])            # painter: far -> near
-    for _, pts, grey in faces:
-        cv2.fillConvexPoly(img, pts, int(grey))
+    for _, pts, val in faces:
+        cv2.fillConvexPoly(img, pts, int(val))
     return img
+
+
+def render_lineart(meshes, camera="vista", width=1344, height=732,
+                   near=0.5) -> np.ndarray:
+    """Flat-grey painter's-algorithm render on white — the lineart pass.
+    Good enough for Canny; not a beauty render (SD supplies the beauty)."""
+    cam = _resolve_cam(camera)
+    gv, gf = _ground(np.array(cam["pos"], dtype=np.float64))
+    draw = [(gv, gf, 110)] + [(m.v, m.f, m.grey) for m in meshes]
+    return _rasterize(draw, cam, width, height, near, 255)
+
+
+def render_anchor(meshes, camera, anchor_x, anchor_z, width=1344, height=732,
+                  anchor_height=HUMAN_HEIGHT, near=0.5):
+    """Character placement anchor: a human-scale box at (anchor_x, anchor_z),
+    rendered through the same camera WITH occlusion by the city.
+
+    Returns (mask, info): mask is a uint8 image — white where the character
+    stands, black elsewhere (buildings in front of the spot occlude it); info
+    reports the anchor's on-screen bounding box and pixel height so the artist
+    knows exactly how large to draw the character and where the feet sit."""
+    cam = _resolve_cam(camera)
+    av, af = _box(anchor_x, 0, anchor_z,
+                  anchor_height * 0.35, anchor_height, anchor_height * 0.22)
+    gv, gf = _ground(np.array(cam["pos"], dtype=np.float64))
+    draw = ([(gv, gf, 0)] + [(m.v, m.f, 0) for m in meshes] + [(av, af, 255)])
+    mask = _rasterize(draw, cam, width, height, near, 0)
+
+    # unoccluded screen bbox of the anchor (where the character *would* be)
+    pos, right, up, fwd, focal = _cam_basis(cam, width, height)
+    rel = av - pos
+    vc = np.stack([rel @ right, rel @ up, rel @ fwd], axis=1)
+    info = None
+    if np.all(vc[:, 2] >= near):
+        sx = width / 2 + focal * vc[:, 0] / vc[:, 2]
+        sy = height / 2 - focal * vc[:, 1] / vc[:, 2]
+        info = {"bbox": (float(sx.min()), float(sy.min()),
+                         float(sx.max()), float(sy.max())),
+                "height_px": float(sy.max() - sy.min()),
+                "feet_y_px": float(sy.max()),
+                "visible": bool(mask.max() > 0)}
+    return mask, info
 
 
 # ------------------------------------------------------------------ pipeline --

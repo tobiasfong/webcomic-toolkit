@@ -4,6 +4,17 @@ All notable changes to the Webcomic Background Generator MCP server are document
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-07-08
+
+### Added
+- **Character placement anchor** — `generate_city_scene(anchor_x=, anchor_z=)`
+  places a human-scale (≈4.6 world units) box at that spot in the 3D city and
+  writes an occlusion-aware mask (white = where the character stands; buildings
+  in front hide it) alongside the sketch, plus reports the on-screen pixel
+  height and feet line at the hires output resolution. The artist knows exactly
+  how large to draw the character and where it sits in the scene's perspective —
+  the inverse of the existing `character_path` mode.
+
 ## [1.5.1] — 2026-07-05
 
 ### Fixed
@@ -178,6 +189,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.6.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.6.0
 [1.5.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.1
 [1.5.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.0
 [1.4.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.4.0
