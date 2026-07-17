@@ -2,49 +2,16 @@
 Novel Translation MCP
 ======================
 A local MCP server that answers narrow, targeted questions about a novel
-manuscript instead of ever putting the whole document in context. Built to fix
-a specific, measured problem: translating a novel chapter-by-chapter in chat
-was burning 20-30% of a usage window per session on re-reading/re-explaining
-the full manuscript before any real translation work started.
+manuscript instead of ever putting the whole document in context.
 
-Multi-project: one server instance serves every novel in your library. Each
-project (a slug like "rxr" or "absolute_zero") maps to its own manuscript(s) +
-its own translation_state.json (chapter status + glossary, isolated per
-project — see projects.py). Register a new novel with `register_project`;
-everything else takes a `project` argument to say which one you mean.
+Design notes live in README.md (multi-project/multi-volume model, master-docx
+correctness rule, human-in-the-loop enforcement). WORKFLOW.md is served to
+clients as this server's `instructions` — edit that file, not a string here.
 
-Multi-volume: a project can have more than one volume per language (Volume
-1's docx, Volume 2's docx, ...). Volumes RESTART chapter numbering — Volume 2
-chapter 1 is a different chapter from Volume 1 chapter 1, same as a real
-published novel — so every per-chapter tool takes a `volume` argument
-(defaults to 1) alongside `number`/`chapter`. The glossary and register bible
-stay shared across a project's volumes on purpose: it's still the same
-characters and world.
-
-Multi-manuscript per project/volume: a language can have a REAL master docx
-for a given volume, not just the source language. Any (language, volume) with
-a registered master is read from that docx directly — never from a
-translations/<lang>/ export file — so the tool can never read text that has
-silently drifted from what the author actually wrote. `save_translation`
-refuses to write for such a (language, volume): the author's docx is the only
-writable artifact for it, and the author writes it, not the model.
-
-Twelve tools:
-  list_projects, register_project, add_manuscript_volume,
-  list_chapters, get_chapter, get_context, search_manuscript,
-  get_glossary, propose_glossary_term, save_translation,
-  lint_chapter
-
-Human-in-the-loop by design: propose_glossary_term stages a term, it never
-auto-commits. Approval is a manual edit of the project's translation_state.json
-(move the entry from "staged" to "approved") — there is no tool that does this
-for you. Likewise lint_chapter only flags mechanical issues; it never rewrites
-text, and a clean lint result is not a substitute for actually reading the
-chapter (see TRANSLATION-LESSONS.md §2.7). See WORKFLOW.md (served as this
-server's `instructions`) for the full collaborative review loop.
-
-Runs locally over stdio. No network access, no publishing/EPUB pipeline (that's
-deferred — see ARCHITECTURE.md §7).
+Token-economy note: tool DESCRIPTIONS below are deliberately terse. Every
+connected client re-sends every tool schema with every single message, so
+each docstring here is paid for thousands of times per session. Long-form
+explanation belongs in README.md, which costs nothing per-request.
 """
 
 import os
@@ -57,20 +24,12 @@ import state
 import projects
 import lint as lint_module
 
-# WORKFLOW.md is the single source of truth for the collaborative translation
-# loop this server is built for. Passing its content as `instructions` puts it
-# in the MCP protocol's own initialize handshake, so ANY connecting client
-# gets it automatically — the workflow travels with the tool, not with one
-# model's chat memory. Edit WORKFLOW.md, not this string.
 _WORKFLOW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WORKFLOW.md")
 with open(_WORKFLOW_PATH, "r", encoding="utf-8") as _f:
     _WORKFLOW_INSTRUCTIONS = _f.read()
 
 mcp = FastMCP("novel-translation-mcp", instructions=_WORKFLOW_INSTRUCTIONS)
 
-# Convenience default so calls that omit `project` keep working for whichever
-# novel is the "current" one — but every response echoes back the resolved
-# project slug, so it's never ambiguous which manuscript you actually hit.
 DEFAULT_PROJECT = os.environ.get("NOVEL_MCP_DEFAULT_PROJECT", "rxr")
 
 
@@ -84,8 +43,6 @@ def _volume_path(entry: dict, lang: str, volume: int) -> str | None:
 
 
 def _all_volumes(entry: dict) -> list[int]:
-    """Volume numbers that exist for this project, per its source language
-    (every volume must have a source-language manuscript by definition)."""
     source_lang = entry.get("source_lang", "en")
     return sorted(int(v) for v in entry.get("manuscripts", {}).get(source_lang, {}))
 
@@ -99,9 +56,6 @@ def _source_chapters(entry: dict, volume: int) -> dict[int, dict]:
 
 
 def _lang_chapters(entry: dict, lang: str, volume: int) -> dict[int, dict] | None:
-    """Chapters parsed from THIS language's own master docx for THIS volume,
-    or None if no master is registered for it (caller should fall back to
-    translations/)."""
     path = _volume_path(entry, lang, volume)
     if not path:
         return None
@@ -120,11 +74,22 @@ def _translation_file_rel(volume: int, number: int, lang: str) -> str:
     return f"translations/{lang}/v{volume}_ch{number:02d}.txt"
 
 
+def _slice_paragraphs(text: str, start: int | None, end: int | None) -> tuple[str, int, bool]:
+    """Slice text to a 1-indexed inclusive paragraph range. Returns
+    (text, total_paragraph_count, was_sliced)."""
+    paras = [p for p in text.split("\n\n") if p.strip()]
+    total = len(paras)
+    if start is None and end is None:
+        return text, total, False
+    lo = max(1, start or 1)
+    hi = min(total, end or total)
+    return "\n\n".join(paras[lo - 1:hi]), total, True
+
+
 @mcp.tool()
 def list_projects() -> dict:
-    """List every registered novel (project slug, display name, chapter count
-    per language PER VOLUME). Call this first if you're not sure which
-    `project` slug (or which volume) to pass to the other tools."""
+    """List registered novels: slug, name, source language, chapter counts per
+    language per volume."""
     data = projects.load()
     out = []
     for slug, entry in sorted(data.items()):
@@ -157,22 +122,10 @@ def register_project(
     state_dir: str | None = None,
     slug: str | None = None,
 ) -> dict:
-    """Register a new novel's Volume 1 (or fix Volume 1's paths/metadata for
-    an existing project — this never touches any other volume). For Volume 2
-    and beyond, use add_manuscript_volume instead.
-
-    `manuscripts` maps language code -> docx path for volume 1, e.g.
-    {"en": "C:\\...\\English draft.docx", "ja": "C:\\...\\Japanese master.docx"}.
-    ANY language in this map is read from its own docx directly (never from a
-    translations/<lang>/ export) — include a language here whenever a real
-    master document exists for it, not just for the source language.
-
-    `source_lang` must be a key in `manuscripts` and marks which language is
-    being translated FROM. `slug` defaults to a normalized version of `name`
-    (e.g. "Absolute Zero" -> "absolute_zero") and is what you pass as `project`
-    to every other tool. `state_dir` defaults to the source manuscript's own
-    folder.
-    """
+    """Register a new novel's Volume 1 (or fix Volume 1's paths). `manuscripts`
+    maps lang -> docx path; every language listed is read from its own docx
+    directly. `source_lang` must be one of its keys. For volume 2+ use
+    add_manuscript_volume."""
     resolved_slug, entry = projects.register(
         name=name, manuscripts=manuscripts, source_lang=source_lang,
         state_dir=state_dir, slug=slug,
@@ -184,9 +137,8 @@ def register_project(
         chapter_counts[lang] = len(chapters)
         if not chapters:
             warnings.append(
-                f"No chapters found for lang '{lang}' with the default heading pattern "
-                "(EN: 'Chapter N: Title', JA: '第N話/章　Title'). Check manuscript.py's "
-                "heading regexes if this manuscript titles chapters differently."
+                f"No chapters found for lang '{lang}' — expected headings like "
+                "'Chapter N: Title' (EN) or '第N話/章　Title' (JA)."
             )
     return {
         "project": resolved_slug,
@@ -198,13 +150,9 @@ def register_project(
 
 @mcp.tool()
 def add_manuscript_volume(project: str, lang: str, path: str, volume: int) -> dict:
-    """Register a SPECIFIC volume number's manuscript for an ALREADY-
-    registered project/language — e.g. `volume=2` for Volume 2's own docx.
-    Volume 2 RESTARTS chapter numbering at 1 (same as a real published novel
-    volume) — this is not a continuation of Volume 1's chapter count. Only
-    this (lang, volume) pair is changed; every other volume's registration is
-    left untouched, so this can never accidentally drop an earlier volume.
-    """
+    """Register volume N's docx for an existing project/language. Volumes
+    restart chapter numbering at 1. Only the given (lang, volume) slot is
+    touched — other volumes are never affected."""
     slug, entry = _resolve(project)
     if not os.path.isfile(path):
         raise ValueError(f"Manuscript not found: {path}")
@@ -212,30 +160,15 @@ def add_manuscript_volume(project: str, lang: str, path: str, volume: int) -> di
     projects.add_volume(slug, lang, path, volume)
     warning = None
     if not chapters:
-        warning = (
-            "No chapters found with the default heading pattern "
-            "(EN: 'Chapter N: Title', JA: '第N話/章　Title'). Check manuscript.py's "
-            "heading regexes if this manuscript titles chapters differently."
-        )
+        warning = ("No chapters found — expected headings like 'Chapter N: Title' (EN) "
+                   "or '第N話/章　Title' (JA).")
     return {"project": slug, "lang": lang, "volume": volume, "chapter_count": len(chapters), "warning": warning}
 
 
 @mcp.tool()
 def list_chapters(lang: str = "ja", project: str | None = None, volume: int = 1) -> dict:
-    """List every chapter IN ONE VOLUME with its title and translation status.
-    Returns a compact per-chapter summary (NOT chapter text) — this is the
-    tool to call when resuming work, instead of re-reading the manuscript.
-    Chapter numbers restart at 1 per volume, so this is always scoped to one
-    `volume` (default 1).
-
-    `lang`: which translation's status to report. The project's source
-    language is always listed as "source". A language with its own registered
-    master docx FOR THIS VOLUME shows "approved" (present in that master) or
-    "not_started" (absent) — there's no draft/reviewed state for a
-    master-backed volume, since the author's docx IS the state. A language
-    with no master for this volume shows draft/reviewed/approved/not_started
-    from translation_state.json instead.
-    """
+    """Titles + translation status for one volume's chapters (compact — no
+    text). The tool to call when resuming work."""
     slug, entry = _resolve(project)
     source_lang = entry.get("source_lang", "en")
     source_chapters = _source_chapters(entry, volume)
@@ -257,19 +190,19 @@ def list_chapters(lang: str = "ja", project: str | None = None, volume: int = 1)
 
 
 @mcp.tool()
-def get_chapter(number: int, lang: str = "en", project: str | None = None, volume: int = 1) -> dict:
-    """Return ONE chapter's text — never the whole manuscript. This is the
-    primary tool for doing translation work: fetch exactly the chapter you're
-    translating or reviewing, nothing more. Chapter numbers restart at 1 per
-    volume, so specify `volume` (default 1) alongside `number`.
-
-    If `lang` has its own registered master docx for THIS volume, this reads
-    directly from THAT docx — always the author's real, current text, never
-    a possibly-stale export. Otherwise it reads a saved translation file for
-    that chapter/lang/volume; if none exists yet, this reports that clearly
-    instead of erroring. Italic runs are marked with *asterisks* (this
-    manuscript uses italics for internal thought — TRANSLATION-LESSONS.md §1.5).
-    """
+def get_chapter(
+    number: int,
+    lang: str = "en",
+    project: str | None = None,
+    volume: int = 1,
+    paragraph_start: int | None = None,
+    paragraph_end: int | None = None,
+) -> dict:
+    """One chapter's text — never the whole manuscript. Master-backed languages
+    read the author's docx directly. Optional paragraph_start/paragraph_end
+    (1-indexed, inclusive) fetch a slice — use for follow-up discussion of
+    specific passages; a full read is only needed for the review-check round.
+    Italics are marked *like this*."""
     slug, entry = _resolve(project)
     source_chapters = _source_chapters(entry, volume)
     if number not in source_chapters:
@@ -284,48 +217,41 @@ def get_chapter(number: int, lang: str = "en", project: str | None = None, volum
                 "status": "not_started", "text": None,
             }
         text = manuscript.chapter_text(lang_master_chapters[number])
-        return {
-            "project": slug, "volume": volume, "number": number, "lang": lang,
-            "title": source_chapters[number]["title"],
-            "status": "approved",
-            "text": text,
-            "word_count": manuscript.word_count(text),
-            "char_count": manuscript.char_count(text),
-        }
+        status = "approved"
+    else:
+        path = _translation_file(entry["state_dir"], volume, number, lang)
+        if not os.path.isfile(path):
+            return {
+                "project": slug, "volume": volume, "number": number, "lang": lang,
+                "title": source_chapters[number]["title"],
+                "status": "not_started", "text": None,
+            }
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        data = state.load(entry["state_dir"])
+        lang_rec = data["chapters"].get(state.chapter_key(volume, number), {}).get("lang", {}).get(lang, {})
+        status = lang_rec.get("status", "draft")
 
-    path = _translation_file(entry["state_dir"], volume, number, lang)
-    if not os.path.isfile(path):
-        return {
-            "project": slug, "volume": volume, "number": number, "lang": lang,
-            "title": source_chapters[number]["title"],
-            "status": "not_started", "text": None,
-        }
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-    data = state.load(entry["state_dir"])
-    lang_rec = data["chapters"].get(state.chapter_key(volume, number), {}).get("lang", {}).get(lang, {})
-    return {
+    text, total_paras, sliced = _slice_paragraphs(text, paragraph_start, paragraph_end)
+    result = {
         "project": slug, "volume": volume, "number": number, "lang": lang,
         "title": source_chapters[number]["title"],
-        "status": lang_rec.get("status", "draft"),
+        "status": status,
         "text": text,
         "char_count": manuscript.char_count(text),
+        "total_paragraphs": total_paras,
     }
+    if sliced:
+        result["paragraph_range"] = [paragraph_start or 1, paragraph_end or total_paras]
+    return result
 
 
 @mcp.tool()
-def get_context(chapter: int, lang: str = "ja", project: str | None = None, volume: int = 1) -> dict:
-    """Composite call for STARTING work on a chapter: the source-language text
-    for this chapter, the previous chapter's translation (for register/voice/
-    plot continuity — TRANSLATION-LESSONS.md §6.2), and the current glossary
-    (approved + staged). Replaces the 3-4 separate round-trips (get_chapter x2
-    + get_glossary) that starting a chapter used to need.
-
-    "Previous chapter" crosses a volume boundary correctly: for chapter 1 of
-    a volume > 1, it pulls the LAST chapter of the PREVIOUS volume (continuity
-    matters most right at a volume break, not less), rather than reporting
-    "no previous chapter."
-    """
+def get_context(chapter: int, lang: str = "ja", project: str | None = None, volume: int = 1, previous_paragraphs: int = 10) -> dict:
+    """Chapter-start bundle in ONE call: full source text + the TAIL of the
+    previous chapter's translation (last `previous_paragraphs` paragraphs, for
+    voice/continuity; crosses volume boundaries) + glossary. Call once per
+    chapter, not per turn."""
     slug, entry = _resolve(project)
     source_lang = entry.get("source_lang", "en")
 
@@ -344,6 +270,17 @@ def get_context(chapter: int, lang: str = "ja", project: str | None = None, volu
                 last_num = max(prev_source_chapters)
                 previous = get_chapter(number=last_num, lang=lang, project=slug, volume=volume - 1)
 
+    if previous and previous.get("text"):
+        tail, total, sliced = _slice_paragraphs(
+            previous["text"],
+            max(1, previous["total_paragraphs"] - previous_paragraphs + 1) if previous["total_paragraphs"] > previous_paragraphs else None,
+            None,
+        )
+        if sliced:
+            previous["text"] = tail
+            previous["truncated_to_last_paragraphs"] = previous_paragraphs
+            previous["note"] = "Tail only, for voice/continuity. Fetch the full chapter with get_chapter if genuinely needed."
+
     glossary = get_glossary(project=slug)
 
     return {
@@ -359,16 +296,9 @@ def get_context(chapter: int, lang: str = "ja", project: str | None = None, volu
 
 @mcp.tool()
 def search_manuscript(query: str, lang: str = "en", project: str | None = None, volume: int | None = None, max_results: int = 15) -> dict:
-    """Grep-like search WITHOUT loading the whole document into context —
-    returns matching (volume, chapter) + a short snippet per hit, capped at
-    `max_results`. Case-insensitive substring search.
-
-    `volume`: search just one volume, or omit to search EVERY registered
-    volume (each hit is tagged with which volume it came from). If `lang` has
-    its own registered master for a given volume, that volume is searched
-    directly from its docx; otherwise saved translation files for that
-    language/volume are searched instead.
-    """
+    """Case-insensitive substring search; returns (volume, chapter) + a short
+    snippet per hit, capped at max_results. Omit `volume` to search every
+    volume. Use this instead of reading chapters to hunt for a term/scene."""
     slug, entry = _resolve(project)
     query_l = query.lower()
     hits = []
@@ -411,13 +341,9 @@ def search_manuscript(query: str, lang: str = "en", project: str | None = None, 
 
 @mcp.tool()
 def get_glossary(project: str | None = None) -> dict:
-    """Return the approved glossary (names/honorifics/recurring terms) for
-    this project, plus any staged terms awaiting human approval, clearly
-    separated. Staged terms are visible here so you know what's pending, but
-    they are NOT usable as approved translations until a human moves them to
-    "approved" in that project's translation_state.json. Glossaries are
-    per-project (shared across all of a project's volumes on purpose) — a
-    term approved in one novel has no effect on another."""
+    """Approved glossary + staged terms awaiting human review (clearly
+    separated — staged terms are NOT usable until a human approves them in
+    translation_state.json). Shared across a project's volumes."""
     slug, entry = _resolve(project)
     data = state.load(entry["state_dir"])
     glossary = data.get("glossary", {"approved": [], "staged": []})
@@ -430,11 +356,8 @@ def get_glossary(project: str | None = None) -> dict:
 
 @mcp.tool()
 def propose_glossary_term(term: str, translation: str, note: str = "", project: str | None = None) -> dict:
-    """STAGE a glossary term proposal for this project. This never
-    auto-commits — the term is appended to the project's translation_state.json
-    "staged" list and is NOT usable as an approved translation until a human
-    explicitly moves it into "approved". Use this whenever you (or the model)
-    want to suggest a new term, rather than silently deciding one mid-translation."""
+    """Stage a glossary term for human review. Never auto-commits — approval
+    is a manual edit of translation_state.json, by design."""
     slug, entry = _resolve(project)
     data = state.load(entry["state_dir"])
     entry_out = state.stage_glossary_term(data, term, translation, note)
@@ -444,26 +367,15 @@ def propose_glossary_term(term: str, translation: str, note: str = "", project: 
 
 @mcp.tool()
 def save_translation(chapter: int, lang: str, text: str, status: str = "draft", project: str | None = None, volume: int = 1) -> dict:
-    """Write a chapter's translation to disk and update its status
-    (draft|reviewed|approved) in the project's translation_state.json.
-    Chapter numbers restart at 1 per volume, so specify `volume` (default 1)
-    alongside `chapter`.
-
-    Refuses to write if `lang` has its own registered master docx for THIS
-    volume — for such a (language, volume), the author's docx is the ONLY
-    writable artifact, and the author writes it directly, not this tool. This
-    is deliberate: a fallback export file that can silently drift out of sync
-    with the real master is exactly the class of bug that leads the tool to
-    audit stale text. Call this only for a (language, volume) with NO
-    registered master.
-    """
+    """Write a chapter's translation + status (draft|reviewed|approved) — ONLY
+    for a (lang, volume) with no master docx. Refuses if a master is
+    registered: the author's docx is the only writable artifact there."""
     slug, entry = _resolve(project)
     if _volume_path(entry, lang, volume):
         raise ValueError(
             f"Project '{slug}' volume {volume} has a registered master docx for lang '{lang}' "
-            f"({_volume_path(entry, lang, volume)}). That docx is the only writable artifact "
-            "for this language/volume — edit it directly; this tool will not write a "
-            "parallel export that could drift out of sync with it."
+            f"({_volume_path(entry, lang, volume)}). Edit that docx directly — this tool will "
+            "not write a parallel export that could drift out of sync with it."
         )
     source_chapters = _source_chapters(entry, volume)
     if chapter not in source_chapters:
@@ -497,17 +409,10 @@ def save_translation(chapter: int, lang: str, text: str, status: str = "draft", 
 
 @mcp.tool()
 def lint_chapter(text: str) -> dict:
-    """Run deterministic mechanical checks on a chunk of Japanese prose:
-    orthography (達/何故/貴方 kanji rules), bracket balance + the "drop 。
-    before ）" rule, a watchlist of confirmed non-words/bad compounds, Latin-
-    script leakage, and 僕 pronoun density.
-
-    This is a FLAG-ONLY tool — it never rewrites text, and none of its
-    findings should be auto-applied. It also is NOT a substitute for actually
-    reading the chapter: it catches mechanical issues, not meaning-flips,
-    register drift, or wordplay problems, which need a real read
-    (TRANSLATION-LESSONS.md §2.3-2.9, §2.7's "verification theater" warning).
-    """
+    """Deterministic mechanical checks on JA prose: orthography (達・何故・貴方
+    kanji rules), bracket balance + 。before ）, non-word watchlist, Latin
+    leakage, 僕 density. Flags only — never rewrites, and never a substitute
+    for actually reading the prose."""
     return lint_module.lint(text)
 
 

@@ -1,72 +1,37 @@
 # Translation workflow
 
-This is the required collaborative loop for translating a chapter with this server's
-tools. It is served to any connecting MCP client as this server's `instructions`
-(see `server.py`) — that's deliberate: the workflow should travel with the tool, not
-depend on a specific model's chat memory.
+Human: JLPT N2, the author. His judgment on story/intent is final; his JA prose
+still gets full scrutiny — collaborative discussion, not deference.
 
-## Who the human is
+## Loop (per chapter)
 
-The author/translator is **JLPT N2** — strong Japanese ability, not native-level.
-This matters for how review works: his judgment on tone, intent, and what a scene
-should feel like is authoritative (he wrote the story), but his own JA prose is not
-automatically error-free just because he wrote it. The model's linguistic analysis
-stays valuable through every round — this is a **collaborative discussion**, not a
-one-shot polish followed by unquestioning deference to whatever the human typed.
+1. `get_context` once → draft IN CHAT (never a file), with numbered judgment-call
+   notes, a per-character register check, and the chapter's furigana manifest.
+2. End with an explicit handoff ("Where do you want to push?") — never auto-advance
+   to the next chapter.
+3. Human edits his master docx directly.
+4. Read his version back via `get_chapter(N, "ja")` — never ask for a re-upload.
+   Run the seven-class check (grammar, semantics, collocation, register,
+   word-existence, consistency, naturalness) on the full prose. Flag errors AND
+   improvements, with reasoning — his edits get the same scrutiny as the draft.
+5. Repeat 3-4 until the check converges clean; only then does the human mark the
+   chapter approved. Two gates, in that order.
 
-## The loop
+## Never / always
 
-1. **Draft** the chapter in chat, not as a saved/generated file.
-2. **Append**: (a) numbered judgment-call notes — every decision that could have gone
-   another way, what was chosen, why; (b) a register check — each speaking
-   character's pronoun/politeness level and justification, especially any deviation
-   from their default; (c) the furigana manifest for that chapter.
-3. **Hand off explicitly**: end with "Where do you want to push?" — not a summary,
-   and not a move to the next chapter.
-4. **Human edits** in his own master docx and saves.
-5. **Read it back** via `get_chapter(N, "ja")` — this reads the master docx directly,
-   never a re-upload.
-6. **Check collaboratively**: run the seven-class check (grammar, semantics,
-   collocation, register, word-existence, consistency, naturalness) on the human's
-   version. Flag anything that looks like an error or a possible improvement, with
-   reasoning — do NOT silently defer just because the text is now "his." He decides
-   what to do with every flag; the model's job is to make sure nothing worth flagging
-   goes unsaid.
-7. **Repeat** steps 4-6 until the model's check comes back clean — no further findings
-   to raise. This is a technical convergence point, not an approval.
-8. **Human gives final sign-off** only after that convergence — mark the chapter
-   `approved`. This two-gate order (model converges first, human approves last) is
-   deliberate: if the human could mark a chapter approved before the model's check had
-   actually converged, an error the model would otherwise have caught could slip
-   through unflagged. The human's approval is still the one that counts — this
-   ordering just makes sure it's an informed one.
+- Never self-polish before the human reads the draft — flag, don't fix.
+- Never rubber-stamp either side's text.
+- Always: locked orthography (達・何故・貴方 in kanji; exceptions かたち,
+  たちどころに); one character = one voice, fixed by character not listener;
+  cross-chapter term consistency; search-don't-recall on cultural references; no
+  English leakage. `lint_chapter` is a pre-filter, never proof the prose was read.
 
-## What NOT to do, unprompted
+## Token discipline (this server exists to SAVE usage)
 
-- Do not self-polish (pronoun density, rhythm, naturalness) before the human has seen
-  the draft — flag concerns, don't fix them.
-- Do not move to the next chapter without an explicit go-ahead.
-- Do not treat a human edit as beyond question just because a human made it. Flag
-  anything that looks wrong or improvable, every round, even on round 5. This cuts
-  both ways: don't rubber-stamp the model's own draft either, and don't rubber-stamp
-  the human's edit.
-
-## What TO enforce, unprompted, every round (rules, not taste)
-
-- Locked orthography: 達／何故／貴方 always kanji, never たち／なぜ／あなた
-  (exceptions: かたち, たちどころに). Use `lint_chapter` for this mechanically — but
-  a clean lint result is not evidence the chapter was actually read.
-- Character register per the voice bible — one character, one voice, fixed by
-  character, never by listener or situation.
-- Cross-chapter term consistency.
-- Search-don't-recall on every cultural/work reference before rendering it.
-- No English leakage.
-
-## Tools that support this loop
-
-- `get_context(chapter, lang, project)` — bundles the source text, the previous
-  chapter's translation, and the glossary in one call, instead of the 3-4 separate
-  round-trips starting a chapter used to need.
-- `lint_chapter(text)` — deterministic mechanical checks only (orthography, brackets,
-  non-word watchlist, Latin leakage, pronoun density). A pre-filter, never proof the
-  chapter was read — see `lint.py`'s docstring on "verification theater."
+- Start a FRESH chat per chapter — state lives on disk; `get_context` restores it.
+  Never continue a multi-day mega-chat.
+- In review rounds, quote ONLY the lines under discussion. Never re-print a full
+  chapter the human already has.
+- Use `get_chapter`'s paragraph range for follow-ups on specific passages; a full
+  read is only needed for the seven-class check round.
+- Call `get_context` once per chapter, not per turn.

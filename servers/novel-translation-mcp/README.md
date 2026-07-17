@@ -45,8 +45,8 @@ Twelve tools:
 | `register_project(name, manuscripts, ...)` | Register a new novel's Volume 1 — `manuscripts` maps lang -> docx path |
 | `add_manuscript_volume(project, lang, path, volume)` | Register a SPECIFIC volume (2, 3, ...) for an existing project/language |
 | `list_chapters(lang, project, volume)` | Titles + translation status for one volume's chapters — a few dozen tokens, not the manuscript |
-| `get_chapter(number, lang, project, volume)` | One chapter's text only — from a language's master docx, or a saved translation |
-| `get_context(chapter, lang, project, volume)` | One-call bundle: source text + previous chapter's translation (crosses volume boundaries) + glossary |
+| `get_chapter(number, lang, project, volume, paragraph_start, paragraph_end)` | One chapter's text only — optionally a paragraph slice for follow-up discussion |
+| `get_context(chapter, lang, project, volume, previous_paragraphs)` | One-call bundle: source text + previous chapter's TAIL (default last 10 paragraphs; crosses volume boundaries) + glossary |
 | `search_manuscript(query, lang, project, volume)` | Grep-like search across one or every volume, returns chapter + snippet per hit, capped |
 | `get_glossary(project)` | Approved glossary terms (shared across volumes), plus staged terms clearly marked pending |
 | `propose_glossary_term(term, translation, note, project)` | **Stages** a term — never auto-commits |
