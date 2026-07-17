@@ -1,6 +1,11 @@
 """
 lint.py — deterministic, non-model mechanical checks on Japanese prose.
 
+TRANSLATION-LESSONS.md, cited throughout, is the private requirements log from
+the translation project this server was built for — not shipped in this repo.
+The specific rules below (kanji-over-kana choices, the non-word watchlist, the
+僕-density target) are that project's house style: edit them to match yours.
+
 Why this exists as code and not a model instruction: TRANSLATION-LESSONS.md
 §2.7 documents a repeated failure mode called "verification theater" — asked
 to "check the chapter," a model runs a regex-shaped scan, finds it clean, and

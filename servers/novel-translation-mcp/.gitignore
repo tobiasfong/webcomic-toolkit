@@ -2,6 +2,9 @@
 # Each user registers their own novels; not redistributed. See projects.py.
 projects.json
 
+# Personal workflow override (translator profile, house rules) — see WORKFLOW.md.
+WORKFLOW.local.md
+
 .venv/
 __pycache__/
 *.pyc

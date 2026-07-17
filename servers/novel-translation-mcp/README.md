@@ -15,8 +15,8 @@ question" — the same fix as the Artist Colony MCP server (`find_available_peop
 manuscript.**
 
 **Multi-project:** one server instance serves every novel in your library, not just
-one. Each project is a slug (`rxr`, `absolute_zero`, ...) with its own manuscript(s)
-and its own isolated `translation_state.json` — register a new one with
+one. Each project is a slug (`my_novel`, `another_novel`, ...) with its own
+manuscript(s) and its own isolated `translation_state.json` — register a new one with
 `register_project` instead of registering a whole new MCP server per book.
 
 **Multi-manuscript per project/volume:** a language can have a REAL master docx, not
@@ -54,10 +54,10 @@ Twelve tools:
 | `save_translation(chapter, lang, text, status, project, volume)` | Writes a translation — refuses if that language/volume has a master docx |
 | `lint_chapter(text)` | Deterministic mechanical checks (orthography, brackets, non-words, Latin leakage, pronoun density) |
 
-`project` defaults to `NOVEL_MCP_DEFAULT_PROJECT` (currently `rxr`) and `volume`
-defaults to `1` when omitted, so existing single-novel/single-volume calls keep
-working — every response echoes back the resolved `project`/`volume` so it's never
-ambiguous which manuscript you actually hit.
+When `project` is omitted: `NOVEL_MCP_DEFAULT_PROJECT` wins if set; otherwise, if
+exactly one project is registered, that one is used; ambiguity is an error, never a
+guess. `volume` defaults to `1`. Every response echoes back the resolved
+`project`/`volume` so it's never ambiguous which manuscript you actually hit.
 
 ## Multi-manuscript design (the correctness fix, not just ergonomics)
 
@@ -66,7 +66,7 @@ ambiguous which manuscript you actually hit.
 
 ```python
 register_project(
-    name="Reincarnator x Regressor",
+    name="My Novel",
     manuscripts={"en": "...Vol1 draft.docx", "ja": "...Vol1 JA master.docx"},
     source_lang="en",
 )
@@ -80,8 +80,8 @@ file. A language absent from `manuscripts` (for a given volume) falls back to
 **Why this matters:** an earlier version of this server only tracked one manuscript
 (the source language) and treated every other language as export-only text files
 written by `save_translation`. For a project where the author maintains a REAL
-Japanese master docx (as RxR's does), that meant the tool was reading stale exported
-copies instead of the author's actual, current text. If the master and the exports
+Japanese master docx (as the motivating project did), that meant the tool was
+reading stale exported copies instead of the author's actual, current text. If the master and the exports
 ever diverged, the tool would audit the wrong one silently. Reading the master
 directly makes that class of bug impossible: there is nothing to drift out of sync
 with, because there is only one JA artifact.
@@ -103,8 +103,8 @@ that's why every per-chapter tool takes a `volume` argument.
 Use `add_manuscript_volume` to register Volume 2 once Volume 1 already exists:
 
 ```python
-add_manuscript_volume(project="rxr", lang="en", path="C:\...\RxR Volume 2 EN.docx", volume=2)
-add_manuscript_volume(project="rxr", lang="ja", path="C:\...\RxR Volume 2 JA master.docx", volume=2)
+add_manuscript_volume(project="my_novel", lang="en", path="C:\...\Volume 2 EN.docx", volume=2)
+add_manuscript_volume(project="my_novel", lang="ja", path="C:\...\Volume 2 JA master.docx", volume=2)
 ```
 
 This only ever touches the given `(lang, volume)` pair — unlike calling
@@ -165,7 +165,8 @@ this server's folder and is gitignored (it's your personal library, not shipped 
 
 ```
 servers/novel-translation-mcp/
-  projects.json                # {"rxr": {...}, "absolute_zero": {...}, ...} — gitignored
+  projects.json                # {"my_novel": {...}, ...} — gitignored (personal paths)
+  WORKFLOW.local.md            # optional personal workflow override — gitignored
 
 <manuscript folder>/
   <EN Volume 1>.docx           # source of truth for EN Vol.1 chapter numbers/titles/text
@@ -187,8 +188,10 @@ characters and world as Volume 1.
 No caching: every tool call re-parses each `.docx` fresh. Parsing a ~50k-word
 manuscript with `python-docx` takes well under a second, and a stale in-memory copy
 is a worse bug than the reparse cost — a prior version of this manuscript's
-translation notes (`TRANSLATION-LESSONS.md` §5.5) explicitly flags "verify against the
-file on disk" as a lesson learned the hard way.
+translation notes (`TRANSLATION-LESSONS.md` §5.5 — the author's private requirements
+log from the original translation project, cited throughout this repo for rationale
+but not shipped in it) explicitly flags "verify against the file on disk" as a
+lesson learned the hard way.
 
 ## Setup
 
@@ -208,45 +211,47 @@ For a brand-new novel with no prior translation, just call `register_project` fr
 chat — nothing to seed:
 
 ```
-register_project(name="Absolute Zero", manuscripts={"en": "C:\...\Absolute Zero.docx"})
+register_project(name="My Novel", manuscripts={"en": "C:\...\My Novel.docx"})
 ```
 
 If a real master docx already exists for another language too, include it:
 
 ```
 register_project(
-    name="Absolute Zero",
+    name="My Novel",
     manuscripts={"en": "C:\...\English.docx", "ja": "C:\...\Japanese master.docx"},
 )
 ```
 
-This picks a slug (`absolute_zero`), defaults `state_dir` to the source manuscript's
+This picks a slug (`my_novel`), defaults `state_dir` to the source manuscript's
 own folder, sanity-checks that the heading regex actually finds chapters in every
 registered language, and returns the chapter count per language. From then on, pass
-`project="absolute_zero"` to the other tools (or ask `list_projects()` if you forget
+`project="my_novel"` to the other tools (or ask `list_projects()` if you forget
 the slug).
 
 ### One-time bootstrap (only for a novel with pre-existing translated chapters)
 
-RxR specifically had chapters already translated into a separate JA master docx
-before this server existed. `bootstrap.py` registers Volume 1 with both its EN and
-JA masters in one step, and seeds the approved glossary from
-`TRANSLATION-LESSONS.md`'s core terminology table:
+If your novel already has translated chapters in a separate target-language master
+docx, `bootstrap.py` registers Volume 1 with both masters in one step, and can seed
+an already-decided glossary from a JSON file:
 
 ```
-python bootstrap.py
+python bootstrap.py --project-name "My Novel" \
+    --en-manuscript "C:\path\to\English.docx" \
+    --ja-master "C:\path\to\Japanese master.docx" \
+    --glossary-file glossary.json
 ```
 
-Safe to re-run: registration is idempotent, and glossary seeding skips terms already
-present instead of duplicating them. Pass `--project-slug`/`--project-name`/
-`--en-manuscript`/`--ja-master` to point it at a different novel with its own
-pre-existing EN+JA master pair.
+`--glossary-file` takes a JSON array of `{"term", "translation", "note"}` objects,
+imported as already-approved entries (for terms a human has already settled — new
+terms should go through `propose_glossary_term`'s staged flow instead). Safe to
+re-run: registration is idempotent, and glossary seeding skips terms already present.
 
 ### Configuration (environment variables)
 
 | Var | Default | Purpose |
 |---|---|---|
-| `NOVEL_MCP_DEFAULT_PROJECT` | `rxr` | Which project a tool call uses when `project` is omitted |
+| `NOVEL_MCP_DEFAULT_PROJECT` | (unset — falls back to the sole registered project) | Which project a tool call uses when `project` is omitted |
 | `NOVEL_MCP_PROJECTS_FILE` | `projects.json` next to this server | Where the project registry lives |
 
 ### Register with your MCP client
@@ -257,8 +262,8 @@ Add to your Claude Code / Claude Desktop MCP config:
 {
   "mcpServers": {
     "novel-translation-mcp": {
-      "command": "C:\\Users\\Tomoy\\webcomic-toolkit\\servers\\novel-translation-mcp\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\Tomoy\\webcomic-toolkit\\servers\\novel-translation-mcp\\server.py"]
+      "command": "C:\\path\\to\\webcomic-toolkit\\servers\\novel-translation-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\path\\to\\webcomic-toolkit\\servers\\novel-translation-mcp\\server.py"]
     }
   }
 }
@@ -266,8 +271,8 @@ Add to your Claude Code / Claude Desktop MCP config:
 
 ## Chapter heading conventions this parser recognizes
 
-- **EN:** `Chapter 19: Actually, I'm not the Saintess` (Arabic numerals)
-- **JA:** `第十九話　実は聖女ではありません` (kanji numerals; `話` for web serialization
+- **EN:** `Chapter 12: The Long Road` (Arabic numerals)
+- **JA:** `第十二話　長い道のり` (kanji numerals; `話` for web serialization
   or `章` for a bound-volume convention — both recognized)
 
 If your manuscript titles chapters differently, adjust the regexes in

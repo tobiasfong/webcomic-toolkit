@@ -24,17 +24,34 @@ import state
 import projects
 import lint as lint_module
 
-_WORKFLOW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WORKFLOW.md")
+# WORKFLOW.local.md (gitignored, personal) overrides the repo's generic
+# WORKFLOW.md — put your own translator profile / house rules there.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_WORKFLOW_PATH = next(
+    (p for p in (os.path.join(_HERE, "WORKFLOW.local.md"), os.path.join(_HERE, "WORKFLOW.md")) if os.path.isfile(p)),
+)
 with open(_WORKFLOW_PATH, "r", encoding="utf-8") as _f:
     _WORKFLOW_INSTRUCTIONS = _f.read()
 
 mcp = FastMCP("novel-translation-mcp", instructions=_WORKFLOW_INSTRUCTIONS)
 
-DEFAULT_PROJECT = os.environ.get("NOVEL_MCP_DEFAULT_PROJECT", "rxr")
+DEFAULT_PROJECT = os.environ.get("NOVEL_MCP_DEFAULT_PROJECT")
 
 
 def _resolve(project: str | None) -> tuple[str, dict]:
+    """Explicit `project` wins; else NOVEL_MCP_DEFAULT_PROJECT; else, if exactly
+    one project is registered, that one. Ambiguity is an error, not a guess."""
     slug = project or DEFAULT_PROJECT
+    if not slug:
+        registered = sorted(projects.load())
+        if len(registered) == 1:
+            slug = registered[0]
+        else:
+            raise ValueError(
+                f"No `project` given and {'no projects are' if not registered else 'multiple projects are'} "
+                f"registered ({', '.join(registered) or 'none'}). Pass project=... "
+                "or set NOVEL_MCP_DEFAULT_PROJECT."
+            )
     return slug, projects.resolve(slug)
 
 

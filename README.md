@@ -1,12 +1,14 @@
 # webcomic-toolkit
 
-Monorepo for the not-yet-shipped pieces of Tobias Fong's webcomic/novel production
-ecosystem — see `servers/*` for individually-installable MCP servers. Each server has
-its own `README.md`, `requirements.txt`, and is runnable/installable independently.
+A monorepo of local MCP servers for solo webcomic and novel production — see
+`servers/*` for individually-installable servers. Each has its own `README.md` and
+`requirements.txt`, and runs independently: install only what you need.
 
-Already-shipped repos (`webcomic-background-mcp`, `anime-production-skill`) stay
-standalone and are **not** part of this monorepo. See the architecture plan
-(`ARCHITECTURE.md` §2.5, kept outside this repo) for the reasoning.
+Sibling projects that shipped before this monorepo existed live in their own repos:
+[`webcomic-background-mcp`](https://github.com/tobiasfong/webcomic-background-mcp)
+(ComfyUI comic-panel backgrounds) and
+[`anime-production-skill`](https://github.com/tobiasfong/anime-production-skill)
+(Remotion teaser/MV renderer).
 
 ## Servers
 

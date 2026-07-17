@@ -1,5 +1,5 @@
 """
-projects.py — the project registry: maps a short slug (e.g. "rxr") to
+projects.py — the project registry: maps a short slug (e.g. "my_novel") to
 manuscripts per language PER VOLUME, plus a state directory.
 
 Registry file: projects.json, next to this server's code — same idea as
@@ -8,7 +8,7 @@ user-specific data (story titles, personal file paths), not shipped code.
 
 Each entry:
 {
-  "name":        "Reincarnator x Regressor",
+  "name":        "My Novel",
   "manuscripts": {
     "en": {"1": "C:\\...\\Vol1 EN.docx", "2": "C:\\...\\Vol2 EN.docx"},
     "ja": {"1": "C:\\...\\Vol1 JA.docx"}

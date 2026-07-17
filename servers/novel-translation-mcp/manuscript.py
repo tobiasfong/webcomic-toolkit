@@ -9,13 +9,14 @@ ago). Re-parsing per call means get_chapter/search_manuscript always reflect
 what's actually on disk right now.
 
 Two heading conventions are recognised:
-  EN: "Chapter 19: Actually, I'm not the Saintess"
-  JA: "第十九話　実は聖女ではありません" (kanji numerals, 話 for web serialization
-      or 章 for a bound-volume convention — see TRANSLATION-LESSONS.md §3.1.8)
+  EN: "Chapter 12: The Long Road"
+  JA: "第十二話　長い道のり" (kanji numerals; 話 for web serialization or
+      章 for a bound-volume convention — both accepted)
 
-Italic runs are marked with *asterisks* in extracted text (EN italics mark internal
-thought in this manuscript — see TRANSLATION-LESSONS.md §1.5, §3.1.5 — so this needs
-to survive extraction even though plain-text tools like pandoc drop it silently).
+Italic runs are marked with *asterisks* in extracted text (in the original project's
+manuscripts, EN italics mark internal thought, which maps to （　） brackets in the
+JA translation — so italics must survive extraction even though plain-text tools
+like pandoc drop them silently).
 """
 
 import re
