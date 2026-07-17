@@ -56,11 +56,12 @@ This package bakes all of that in, so an AI harness can go from
 
 ## Use with your AI agent
 
-**Claude Code** — copy the folder into your personal skills directory:
+**Claude Code** — this skill lives in the `webcomic-toolkit` monorepo; clone it and
+copy just this folder into your personal skills directory:
 
 ```
-git clone https://github.com/tobiasfong/anime-production-skill.git
-# → copy to ~/.claude/skills/anime-production/
+git clone https://github.com/tobiasfong/webcomic-toolkit.git
+# → copy webcomic-toolkit/servers/anime-production-skill/ to ~/.claude/skills/anime-production/
 ```
 
 Then ask Claude Code to "make an anime video" — the skill walks the agent

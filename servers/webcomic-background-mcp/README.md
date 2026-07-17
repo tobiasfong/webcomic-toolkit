@@ -170,9 +170,12 @@ Restart ComfyUI so it loads the new nodes.
 
 ## Step 4 — Set up this MCP server
 
+This server lives in the `webcomic-toolkit` monorepo — clone the whole repo, but you
+only need to install this one server's dependencies:
+
 ```bash
-git clone https://github.com/tobiasfong/Warhammer40000-background-mcp.git
-cd Warhammer40000-background-mcp
+git clone https://github.com/tobiasfong/webcomic-toolkit.git
+cd webcomic-toolkit/servers/webcomic-background-mcp
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt   # (Linux/Mac: .venv/bin/python)
 ```
