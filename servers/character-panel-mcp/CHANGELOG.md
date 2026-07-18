@@ -8,6 +8,21 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [1.2.0] — 2026-07-18
+
+### Added
+- **`bake_character_lora` now bakes the Niji V5 Style LoRA into every character
+  LoRA by default** (`style_lora` param, defaults to `NijiV5Style.safetensors`) —
+  matches the ecosystem's existing per-project style pool
+  (`webcomic-background-mcp` v1.7.0), so baked characters carry the project's
+  usual style without needing `lora=` at every generation call. Mechanism:
+  sd-scripts' `--base_weights`/`--base_weights_multiplier`, which merges an
+  existing LoRA into the checkpoint *before* training starts (verified flag,
+  distinct from `generate_character_pose`'s `lora=`, which applies a style LoRA
+  at generation time instead). Pass `style_lora=""` to bake against a plain
+  checkpoint. New env vars: `WEBCOMIC_CHAR_BAKE_STYLE_LORA`,
+  `WEBCOMIC_CHAR_BAKE_STYLE_LORA_MULTIPLIER`.
+
 ## [1.1.0] — 2026-07-18
 
 ### Added

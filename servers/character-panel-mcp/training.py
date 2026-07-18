@@ -23,6 +23,15 @@ single-subject character LoRAs, and avoids adding a captioning model dependency.
 This module is pure orchestration — it never talks to ComfyUI directly. Once a
 LoRA is baked, it plugs into workflow.py's existing `lora=` mechanism with zero
 new graph code (see characters.set_character_lora).
+
+Style base: by default, bakes merge the Niji V5 Style LoRA into the checkpoint
+BEFORE training (sd-scripts' `--base_weights`/`--base_weights_multiplier`, which
+merges an existing LoRA into the base model prior to training a new one on top —
+not the same as generate_character_pose's `lora=` param, which applies a style
+LoRA at generation time). This means a baked character LoRA carries the Niji V5
+look with it, matching the ecosystem's per-project style pool
+(webcomic-background-mcp v1.7.0 / this server's own generate_character_pose).
+Pass style_lora="" to bake against a plain checkpoint instead.
 """
 
 import os
@@ -48,6 +57,13 @@ KOHYA_PYTHON = os.environ.get("WEBCOMIC_CHAR_KOHYA_PYTHON",
 # ComfyUI's LoraLoader node will find it).
 COMFY_MODELS = os.environ.get("WEBCOMIC_CHAR_COMFY_MODELS",
                               os.path.join(workflow.COMFY_DIR, "ComfyUI", "models"))
+# Default style baked into every character LoRA — merged into the checkpoint via
+# sd-scripts' --base_weights before training starts. Same file the background
+# server documents as an optional style choice; here it's the Tier-3 default so
+# baked characters match a project's Niji-V5-styled plates out of the box. Pass
+# style_lora="" to bake() to skip this and train against a plain checkpoint.
+STYLE_LORA = os.environ.get("WEBCOMIC_CHAR_BAKE_STYLE_LORA", "NijiV5Style.safetensors")
+STYLE_LORA_MULTIPLIER = float(os.environ.get("WEBCOMIC_CHAR_BAKE_STYLE_LORA_MULTIPLIER", "1.0"))
 
 
 class TrainingError(RuntimeError):
@@ -166,12 +182,18 @@ def _prepare_dataset(character_id: str, project: str | None, repeats: int,
 def _build_command(train_data_dir: str, output_dir: str, output_name: str,
                    ckpt_path: str, resolution: int, network_dim: int,
                    network_alpha: int, learning_rate: float, max_train_epochs: int,
-                   train_batch_size: int, mixed_precision: str) -> list[str]:
+                   train_batch_size: int, mixed_precision: str,
+                   base_weights: str | None = None,
+                   base_weights_multiplier: float = 1.0) -> list[str]:
     """The accelerate-launch argument list for train_network.py. Uses
     `<python> -m accelerate.commands.launch` rather than assuming an `accelerate`
-    console script is on PATH — only needs KOHYA_PYTHON to be correct."""
+    console script is on PATH — only needs KOHYA_PYTHON to be correct.
+
+    base_weights (verified sd-scripts flag): merges an existing LoRA into the
+    base checkpoint BEFORE training starts — the mechanism behind baking the
+    style LoRA into every character LoRA by default (see module docstring)."""
     script = os.path.join(KOHYA_DIR, "train_network.py")
-    return [
+    cmd = [
         KOHYA_PYTHON, "-m", "accelerate.commands.launch",
         "--num_cpu_threads_per_process", "1",
         script,
@@ -191,6 +213,10 @@ def _build_command(train_data_dir: str, output_dir: str, output_name: str,
         "--save_every_n_epochs", str(max_train_epochs),
         "--caption_extension", ".txt",
     ]
+    if base_weights:
+        cmd += ["--base_weights", base_weights,
+               "--base_weights_multiplier", str(base_weights_multiplier)]
+    return cmd
 
 
 def bake(
@@ -206,9 +232,15 @@ def bake(
     model: str | None = None,
     train_batch_size: int = 1,
     mixed_precision: str = "fp16",
+    style_lora: str | None = STYLE_LORA,
+    style_lora_multiplier: float = STYLE_LORA_MULTIPLIER,
 ) -> dict:
     """Prepare the dataset and launch training as a detached background process.
-    Returns immediately with the job info; poll with status()."""
+    Returns immediately with the job info; poll with status().
+
+    style_lora: merged into the checkpoint before training (sd-scripts
+    --base_weights) so the baked character LoRA carries this style. Defaults to
+    STYLE_LORA (Niji V5 Style) — pass "" to bake against a plain checkpoint."""
     if not os.path.isfile(KOHYA_PYTHON):
         raise TrainingError(
             f"kohya-ss Python not found at {KOHYA_PYTHON}. Set WEBCOMIC_CHAR_KOHYA_PYTHON "
@@ -233,6 +265,16 @@ def bake(
             f"ComfyUI's models/ folder if this server isn't sharing webcomic-background-mcp's."
         )
 
+    base_weights_path = None
+    if style_lora:
+        base_weights_path = os.path.join(COMFY_MODELS, "loras", style_lora)
+        if not os.path.isfile(base_weights_path):
+            raise TrainingError(
+                f"Style LoRA not found at {base_weights_path}. Install it (see "
+                f"webcomic-background-mcp's model table) or pass style_lora=\"\" "
+                f"to bake against a plain checkpoint instead."
+            )
+
     train_data_dir, num_images = _prepare_dataset(character_id, project, repeats, class_word)
 
     char_id = characters._slug(character_id)
@@ -244,7 +286,8 @@ def bake(
 
     command = _build_command(train_data_dir, output_dir, output_name, ckpt_path,
                              resolution, network_dim, network_alpha, learning_rate,
-                             epochs, train_batch_size, mixed_precision)
+                             epochs, train_batch_size, mixed_precision,
+                             base_weights_path, style_lora_multiplier)
 
     log_f = open(log_path, "w", encoding="utf-8")
     if os.name == "nt":
@@ -269,6 +312,7 @@ def bake(
         "expected_output": os.path.join(output_dir, f"{output_name}.safetensors"),
         "num_images": num_images,
         "epochs": epochs,
+        "style_lora": style_lora or None,
         "command": command,
     }
     _save_job(character_id, project, job)

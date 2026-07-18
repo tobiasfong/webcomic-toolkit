@@ -46,7 +46,7 @@ used automatically:
 |------|-----------|--------|
 | **1 — img2img from a reference** | Seed the render with the character's primary reference image (like World Builder's `location_denoise` mode). Good for "same character, slightly different angle." Drifts on anything ambitious. | ✅ **Shipped** |
 | **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity* (`identity_mode="plus"` or `"plus_face"`); an OpenPose ControlNet pins the *pose* from a supplied photo (`pose_ref_path`). | ✅ **Shipped** — needs the Tier-2 models (`setup_models.py`) + the `ComfyUI_IPAdapter_plus` custom node |
-| **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set (`bake_character_lora`, via kohya-ss/sd-scripts). Strongest, one-time cost per character (~30-90 min on a 3060-class GPU). Once baked, used automatically by `generate_character_pose`. | ✅ **Shipped** — needs a separate kohya-ss install, the heaviest setup step |
+| **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set (`bake_character_lora`, via kohya-ss/sd-scripts). Strongest, one-time cost per character (~30-90 min on a 3060-class GPU). Once baked, used automatically by `generate_character_pose`. **Bakes in the Niji V5 Style LoRA by default** (merged into the checkpoint before training via sd-scripts' `--base_weights`) — pass `style_lora=""` to train against a plain checkpoint instead. | ✅ **Shipped** — needs a separate kohya-ss install, the heaviest setup step |
 
 **Not built: true FaceID.** Tier 2's `"plus_face"` preset (from `h94/IP-Adapter`
 directly) covers face-focused portraits without extra install burden. True FaceID
@@ -274,6 +274,14 @@ which only ever talk to ComfyUI's HTTP API) and writes the trained LoRA into
 `WEBCOMIC_CHAR_COMFY_MODELS/loras/` — set the latter if this server isn't sharing
 `webcomic-background-mcp`'s ComfyUI install.
 
+**One more file needed for baking to work with its defaults:** `bake_character_lora`
+bakes the **Niji V5 Style LoRA** into every character LoRA by default (see
+"Consistency tiers" above), which means `NijiV5Style.safetensors` must already be
+in `WEBCOMIC_CHAR_COMFY_MODELS/loras/` — it's the same file
+`webcomic-background-mcp`'s [model table](../webcomic-background-mcp/README.md#step-2--download-the-models)
+documents as an optional style choice; if you haven't downloaded it there, do
+that first, or pass `style_lora=""` to bake against a plain checkpoint instead.
+
 ---
 
 ## Configuration (env vars)
@@ -292,6 +300,8 @@ which only ever talk to ComfyUI's HTTP API) and writes the trained LoRA into
 | `WEBCOMIC_CHAR_COMFY_MODELS` | `<COMFY_DIR>/ComfyUI/models` | **Tier 3 only** — ComfyUI's `models/` folder as a real filesystem path (training reads the checkpoint off disk and writes the output LoRA here; Tier 1/2 never need this, they only talk to ComfyUI's HTTP API) |
 | `WEBCOMIC_CHAR_KOHYA_DIR` | `C:\AI\sd-scripts` | **Tier 3 only** — where kohya-ss/sd-scripts is checked out |
 | `WEBCOMIC_CHAR_KOHYA_PYTHON` | `<KOHYA_DIR>/venv/Scripts/python.exe` | **Tier 3 only** — the Python with sd-scripts' deps installed |
+| `WEBCOMIC_CHAR_BAKE_STYLE_LORA` | `NijiV5Style.safetensors` | **Tier 3 only** — default `style_lora` for `bake_character_lora` (merged into the checkpoint before training); set empty to default to plain-checkpoint bakes |
+| `WEBCOMIC_CHAR_BAKE_STYLE_LORA_MULTIPLIER` | `1.0` | **Tier 3 only** — default strength of that style merge |
 
 ## Troubleshooting
 
@@ -314,6 +324,9 @@ which only ever talk to ComfyUI's HTTP API) and writes the trained LoRA into
 - **`bake_character_lora` fails with "Checkpoint not found"** — `WEBCOMIC_CHAR_COMFY_MODELS`
   doesn't point at a real ComfyUI `models/` folder, or the checkpoint file for the
   chosen `model` isn't actually downloaded there.
+- **`bake_character_lora` fails with "Style LoRA not found"** — `NijiV5Style.safetensors`
+  (the default `style_lora`) isn't in `WEBCOMIC_CHAR_COMFY_MODELS/loras/`. Download it
+  (see `webcomic-background-mcp`'s model table) or pass `style_lora=""` to skip it.
 - **Training seems stuck / `check_lora_training` shows no new log lines for a long
   time** — the first few minutes are usually the base model loading into VRAM; if
   it's been 10+ minutes with zero progress, check the full log

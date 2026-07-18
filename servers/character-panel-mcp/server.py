@@ -265,6 +265,8 @@ def bake_character_lora(
     resolution: int = 512,
     class_word: str = "person",
     model: str | None = None,
+    style_lora: str | None = training.STYLE_LORA,
+    style_lora_multiplier: float = training.STYLE_LORA_MULTIPLIER,
 ) -> str:
     """Start Tier-3 training: bake a per-character LoRA from the character's
     reference set. Strongest consistency tier — but takes 30-90 min on a
@@ -293,6 +295,12 @@ def bake_character_lora(
             own trigger token in captions (default "person").
         model: Which checkpoint to train against (default: the server's default
             render model). Use the same one you'll generate poses with.
+        style_lora: Merged into the checkpoint before training, so the baked
+            character LoRA carries this style permanently — same mechanism as
+            generate_character_pose's `lora=`, but baked in rather than applied
+            per call. Defaults to the Niji V5 Style LoRA (matching the project's
+            usual style pool); pass "" to train against a plain checkpoint instead.
+        style_lora_multiplier: Strength of the style merge (default 1.0).
 
     Returns:
         Confirmation that training has started, with how to check progress.
@@ -301,11 +309,13 @@ def bake_character_lora(
         job = training.bake(character, project, epochs=epochs, repeats=repeats,
                             network_dim=network_dim, network_alpha=network_alpha,
                             learning_rate=learning_rate, resolution=resolution,
-                            class_word=class_word, model=model)
+                            class_word=class_word, model=model,
+                            style_lora=style_lora, style_lora_multiplier=style_lora_multiplier)
     except (training.TrainingError, characters.CharacterError) as e:
         return f"Could not start training: {e}"
+    style_note = f", style base: {job['style_lora']}" if job.get("style_lora") else ""
     return (f"Training started for '{character}' in project '{project}' "
-            f"({job['num_images']} reference image(s), {job['epochs']} epochs, "
+            f"({job['num_images']} reference image(s), {job['epochs']} epochs{style_note}, "
             f"pid {job['pid']}).\n"
             f"This runs 30-90 min in the background. Check progress with "
             f"check_lora_training(character='{character}', project='{project}').\n"
@@ -323,8 +333,9 @@ def check_lora_training(character: str, project: str = characters.DEFAULT_PROJEC
     if state == "none":
         return f"No training job found for '{character}' in project '{project}'."
     if state == "done":
-        return (f"Training complete: {job['installed_lora']} installed in ComfyUI's "
-                f"models/loras/ and set as '{character}''s default LoRA. "
+        style_note = f" (style base: {job['style_lora']})" if job.get("style_lora") else ""
+        return (f"Training complete: {job['installed_lora']}{style_note} installed in "
+                f"ComfyUI's models/loras/ and set as '{character}''s default LoRA. "
                 f"generate_character_pose will use it automatically now.")
     if state == "failed":
         return (f"Training failed for '{character}'. Last log lines:\n{job['log_tail']}\n"
