@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated output
+output/
+
+# Character Bible — user-specific character reference sets + manifest.
+# Each user accumulates their own; not redistributed.
+characters/
+
+# rembg's matting model, auto-downloaded to the user's home dir on first use —
+# never lives in this repo, listed here only as a note for anyone auditing paths.
+# (~/.u2net/ — outside the repo tree, nothing to ignore here.)
+
+# Throwaway test artifacts
+tools/_*.png
+
+# Dev/aesthetic-testing throwaway scripts (not part of the shipped tool)
+tools/test_*.py
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

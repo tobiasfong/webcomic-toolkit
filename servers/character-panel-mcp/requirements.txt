@@ -1,0 +1,7 @@
+mcp>=1.2.0
+requests>=2.31.0
+# Character Bible storage, palette extraction, and compose_panel's alpha compositing.
+pillow>=10.0.0
+# Tier-1 auto-matte (clean-backdrop pose renders -> RGBA cutouts). Downloads its own
+# u2net ONNX model to the user's home dir on first use — no ComfyUI custom node needed.
+rembg>=2.0.50

@@ -20,6 +20,10 @@ production — see `servers/*` for individually-installable pieces. Each has its
   query tools over novel manuscripts (docx) so translation work in chat never
   re-reads the whole document. Multi-project (one server, many novels); publishing/EPUB
   assembly is deferred to a future Publication MCP server.
+- [`servers/character-panel-mcp`](servers/character-panel-mcp/README.md) — for writers
+  who aren't artists: register existing character reference art as a Character Bible,
+  generate consistent poses (Tier 1 of a three-tier design), and composite panels onto
+  `webcomic-background-mcp` plates. Built directly in the monorepo.
 
 ## Conventions
 
