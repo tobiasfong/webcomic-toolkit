@@ -25,6 +25,15 @@ One MCP tool, `generate_background`, takes:
 and returns a finished PNG. A second tool, `check_status`, reports whether the
 generation backend is up.
 
+> **v1.8.0 — 3D props (`generate_prop_scene`).** Diffusion fuses, crops, or
+> mutates rows of repeated objects (a bike rack, market stalls) when asked to
+> invent their structure. This tool gives objects the same treatment buildings
+> get from Metropolis mode: parametric 3D prop meshes (`props.py` — first prop:
+> bicycle) placed in-scene with true occlusion, auto-framed, rendered headless
+> to a projection-correct sketch, painted once by the checkpoint. Pass
+> `objects=[{type,x,z,yaw,scale}]`, or just `n_bikes=4` for a realistic parked
+> row under a carport (`setting="shelter"`).
+
 > **Design note — no IP-Adapter.** Earlier versions used an IP-Adapter style
 > reference to push a palette. In practice a model trained on the target look
 > (e.g. the Solstice manhwa checkpoint) renders the aesthetic natively and more

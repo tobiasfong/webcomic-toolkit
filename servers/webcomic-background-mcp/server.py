@@ -20,6 +20,7 @@ from mcp.server.fastmcp import FastMCP
 import workflow
 import world
 import citygen
+import props
 
 mcp = FastMCP("webcomic-background-generator")
 
@@ -293,6 +294,96 @@ def generate_city_scene(
                 f"  sketch (reusable): {sketch_path}\n"
                 f"Re-render the SAME city from another angle by keeping the source "
                 f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")
+    except workflow.ComfyUIError as e:
+        return (f"Generation failed: {e}\n"
+                f"Is ComfyUI running at {workflow.COMFY_URL}?")
+
+
+@mcp.tool()
+def generate_prop_scene(
+    prompt: str,
+    objects: list[dict] | None = None,
+    n_bikes: int = 4,
+    setting: str = "shelter",
+    camera_angle: float = 30.0,
+    camera_elev: float = 10.0,
+    model: str = workflow.DEFAULT_MODEL,
+    width: int = 896,
+    height: int = 672,
+    seed: int | None = None,
+    hires: bool = True,
+    lora: str | None = RECIPE_LORA,
+    controlnet_strength: float = 0.75,
+    extra_negative: str | None = None,
+    project: str = world.DEFAULT_PROJECT,
+) -> str:
+    """Generate a panel of repeated 3D OBJECTS (props) in a scene — the
+    citygen treatment extended from buildings to objects.
+
+    Diffusion models fuse/crop/mutate rows of repeated objects when asked to
+    invent their structure (a bike rack, market stalls, carts). This tool
+    builds real 3D prop meshes, places them in the scene with true occlusion,
+    auto-frames a camera so nothing clips, renders a projection-correct sketch
+    headlessly, and lets the checkpoint paint it — geometry from math, beauty
+    from the model.
+
+    Args:
+        prompt: Scene mood/setting/palette (webtoon recipe wording appended).
+        objects: Explicit placement: [{"type": "bicycle", "x": 0, "z": 0,
+            "yaw": 0, "scale": 1}, ...]. World scale: 1 unit ≈ 0.37 m (a human
+            is 4.6 units; a bike wheel is 0.92). Available types: "bicycle".
+            Omit to get a parked row of `n_bikes` instead.
+        n_bikes: Convenience when `objects` is omitted: a realistic parked row
+            (rack spacing, slight per-bike yaw jitter).
+        setting: "shelter" (back wall + posts + roof carport around the props)
+            or "none" (props only on open ground).
+        camera_angle: Yaw around the props, degrees. Keep ≥ ~25 — props are
+            flat cutouts and collapse to a sliver seen edge-on.
+        camera_elev: Camera elevation, degrees.
+        model / width / height / seed / hires / lora / extra_negative /
+            project: As generate_city_scene. controlnet_strength default 0.75:
+            props need a firmer hold on the sketch than city vistas (0.6), but
+            0.85+ still causes the cel-outline look.
+
+    Returns:
+        Path to the generated PNG (plus the reusable sketch path).
+    """
+    out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
+    try:
+        obs = objects if objects else props.bike_row(n=n_bikes)
+        sw, sh = int(width * 1.5), int(height * 1.5)
+        sketch_path, _ = props.prop_sketch(
+            os.path.join(out_dir, "prop_sketches"), obs,
+            setting=setting, width=sw, height=sh,
+            angle_deg=camera_angle, elev_deg=camera_elev,
+            tag=f"props_{len(obs)}",
+        )
+    except ValueError as e:
+        return f"Prop render failed: {e}"
+
+    full_prompt = f"fantasy-style, {prompt}, {RECIPE_PROMPT_SUFFIX}"
+    negative = f"{workflow.DEFAULT_NEGATIVE}, {RECIPE_NEGATIVE}"
+    if extra_negative:
+        negative = f"{negative}, {extra_negative}"
+
+    try:
+        out_path = workflow.generate(
+            prompt=full_prompt,
+            out_dir=out_dir,
+            negative=negative,
+            width=width,
+            height=height,
+            seed=seed,
+            sketch_path=sketch_path,
+            model=model,
+            controlnet_strength=controlnet_strength,
+            lora=lora,
+            hires=hires,
+        )
+        return (f"Prop scene generated: {out_path}\n"
+                f"  objects: {len(obs)}  setting: {setting}  "
+                f"camera: {camera_angle}°/{camera_elev}°\n"
+                f"  sketch (reusable): {sketch_path}")
     except workflow.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
                 f"Is ComfyUI running at {workflow.COMFY_URL}?")

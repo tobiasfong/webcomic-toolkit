@@ -9,6 +9,39 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [1.8.0] — 2026-07-18
+
+Props: the citygen treatment, extended from buildings to objects.
+
+### Added
+- **`props.py`** — parametric 3D prop meshes placed in-scene and rendered
+  headless to a ControlNet sketch, exactly like `citygen.py` does for
+  buildings: real geometry, real camera, real occlusion (painter's algorithm),
+  one coherent Canny sketch — SD only paints. World scale matches citygen
+  (1 unit ≈ 0.37 m), so props drop into city scenes at correct size. First
+  prop: **bicycle** (thin-tired, true diamond frame, straight T-bar above the
+  saddle), plus a `shelter` setting (wall + posts + roof carport) and an
+  **auto-framing camera** that fits every prop vertex in-frame — eyeballed
+  cameras kept clipping wheels.
+- **`generate_prop_scene` tool** — paint a prop scene with the manhwa recipe.
+  `objects=[{type,x,z,yaw,scale}]` for explicit placement or `n_bikes=` for a
+  realistic parked row (rack spacing, per-bike yaw jitter). ControlNet default
+  0.75 (props need a firmer hold than city vistas' 0.6; 0.85+ still goes cel).
+
+### Why (a war story)
+A real panel — "character waving at a bicycle parking lot" — burned a whole
+session proving that diffusion cannot be prompted into correct repeated-object
+geometry: photo-edge sketches fused nine bikes into a tangle; img2img from the
+photo made wheelchairs; hand-drawn 2D circle sketches made one-wheeled
+half-bikes; sprite-cloning a good bike made a "bicycle train." Every failure
+was geometry, and every geometry problem this server has ever solved was
+solved the same way: build it in 3D, render it headless, let SD paint.
+Lessons baked in: flat cutout props collapse edge-on (keep the camera ≥ ~25°
+off their plane — enforced by yaw jitter + a documented camera floor);
+per-mesh grey separation is what keeps neighbouring props Canny-separable; and
+a straight T-bar reads as a handlebar where a curved drop-bar hook kept being
+painted as a second saddle.
+
 ## [1.7.0] — 2026-07-10
 
 ### Added
@@ -211,6 +244,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.8.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.8.0
 [1.7.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.7.0
 [1.6.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.6.0
 [1.5.1]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.5.1
