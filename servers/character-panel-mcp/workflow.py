@@ -1,13 +1,25 @@
 """
-workflow.py — Tier-1 character pose generation against a running ComfyUI instance.
+workflow.py — Tier-1/Tier-2 character pose generation against a running ComfyUI
+instance.
 
-Tier 1 of the three consistency tiers this server is designed around (see the
-project's ARCHITECTURE.md §8b.2): img2img from a character's reference image,
+Tier 1 (see ARCHITECTURE.md §8b.2): img2img from a character's reference image,
 onto a deliberately plain/clean backdrop, so the result can be auto-matted to a
 clean RGBA cutout afterward. Weakest tier, nearly free to build — good for "same
-character, slightly different angle/pose," drifts on anything ambitious. Tier 2
-(IP-Adapter identity + OpenPose) and Tier 3 (per-character LoRA baking) are
-designed but not implemented here; see README.md's "Consistency tiers" section.
+character, slightly different angle/pose," drifts on anything ambitious. Always
+on (CLEAN_BACKDROP_SUFFIX is unconditional) — Tier 2 layers on top of it, it
+doesn't replace it.
+
+Tier 2 (`identity_mode` + `pose_ref_path`): IP-Adapter (cubiq/ComfyUI_IPAdapter_plus,
+presets "PLUS (high strength)" / "PLUS FACE (portraits)") conditions the render on
+the reference image's *identity*; an OpenPose ControlNet (via the already-required
+comfyui_controlnet_aux node's OpenposePreprocessor) pins the *pose* from a supplied
+photo. Both are optional, additive branches on the same graph — off by default so
+existing callers/behavior are unaffected until a caller opts in (and so this
+doesn't break for anyone who hasn't run setup_models.py's new downloads yet).
+
+Tier 3 (per-character LoRA baking) lives in training.py, not here — see its
+docstring. Once baked, a LoRA plugs back into this module's existing `lora=`
+mechanism with zero new graph code.
 
 Shares its ComfyUI connection (COMFY_URL) and checkpoint registry (MODELS) with
 webcomic-background-mcp by convention — both point at the same local ComfyUI
@@ -37,6 +49,18 @@ DEFAULT_MODEL = os.environ.get("WEBCOMIC_CHAR_MODEL", "solstice")
 # pickable from the same pool so a project's panels match its plates.
 LORA = os.environ.get("WEBCOMIC_CHAR_LORA", "")
 LORA_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_LORA_STRENGTH", "0.8"))
+
+# Tier 2: OpenPose ControlNet (same repo as webcomic-background-mcp's scribble
+# model, different file) and IP-Adapter presets (verified exact strings against
+# cubiq/ComfyUI_IPAdapter_plus — the node validates these against its own enum).
+CONTROLNET_OPENPOSE = "control_v11p_sd15_openpose_fp16.safetensors"
+IDENTITY_PRESETS = {
+    "plus": "PLUS (high strength)",        # body/identity — the Tier-2 default
+    "plus_face": "PLUS FACE (portraits)",  # face-focused portraits; NOT true
+                                            # FaceID (that needs InsightFace, a
+                                            # notoriously fiddly Windows install —
+                                            # deliberately not built here)
+}
 
 # --- Auto-launch config (mirrors webcomic-background-mcp) -------------------
 COMFY_DIR = os.environ.get("WEBCOMIC_CHAR_COMFY_DIR", r"C:\AI\ComfyUI_windows_portable")
@@ -140,12 +164,27 @@ def build_graph(
     ref_denoise: float = 0.55,
     lora_name: str | None = None,
     lora_strength: float | None = None,
+    ip_adapter_image_name: str | None = None,
+    ip_adapter_preset: str | None = None,
+    ip_adapter_weight: float = 0.8,
+    pose_ref_name: str | None = None,
+    pose_strength: float = 1.0,
 ) -> dict:
-    """Assemble the ComfyUI API graph. Two shapes only:
-    plain txt2img (no reference — free concept exploration), or img2img seeded
-    from a character's reference image (Tier 1's actual mechanism — the same
-    "seed the latent from a canonical image" trick as World Builder's
-    location_denoise mode, applied to a character instead of a place)."""
+    """Assemble the ComfyUI API graph.
+
+    Base shape (Tier 1, always available): plain txt2img (no reference — free
+    concept exploration), or img2img seeded from a character's reference image
+    (the same "seed the latent from a canonical image" trick as World Builder's
+    location_denoise mode, applied to a character instead of a place).
+
+    Tier 2 adds two optional, independent branches on top of that base shape:
+    IP-Adapter (ip_adapter_image_name + ip_adapter_preset) conditions the model
+    on the reference's *identity*, chained onto whatever the current model head
+    is (post-LoRA, if a style LoRA is active) — identity and style stack rather
+    than compete. OpenPose (pose_ref_name) extracts a pose skeleton from a
+    supplied photo via the OpenposePreprocessor node and pins the *pose* via
+    ControlNet, chained onto positive/negative the same way a composition
+    ControlNet does in webcomic-background-mcp."""
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt_name}},
         "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
@@ -165,8 +204,42 @@ def build_graph(
                               "strength_model": use_lora_strength, "strength_clip": use_lora_strength}}
         base_model, base_clip = ["40", 0], ["40", 1]
 
+    # --- Tier 2: IP-Adapter identity branch ---
+    if ip_adapter_image_name and ip_adapter_preset:
+        g["50"] = {"class_type": "IPAdapterUnifiedLoader",
+                   "inputs": {"model": base_model, "preset": ip_adapter_preset}}
+        g["51"] = {"class_type": "LoadImage", "inputs": {"image": ip_adapter_image_name}}
+        g["52"] = {"class_type": "IPAdapter",
+                   "inputs": {"model": ["50", 0], "ipadapter": ["50", 1], "image": ["51", 0],
+                              "weight": ip_adapter_weight, "start_at": 0.0, "end_at": 1.0,
+                              # Verified enum (ComfyUI_IPAdapter_plus): "standard" /
+                              # "prompt is more important" / "style transfer". "standard"
+                              # is correct for identity conditioning (not "style transfer",
+                              # which is for the removed style-transfer use case webcomic-
+                              # background-mcp used to have).
+                              "weight_type": "standard"}}
+        base_model = ["52", 0]
+
     g["6"] = {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": base_clip}}
     g["7"] = {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": base_clip}}
+
+    pos_ref, neg_ref = ["6", 0], ["7", 0]
+
+    # --- Tier 2: OpenPose ControlNet branch ---
+    if pose_ref_name:
+        g["60"] = {"class_type": "LoadImage", "inputs": {"image": pose_ref_name}}
+        g["61"] = {"class_type": "OpenposePreprocessor",
+                   "inputs": {"image": ["60", 0], "detect_hand": "enable",
+                              "detect_body": "enable", "detect_face": "enable",
+                              "resolution": 512}}
+        g["62"] = {"class_type": "ControlNetLoader",
+                   "inputs": {"control_net_name": CONTROLNET_OPENPOSE}}
+        g["63"] = {"class_type": "ControlNetApplyAdvanced",
+                   "inputs": {"positive": pos_ref, "negative": neg_ref,
+                              "control_net": ["62", 0], "image": ["61", 0],
+                              "strength": pose_strength,
+                              "start_percent": 0.0, "end_percent": 1.0}}
+        pos_ref, neg_ref = ["63", 0], ["63", 1]
 
     latent_ref, denoise = ["5", 0], 1.0
     if ref_image_name:
@@ -177,7 +250,7 @@ def build_graph(
     g["3"] = {"class_type": "KSampler",
               "inputs": {"seed": seed, "steps": steps, "cfg": cfg,
                          "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": denoise,
-                         "model": base_model, "positive": ["6", 0], "negative": ["7", 0],
+                         "model": base_model, "positive": pos_ref, "negative": neg_ref,
                          "latent_image": latent_ref}}
     g["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": vae_ref}}
     g["9"] = {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "pose"}}
@@ -218,21 +291,40 @@ def generate(
     model: str = DEFAULT_MODEL,
     lora: str | None = None,
     lora_strength: float | None = None,
+    identity_mode: str = "off",
+    ip_adapter_weight: float = 0.8,
+    pose_ref_path: str | None = None,
+    pose_strength: float = 1.0,
     timeout: int = 300,
 ) -> str:
-    """Run the Tier-1 pipeline; return the path to the saved (un-matted) PNG.
+    """Run the pipeline; return the path to the saved (un-matted) PNG.
 
     Always appends CLEAN_BACKDROP_SUFFIX/_NEGATIVE — the whole point of Tier 1 is
     a render clean enough to auto-matte afterward. ref_path (a character's primary
     reference image) is optional but is what makes this "the same character" rather
     than a fresh random render; ref_denoise controls how much of the reference
-    survives (lower = closer to the reference, higher = more prompt-driven drift)."""
+    survives (lower = closer to the reference, higher = more prompt-driven drift).
+
+    Tier 2 (opt-in): identity_mode "plus" (body/identity) or "plus_face"
+    (portraits) conditions the render on ref_path's identity via IP-Adapter,
+    independent of ref_denoise/img2img — combine both, or set ref_denoise=1.0 for
+    pure txt2img + IP-Adapter (more pose range, relies entirely on IP-Adapter for
+    identity). pose_ref_path (a photo of someone in the target pose) pins the pose
+    via OpenPose ControlNet. Both need the Tier-2 models from setup_models.py and
+    the ComfyUI_IPAdapter_plus custom node — see README.md."""
     ensure_comfy_running()
 
     if model not in MODELS:
         raise ComfyUIError(f"Unknown model '{model}'. Options: {', '.join(MODELS)}")
     ckpt_name = MODELS[model]["ckpt"]
     vae_name = MODELS[model]["vae"]
+
+    if identity_mode != "off" and identity_mode not in IDENTITY_PRESETS:
+        raise ComfyUIError(f"Unknown identity_mode '{identity_mode}'. "
+                           f"Options: off, {', '.join(IDENTITY_PRESETS)}")
+    if identity_mode != "off" and not ref_path:
+        raise ComfyUIError("identity_mode needs ref_path (IP-Adapter conditions "
+                           "on the reference image's identity).")
 
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
@@ -241,10 +333,16 @@ def generate(
     full_negative = f"{negative}, {CLEAN_BACKDROP_NEGATIVE}"
 
     ref_image_name = _upload_image(ref_path) if ref_path else None
+    ip_adapter_preset = IDENTITY_PRESETS.get(identity_mode)
+    # IP-Adapter needs its own image reference — reuse the same character ref.
+    ip_adapter_image_name = ref_image_name if ip_adapter_preset else None
+    pose_ref_name = _upload_image(pose_ref_path) if pose_ref_path else None
 
     graph = build_graph(full_prompt, full_negative, width, height, seed, steps, cfg,
                         ckpt_name, vae_name, ref_image_name, ref_denoise,
-                        lora, lora_strength)
+                        lora, lora_strength,
+                        ip_adapter_image_name, ip_adapter_preset, ip_adapter_weight,
+                        pose_ref_name, pose_strength)
 
     data = _submit_and_wait(graph, timeout)
     os.makedirs(out_dir, exist_ok=True)

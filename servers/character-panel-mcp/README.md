@@ -17,15 +17,18 @@ local ComfyUI by default.
 
 ## What it does
 
-Five tools:
+Eight tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
   **appends** more references rather than replacing them.
 - **`list_characters`** / **`forget_character`** / **`list_projects`** — browse and
   curate the bible. Projects namespace characters per-comic, same as World Builder.
-- **`generate_character_pose`** — render the character in a new pose (Tier 1, see
-  below), auto-matted to a clean RGBA cutout.
+- **`generate_character_pose`** — render the character in a new pose, layering all
+  three consistency tiers (see below), auto-matted to a clean RGBA cutout.
+- **`bake_character_lora`** / **`check_lora_training`** / **`cancel_lora_training`**
+  — Tier 3: kick off, poll, and cancel per-character LoRA training (async — a bake
+  takes 30-90 min, so these don't block).
 - **`compose_panel`** — deterministic CPU compositing: paste a matted character onto
   a background plate at a given feet position and height. Zero GPU, zero tokens,
   instant to iterate.
@@ -35,13 +38,21 @@ Five tools:
 ## Consistency tiers
 
 Character consistency is *the* unsolved-in-general problem of AI comics. This server
-is designed around three tiers, shipped in order of cost/complexity:
+is designed around three tiers, shipped in order of cost/complexity, and they
+**stack** — Tier 1 is always on, Tier 2 is opt-in per call, Tier 3 (once baked) is
+used automatically:
 
 | Tier | Mechanism | Status |
 |------|-----------|--------|
-| **1 — img2img from a reference** | Seed the render with the character's primary reference image (like World Builder's `location_denoise` mode). Good for "same character, slightly different angle." Drifts on anything ambitious. | ✅ **Shipped here** |
-| **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity*; an OpenPose ControlNet pins the *pose* per panel. The stronger v1 core. | 🔜 Designed, not built — needs new ComfyUI custom nodes + model downloads |
-| **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set. Strongest, one-time cost per character. | 🔜 Designed, not built |
+| **1 — img2img from a reference** | Seed the render with the character's primary reference image (like World Builder's `location_denoise` mode). Good for "same character, slightly different angle." Drifts on anything ambitious. | ✅ **Shipped** |
+| **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity* (`identity_mode="plus"` or `"plus_face"`); an OpenPose ControlNet pins the *pose* from a supplied photo (`pose_ref_path`). | ✅ **Shipped** — needs the Tier-2 models (`setup_models.py`) + the `ComfyUI_IPAdapter_plus` custom node |
+| **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set (`bake_character_lora`, via kohya-ss/sd-scripts). Strongest, one-time cost per character (~30-90 min on a 3060-class GPU). Once baked, used automatically by `generate_character_pose`. | ✅ **Shipped** — needs a separate kohya-ss install, the heaviest setup step |
+
+**Not built: true FaceID.** Tier 2's `"plus_face"` preset (from `h94/IP-Adapter`
+directly) covers face-focused portraits without extra install burden. True FaceID
+models need InsightFace + the `antelopev2` face-embedding model — a notoriously
+fiddly Windows install with its own distribution terms. Deliberately substituted,
+not silently dropped; revisit if `"plus_face"` proves insufficient in practice.
 
 **"Consistent enough for a webtoon with curation," not pixel-perfect** — even the
 strongest tier drifts on extreme angles, complex hand poses, and costume details. The
@@ -56,7 +67,9 @@ where consistency dies:
 1. **Background plate** — use `webcomic-background-mcp`'s existing tools (World
    Builder keeps the *location* consistent; that problem is already solved there).
 2. **Character layer** — `generate_character_pose` renders the character alone on a
-   clean backdrop, then auto-mattes it to RGBA.
+   clean backdrop (optionally with IP-Adapter identity locking and/or OpenPose
+   pose pinning, and automatically using a baked LoRA if one exists), then
+   auto-mattes it to RGBA.
 3. **Composition** — `compose_panel` pastes the layer onto the plate at a feet
    position/height. Call it once per character, chaining each call's output back in
    as `base` for multi-character panels.
@@ -82,8 +95,10 @@ compatible shape.
         ▼
    server.py  ──►  characters.py  (bible: pure data/IO, no ComfyUI)
                     workflow.py   ──HTTP──►  ComfyUI (:8188)  ──►  GPU
-                    (Tier-1 img2img)          (shared with
+                    (Tier-1/2)                (shared with
                                                webcomic-background-mcp)
+                    training.py   ──subprocess──►  kohya-ss/sd-scripts  ──►  GPU
+                    (Tier-3, async)                (separate install/venv)
                     tools/compose_panel.py  (pure PIL, no GPU)
 ```
 
@@ -123,18 +138,44 @@ If you already run that server, this step is done.
 
 ## Step 2 — Models
 
-**No new models needed for Tier 1** — it reuses whatever SD 1.5 checkpoint you
-already installed for `webcomic-background-mcp` (default `solstice`; see that
-server's [model table](../webcomic-background-mcp/README.md#step-2--download-the-models)
+**Tier 1 needs no new models** — it reuses whatever SD 1.5 checkpoint you already
+installed for `webcomic-background-mcp` (default `solstice`; see that server's
+[model table](../webcomic-background-mcp/README.md#step-2--download-the-models)
 if you're installing this server standalone).
 
-> Tier 2 (IP-Adapter + OpenPose) will need `clip_vision/`, `ipadapter/`, and
-> `controlnet/` additions when it's built — not needed for what ships here.
+**Tier 2 needs ~3.5 GB more** (IP-Adapter + OpenPose ControlNet). Run the bundled
+downloader:
+
+```bash
+python setup_models.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI"
+```
+
+Or place manually:
+
+| Role | File | → Folder | Source |
+|------|------|----------|--------|
+| CLIP vision encoder | `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | `clip_vision/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors) |
+| IP-Adapter Plus (identity) | `ip-adapter-plus_sd15.safetensors` | `ipadapter/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus_sd15.safetensors) |
+| IP-Adapter Plus Face (portraits) | `ip-adapter-plus-face_sd15.safetensors` | `ipadapter/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus-face_sd15.safetensors) |
+| ControlNet OpenPose | `control_v11p_sd15_openpose_fp16.safetensors` | `controlnet/` | [comfyanonymous/ControlNet-v1-1_fp16](https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_openpose_fp16.safetensors) |
+
+**Tier 3 needs no new ComfyUI models** — it trains against the same checkpoint
+Tier 1/2 already use. See Step 7 for its (separate) install.
 
 ## Step 3 — Custom nodes
 
-None. Tier 1 uses only core ComfyUI nodes (checkpoint, LoRA, VAE, KSampler) — the
-same set `webcomic-background-mcp` already needs.
+**Tier 1 needs none** — only core ComfyUI nodes (checkpoint, LoRA, VAE, KSampler).
+
+**Tier 2 needs `ComfyUI_IPAdapter_plus`** (the OpenPose *preprocessor* comes from
+`comfyui_controlnet_aux`, which is already required by `webcomic-background-mcp`'s
+Step 3 — if that server is installed, only the IP-Adapter node is new):
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus
+```
+
+Restart ComfyUI so it loads the new nodes.
 
 ## Step 4 — Set up this MCP server
 
@@ -172,8 +213,15 @@ After adding it, **fully quit and relaunch the client** (see Troubleshooting).
 1. Register a character: *"Register these three images of Aria as a character named
    'aria' in project 'starry_knight'."*
 2. Generate a pose: *"Generate a pose of aria: arms crossed, looking over her
-   shoulder."*
-3. Composite it: *"Composite that onto backgrounds/alley.png with her feet at
+   shoulder."* (Tier 1 only, always works once Step 4 is done.)
+3. **Tier 2, optional:** *"Generate that pose again with identity_mode='plus' so
+   it locks onto her reference more strongly"* — or pass `pose_ref_path` to a
+   photo of someone in the target pose to pin it via OpenPose.
+4. **Tier 3, optional:** *"Bake a LoRA for aria"* (`bake_character_lora`) once
+   you have 10-20 good references — see Step 7 for its setup. Once it finishes
+   (`check_lora_training`), every later `generate_character_pose` call for her
+   uses it automatically.
+5. Composite it: *"Composite that onto backgrounds/alley.png with her feet at
    (512, 780), 340px tall."*
 
 ### Helper scripts (`tools/`)
@@ -192,6 +240,42 @@ personal, often commissioned/licensed art, and shouldn't be redistributed.
 
 ---
 
+## Step 7 — Tier 3 setup: kohya-ss/sd-scripts (optional, advanced)
+
+> **Heads-up — this is the heaviest step in this whole server.** It's a separate
+> ~5 GB ML training toolkit with its own venv, not a ComfyUI custom node. Skip
+> this entirely if Tier 1/2 are enough for you; nothing else in this server
+> depends on it.
+
+```bash
+git clone https://github.com/kohya-ss/sd-scripts.git C:/AI/sd-scripts
+cd C:/AI/sd-scripts
+python -m venv venv
+venv/Scripts/python -m pip install -r requirements.txt
+venv/Scripts/python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+venv/Scripts/python -m accelerate.commands.config default
+```
+
+The last line runs `accelerate`'s one-time setup non-interactively with sane
+single-GPU defaults; run `venv/Scripts/python -m accelerate.commands.config`
+(without `default`) instead if you want to answer the prompts yourself (e.g. to
+pick `bf16` over `fp16`, or if you have multiple GPUs).
+
+Then point this server at it (defaults assume the path above — only needed if
+yours differs):
+
+```bash
+export WEBCOMIC_CHAR_KOHYA_DIR="C:/AI/sd-scripts"          # Windows: set / setx
+export WEBCOMIC_CHAR_COMFY_MODELS="C:/AI/ComfyUI_windows_portable/ComfyUI/models"
+```
+
+`bake_character_lora` reads the checkpoint straight off disk (unlike Tier 1/2,
+which only ever talk to ComfyUI's HTTP API) and writes the trained LoRA into
+`WEBCOMIC_CHAR_COMFY_MODELS/loras/` — set the latter if this server isn't sharing
+`webcomic-background-mcp`'s ComfyUI install.
+
+---
+
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |
@@ -205,6 +289,9 @@ personal, often commissioned/licensed art, and shouldn't be redistributed.
 | `WEBCOMIC_CHAR_PROJECT` | `default` | Default project when none is specified |
 | `WEBCOMIC_CHAR_COMFY_DIR` / `WEBCOMIC_CHAR_COMFY_LAUNCH` | `C:\AI\ComfyUI_windows_portable` / `run_nvidia_gpu.bat` | Auto-launch location/script for ComfyUI |
 | `WEBCOMIC_CHAR_AUTOLAUNCH` | `1` | Set `0` to require a manually-started ComfyUI (avoids two servers racing to launch it if you run both) |
+| `WEBCOMIC_CHAR_COMFY_MODELS` | `<COMFY_DIR>/ComfyUI/models` | **Tier 3 only** — ComfyUI's `models/` folder as a real filesystem path (training reads the checkpoint off disk and writes the output LoRA here; Tier 1/2 never need this, they only talk to ComfyUI's HTTP API) |
+| `WEBCOMIC_CHAR_KOHYA_DIR` | `C:\AI\sd-scripts` | **Tier 3 only** — where kohya-ss/sd-scripts is checked out |
+| `WEBCOMIC_CHAR_KOHYA_PYTHON` | `<KOHYA_DIR>/venv/Scripts/python.exe` | **Tier 3 only** — the Python with sd-scripts' deps installed |
 
 ## Troubleshooting
 
@@ -215,15 +302,35 @@ personal, often commissioned/licensed art, and shouldn't be redistributed.
   perfectly reliable; regenerate with a different seed, or lower `ref_denoise` to stay
   closer to the reference's own clean framing.
 - **Pose looks like a different character** — `ref_denoise` is too high for how
-  ambitious the pose is. Lower it (closer to the reference) or accept that Tier 1 has
-  a real drift ceiling — Tier 2/3 exist for exactly this reason, but aren't built yet.
+  ambitious the pose is. Lower it, turn on `identity_mode="plus"` (Tier 2), or bake a
+  LoRA (Tier 3) if you need this character in many panels.
+- **`generate_character_pose` fails with an unknown node / `IPAdapterUnifiedLoader`
+  error** — the `ComfyUI_IPAdapter_plus` custom node (Step 3) isn't installed, or
+  `setup_models.py` hasn't been run (Step 2). Only relevant when `identity_mode` is
+  set — Tier 1 alone never touches these nodes.
+- **`bake_character_lora` fails with "kohya-ss Python not found"** — Step 7 hasn't
+  been done, or `WEBCOMIC_CHAR_KOHYA_DIR`/`WEBCOMIC_CHAR_KOHYA_PYTHON` point at the
+  wrong path.
+- **`bake_character_lora` fails with "Checkpoint not found"** — `WEBCOMIC_CHAR_COMFY_MODELS`
+  doesn't point at a real ComfyUI `models/` folder, or the checkpoint file for the
+  chosen `model` isn't actually downloaded there.
+- **Training seems stuck / `check_lora_training` shows no new log lines for a long
+  time** — the first few minutes are usually the base model loading into VRAM; if
+  it's been 10+ minutes with zero progress, check the full log
+  (`check_lora_training`'s response includes the path) for an out-of-memory error —
+  a 3060 12GB is the assumed baseline; lower `resolution` or `network_dim` on a
+  smaller GPU.
 - **The tool never appears in your MCP client** — see
   `webcomic-background-mcp`'s note: fully quit (not just close the window) and relaunch.
 
 ## Status
 
-Working Tier-1 prototype: Character Bible, img2img pose generation with auto-matting,
-and deterministic panel compositing are implemented and callable from an MCP client.
-Tier 2 (IP-Adapter + OpenPose) and Tier 3 (LoRA baking) are designed but not built —
-see the "Consistency tiers" section above.
+All three consistency tiers are implemented: Character Bible, Tier-1 img2img pose
+generation with auto-matting, Tier-2 IP-Adapter/OpenPose (graph construction unit-
+verified; live generation not yet exercised against a running ComfyUI), Tier-3
+async LoRA baking (dataset prep, command construction, and the job lifecycle
+verified with a stub trainer; a real kohya-ss training run not yet exercised
+live), and deterministic panel compositing — all callable from an MCP client.
+Verify Tier 2/3 end-to-end against real ComfyUI/kohya-ss installs before relying
+on them for production panels.
 Built with [Claude Code](https://claude.com/claude-code).

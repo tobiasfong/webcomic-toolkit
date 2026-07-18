@@ -26,7 +26,10 @@ A character entry:
     "tags":        ["protagonist", "mage"],
     "refs":        ["starry_knight/aria/ref_01.png", "starry_knight/aria/ref_02.png"],
                    (each relative to CHAR_ROOT; refs[0] is the "primary" reference
-                   used as the img2img seed for Tier-1 pose generation)
+                   used as the img2img/IP-Adapter seed)
+    "lora":        "character_aria.safetensors",  (optional; set by
+                   set_character_lora() once Tier 3 bakes one — a filename in
+                   ComfyUI's models/loras/, auto-used by generate_character_pose)
     "added":       "2026-07-18T..."
   }
 
@@ -222,6 +225,26 @@ def list_projects() -> list[str]:
         if os.path.isfile(os.path.join(CHAR_ROOT, name, "characters.json")):
             out.append(name)
     return sorted(out)
+
+
+def set_character_lora(character_id: str, lora_filename: str,
+                       project: str | None = None) -> dict:
+    """Record a baked Tier-3 LoRA on a character's bible entry (the filename as
+    placed in ComfyUI's models/loras/, ready for the existing `lora=` mechanism
+    in workflow.py). generate_character_pose auto-uses this as the default lora
+    once set, unless a caller passes their own `lora=`."""
+    char_id = _slug(character_id)
+    data = _load(project)
+    entry = data.get(char_id)
+    if entry is None:
+        raise CharacterError(
+            f"No character '{character_id}' in project "
+            f"'{_slug(project or DEFAULT_PROJECT)}'. Register it first."
+        )
+    entry["lora"] = lora_filename
+    data[char_id] = entry
+    _save(project, data)
+    return {"id": char_id, **entry}
 
 
 def forget_character(character_id: str, delete_images: bool = False,
