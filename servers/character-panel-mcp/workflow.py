@@ -62,6 +62,32 @@ IDENTITY_PRESETS = {
                                             # deliberately not built here)
 }
 
+# --- SDXL prototype (2026-07-19) ---------------------------------------------
+# Additional, opt-in model family alongside MODELS/SD1.5 above — NOT a
+# replacement. Tried after real testing this session showed SD1.5 (specifically
+# solstice_manhwa_v10) cannot produce genuine back views or clean full-body
+# anatomy no matter how the Tier-1/2 prompt/weights are tuned; see CHANGELOG.
+# Nothing SD1.5-related is removed by this — `model="mj_manga_sdxl"` is just a
+# new option alongside "solstice"/"counterfeit"/"dreamshaper".
+SDXL_MODELS = {
+    "mj_manga_sdxl": {"ckpt": "sd_xl_base_1.0.safetensors",
+                      "vae": "sdxl_vae_fp16fix.safetensors"},
+}
+# Midjourney Manga Art Style SDXL LoRA (civitai.com/models/185798) — trigger
+# word "mj manga" (must be in the prompt for the LoRA to take effect),
+# recommended clip skip 2 (see CLIP_SKIP_SDXL below) and strength 0.8.
+SDXL_LORA = os.environ.get("WEBCOMIC_CHAR_SDXL_LORA", "MJMangaSDXL.safetensors")
+SDXL_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_SDXL_LORA_STRENGTH", "0.8"))
+SDXL_LORA_TRIGGER = "mj manga"
+CLIP_SKIP_SDXL = int(os.environ.get("WEBCOMIC_CHAR_SDXL_CLIP_SKIP", "2"))
+
+# Tier-2 SDXL equivalents. ControlNet uses the rank-256 LoRA-style variant
+# (774 MB), not the full 5 GB OpenPoseXL2 model — the full model alone would
+# exceed most consumer VRAM budgets alongside an already-6.94 GB checkpoint.
+SDXL_IPADAPTER = "ip-adapter-plus_sdxl_vit-h.safetensors"
+SDXL_CLIP_VISION = "CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors"
+SDXL_CONTROLNET_OPENPOSE = "control-lora-openposeXL2-rank256.safetensors"
+
 # --- Auto-launch config (mirrors webcomic-background-mcp) -------------------
 COMFY_DIR = os.environ.get("WEBCOMIC_CHAR_COMFY_DIR", r"C:\AI\ComfyUI_windows_portable")
 COMFY_LAUNCH = os.environ.get("WEBCOMIC_CHAR_COMFY_LAUNCH", "run_nvidia_gpu.bat")
@@ -139,13 +165,21 @@ def _upload_image(path: str) -> str:
 # Tier-1's actual mechanism: a plain/clean backdrop so the render mattes cleanly
 # afterward. Appended automatically — see generate()'s prompt/negative handling.
 CLEAN_BACKDROP_SUFFIX = (
-    ", plain flat light-gray studio backdrop, solid color background, "
+    ", solo, plain flat light-gray studio backdrop, solid color background, "
     "full body, standing pose, simple even lighting, clean sharp edges"
 )
 CLEAN_BACKDROP_NEGATIVE = (
     "background clutter, scenery, room, outdoors, patterned background, "
     "multiple people, crowd, extra limbs, extra fingers, fused fingers, "
-    "mutated hands, poorly drawn face, blurry, low quality, watermark, text, signature"
+    "mutated hands, poorly drawn face, blurry, low quality, watermark, text, signature, "
+    # Added 2026-07-19 after live testing against busy source illustrations: a
+    # reference image with its own VFX (magic circles, fire, ice) bleeds those
+    # effects into every render regardless of the backdrop prompt, because
+    # IP-Adapter's identity conditioning doesn't separate "this person" from
+    # "this scene." Suppress the common categories explicitly.
+    "magic effects, spell effects, glowing runes, glowing effects, particle effects, "
+    "motion lines, speed lines, energy effects, sparkles, fire, flames, embers, "
+    "ice, ice crystals"
 )
 DEFAULT_NEGATIVE = "blurry, low quality, watermark, text, signature, deformed"
 
@@ -169,6 +203,8 @@ def build_graph(
     ip_adapter_weight: float = 0.8,
     pose_ref_name: str | None = None,
     pose_strength: float = 1.0,
+    sdxl: bool = False,
+    pose_preprocess: bool = True,
 ) -> dict:
     """Assemble the ComfyUI API graph.
 
@@ -184,7 +220,14 @@ def build_graph(
     than compete. OpenPose (pose_ref_name) extracts a pose skeleton from a
     supplied photo via the OpenposePreprocessor node and pins the *pose* via
     ControlNet, chained onto positive/negative the same way a composition
-    ControlNet does in webcomic-background-mcp."""
+    ControlNet does in webcomic-background-mcp.
+
+    sdxl (2026-07-19 prototype): when True, inserts a CLIPSetLastLayer node
+    (clip skip, per the Midjourney Manga Art Style LoRA's recommended setting)
+    and resolves the OpenPose ControlNet filename from the SDXL registry
+    instead of the SD1.5 one. IPAdapterUnifiedLoader needs no special handling
+    here — its preset resolution is expected to auto-detect SD1.5 vs SDXL from
+    the loaded checkpoint architecture (verify this holds in practice)."""
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt_name}},
         "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
@@ -196,13 +239,22 @@ def build_graph(
         g["41"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}}
         vae_ref = ["41", 0]
 
-    use_lora = LORA if lora_name is None else lora_name
-    use_lora_strength = LORA_STRENGTH if lora_strength is None else lora_strength
+    if sdxl:
+        use_lora = SDXL_LORA if lora_name is None else lora_name
+        use_lora_strength = SDXL_LORA_STRENGTH if lora_strength is None else lora_strength
+    else:
+        use_lora = LORA if lora_name is None else lora_name
+        use_lora_strength = LORA_STRENGTH if lora_strength is None else lora_strength
     if use_lora:
         g["40"] = {"class_type": "LoraLoader",
                    "inputs": {"model": ["4", 0], "clip": ["4", 1], "lora_name": use_lora,
                               "strength_model": use_lora_strength, "strength_clip": use_lora_strength}}
         base_model, base_clip = ["40", 0], ["40", 1]
+
+    if sdxl and CLIP_SKIP_SDXL:
+        g["42"] = {"class_type": "CLIPSetLastLayer",
+                   "inputs": {"clip": base_clip, "stop_at_clip_layer": -CLIP_SKIP_SDXL}}
+        base_clip = ["42", 0]
 
     # --- Tier 2: IP-Adapter identity branch ---
     if ip_adapter_image_name and ip_adapter_preset:
@@ -228,15 +280,28 @@ def build_graph(
     # --- Tier 2: OpenPose ControlNet branch ---
     if pose_ref_name:
         g["60"] = {"class_type": "LoadImage", "inputs": {"image": pose_ref_name}}
-        g["61"] = {"class_type": "OpenposePreprocessor",
-                   "inputs": {"image": ["60", 0], "detect_hand": "enable",
-                              "detect_body": "enable", "detect_face": "enable",
-                              "resolution": 512}}
+        # pose_preprocess=True: the input is a photo/artwork — extract its
+        # skeleton via OpenposePreprocessor. pose_preprocess=False: the input
+        # IS already an OpenPose-format map (e.g. synthesized by mannequin.py)
+        # — feed it to ControlNet directly; running the preprocessor over a
+        # stick figure would try to detect a human in it and fail.
+        if pose_preprocess:
+            g["61"] = {"class_type": "OpenposePreprocessor",
+                       "inputs": {"image": ["60", 0], "detect_hand": "enable",
+                                  "detect_body": "enable", "detect_face": "enable",
+                                  "resolution": 512}}
+            pose_image_ref = ["61", 0]
+        else:
+            pose_image_ref = ["60", 0]
+        # SDXL uses the rank-256 LoRA-style ControlNet (774 MB, not the full
+        # 5 GB model) — loads fine via the standard ControlNetLoader node
+        # (verified live 2026-07-19).
         g["62"] = {"class_type": "ControlNetLoader",
-                   "inputs": {"control_net_name": CONTROLNET_OPENPOSE}}
+                   "inputs": {"control_net_name":
+                              SDXL_CONTROLNET_OPENPOSE if sdxl else CONTROLNET_OPENPOSE}}
         g["63"] = {"class_type": "ControlNetApplyAdvanced",
                    "inputs": {"positive": pos_ref, "negative": neg_ref,
-                              "control_net": ["62", 0], "image": ["61", 0],
+                              "control_net": ["62", 0], "image": pose_image_ref,
                               "strength": pose_strength,
                               "start_percent": 0.0, "end_percent": 1.0}}
         pos_ref, neg_ref = ["63", 0], ["63", 1]
@@ -295,6 +360,7 @@ def generate(
     ip_adapter_weight: float = 0.8,
     pose_ref_path: str | None = None,
     pose_strength: float = 1.0,
+    pose_preprocess: bool = True,
     timeout: int = 300,
 ) -> str:
     """Run the pipeline; return the path to the saved (un-matted) PNG.
@@ -311,13 +377,22 @@ def generate(
     pure txt2img + IP-Adapter (more pose range, relies entirely on IP-Adapter for
     identity). pose_ref_path (a photo of someone in the target pose) pins the pose
     via OpenPose ControlNet. Both need the Tier-2 models from setup_models.py and
-    the ComfyUI_IPAdapter_plus custom node — see README.md."""
+    the ComfyUI_IPAdapter_plus custom node — see README.md.
+
+    model may also be an SDXL prototype entry (see SDXL_MODELS, 2026-07-19) —
+    resolved automatically here, no separate flag needed from callers."""
     ensure_comfy_running()
 
-    if model not in MODELS:
-        raise ComfyUIError(f"Unknown model '{model}'. Options: {', '.join(MODELS)}")
-    ckpt_name = MODELS[model]["ckpt"]
-    vae_name = MODELS[model]["vae"]
+    sdxl = model in SDXL_MODELS
+    if sdxl:
+        ckpt_name = SDXL_MODELS[model]["ckpt"]
+        vae_name = SDXL_MODELS[model]["vae"]
+    elif model in MODELS:
+        ckpt_name = MODELS[model]["ckpt"]
+        vae_name = MODELS[model]["vae"]
+    else:
+        raise ComfyUIError(f"Unknown model '{model}'. Options: "
+                           f"{', '.join(list(MODELS) + list(SDXL_MODELS))}")
 
     if identity_mode != "off" and identity_mode not in IDENTITY_PRESETS:
         raise ComfyUIError(f"Unknown identity_mode '{identity_mode}'. "
@@ -329,8 +404,22 @@ def generate(
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
 
+    # SDXL is native at ~1024²-class resolutions; the SD1.5 defaults (640x896)
+    # under-drive it. If the caller left the defaults untouched, bump to the
+    # portrait resolution every live SDXL test this session validated. Explicit
+    # width/height are always respected.
+    if sdxl and (width, height) == (640, 896):
+        width, height = 832, 1216
+
     full_prompt = f"{prompt}{CLEAN_BACKDROP_SUFFIX}"
     full_negative = f"{negative}, {CLEAN_BACKDROP_NEGATIVE}"
+    # The SDXL LoRA only activates with its trigger word in the prompt — bake
+    # it in automatically (this model entry IS the LoRA, unlike the optional
+    # style-LoRA pool elsewhere, so there's no case where a caller would want
+    # mj_manga_sdxl selected without the trigger).
+    use_lora_name = SDXL_LORA if (sdxl and lora is None) else lora
+    if sdxl and use_lora_name and SDXL_LORA_TRIGGER not in full_prompt:
+        full_prompt = f"{SDXL_LORA_TRIGGER}, {full_prompt}"
 
     ref_image_name = _upload_image(ref_path) if ref_path else None
     ip_adapter_preset = IDENTITY_PRESETS.get(identity_mode)
@@ -340,9 +429,9 @@ def generate(
 
     graph = build_graph(full_prompt, full_negative, width, height, seed, steps, cfg,
                         ckpt_name, vae_name, ref_image_name, ref_denoise,
-                        lora, lora_strength,
+                        use_lora_name, lora_strength,
                         ip_adapter_image_name, ip_adapter_preset, ip_adapter_weight,
-                        pose_ref_name, pose_strength)
+                        pose_ref_name, pose_strength, sdxl, pose_preprocess)
 
     data = _submit_and_wait(graph, timeout)
     os.makedirs(out_dir, exist_ok=True)
@@ -355,6 +444,38 @@ def generate(
     with open(out_path, "wb") as f:
         f.write(data)
     return out_path
+
+
+def generate_concepts(
+    prompt: str,
+    out_dir: str,
+    n: int = 4,
+    negative: str = DEFAULT_NEGATIVE,
+    width: int = 640,
+    height: int = 896,
+    seed: int | None = None,
+    model: str = DEFAULT_MODEL,
+    lora: str | None = None,
+    lora_strength: float | None = None,
+    timeout: int = 300,
+) -> list[str]:
+    """Batch txt2img candidates for a character that does NOT exist in the
+    bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md §8b.6): a writer with
+    a story but no reference art. Just loops generate() with ref_path=None (pure
+    txt2img — generate() already supports this) over n distinct seeds; one graph
+    submit per seed, GPU-local, no token cost. Returns the saved PNG paths —
+    nothing is registered here, the caller picks a winner and calls
+    register_character."""
+    if n < 1:
+        raise ComfyUIError("generate_concepts needs n >= 1.")
+    paths = []
+    for i in range(n):
+        s = None if seed is None else seed + i
+        path = generate(prompt=prompt, out_dir=out_dir, negative=negative,
+                        width=width, height=height, seed=s, model=model,
+                        lora=lora, lora_strength=lora_strength, timeout=timeout)
+        paths.append(path)
+    return paths
 
 
 def matte(image_path: str, out_path: str | None = None) -> str:

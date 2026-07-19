@@ -4,4 +4,7 @@ requests>=2.31.0
 pillow>=10.0.0
 # Tier-1 auto-matte (clean-backdrop pose renders -> RGBA cutouts). Downloads its own
 # u2net ONNX model to the user's home dir on first use — no ComfyUI custom node needed.
+# `rembg` alone does NOT pull in a working inference backend (silently fails at
+# runtime with "No onnxruntime backend found") — onnxruntime must be explicit.
 rembg>=2.0.50
+onnxruntime>=1.16.0

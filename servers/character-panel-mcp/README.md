@@ -1,11 +1,12 @@
 # Character & Panel Generator — MCP Server
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server for **writers
-who aren't artists**: you have existing character reference art (commissioned, or a
-ChatGPT/Midjourney character sheet) and a story, but can't draw consistent panels of
-your own characters. This tool registers your references as a **Character Bible**,
-generates new poses that stay recognizably the same character, and composites them
-onto background plates into finished panels — wrapping a local ComfyUI + Stable
+who aren't artists** — and for artists who'd rather not redraw the same character six
+times before page one. Whether you already have reference art (commissioned, or a
+ChatGPT/Midjourney character sheet), have a story and nothing else, or have one good
+drawing of a character, this tool gets it into a **Character Bible**, generates new
+poses and turnaround views that stay recognizably the same character, and composites
+them onto background plates into finished panels — wrapping a local ComfyUI + Stable
 Diffusion pipeline.
 
 It's the character-domain sibling of
@@ -17,13 +18,19 @@ local ComfyUI by default.
 
 ## What it does
 
-Eight tools:
+Fourteen tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
   **appends** more references rather than replacing them.
 - **`list_characters`** / **`forget_character`** / **`list_projects`** — browse and
   curate the bible. Projects namespace characters per-comic, same as World Builder.
+- **`generate_character_concept`** / **`crop_reference`** / **`generate_reference_sheet`**
+  — **Concept Genesis**: get a character into the bible in the first place (see
+  below), whether you're starting from nothing, a composite sheet, or one drawing.
+- **`generate_pose_map`** — synthesize an OpenPose control map from a posable 3D
+  skeleton at any angle (front, side, **genuine back view**), for when a text
+  prompt or a 2D reference photo can't force the direction (see below).
 - **`generate_character_pose`** — render the character in a new pose, layering all
   three consistency tiers (see below), auto-matted to a clean RGBA cutout.
 - **`bake_character_lora`** / **`check_lora_training`** / **`cancel_lora_training`**
@@ -32,8 +39,8 @@ Eight tools:
 - **`compose_panel`** — deterministic CPU compositing: paste a matted character onto
   a background plate at a given feet position and height. Zero GPU, zero tokens,
   instant to iterate.
-- **`check_status`** — is the ComfyUI backend up? (Only `generate_character_pose`
-  needs it — the bible and `compose_panel` are GPU-free.)
+- **`check_status`** — is the ComfyUI backend up? (Only tools that generate pixels
+  need it — the bible, `crop_reference`, and `compose_panel` are GPU-free.)
 
 ## Consistency tiers
 
@@ -45,7 +52,7 @@ used automatically:
 | Tier | Mechanism | Status |
 |------|-----------|--------|
 | **1 — img2img from a reference** | Seed the render with the character's primary reference image (like World Builder's `location_denoise` mode). Good for "same character, slightly different angle." Drifts on anything ambitious. | ✅ **Shipped** |
-| **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity* (`identity_mode="plus"` or `"plus_face"`); an OpenPose ControlNet pins the *pose* from a supplied photo (`pose_ref_path`). | ✅ **Shipped** — needs the Tier-2 models (`setup_models.py`) + the `ComfyUI_IPAdapter_plus` custom node |
+| **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity* (`identity_mode="plus"` or `"plus_face"`); an OpenPose ControlNet pins the *pose* from a supplied photo, or a synthesized map from `generate_pose_map` (`pose_ref_path`). | ✅ **Shipped** — needs the Tier-2 models (`setup_models.py`) + the `ComfyUI_IPAdapter_plus` custom node |
 | **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set (`bake_character_lora`, via kohya-ss/sd-scripts). Strongest, one-time cost per character (~30-90 min on a 3060-class GPU). Once baked, used automatically by `generate_character_pose`. **Bakes in the Niji V5 Style LoRA by default** (merged into the checkpoint before training via sd-scripts' `--base_weights`) — pass `style_lora=""` to train against a plain checkpoint instead. | ✅ **Shipped** — needs a separate kohya-ss install, the heaviest setup step |
 
 **Not built: true FaceID.** Tier 2's `"plus_face"` preset (from `h94/IP-Adapter`
@@ -57,6 +64,98 @@ not silently dropped; revisit if `"plus_face"` proves insufficient in practice.
 **"Consistent enough for a webtoon with curation," not pixel-perfect** — even the
 strongest tier drifts on extreme angles, complex hand poses, and costume details. The
 writer curates; the tool narrows the drift, it doesn't eliminate it.
+
+## Concept Genesis: getting a character into the bible
+
+Everything above assumes a character is already registered. Concept Genesis is the
+on-ramp — **three starting points, all converging on the same reference-growth tool**:
+
+| You have... | Use | Then |
+|---|---|---|
+| A story, no art at all | `generate_character_concept` — batch txt2img candidates from a text description | Pick the winner, `register_character` it |
+| A composite concept sheet (ChatGPT/Midjourney sheet generator — hero pose + expressions + text overlay, all one image) | `crop_reference` — slice it into clean single-view crops | `register_character` the crops |
+| One finished drawing of your own character | Nothing — `register_character` the drawing directly | Straight to `generate_reference_sheet` |
+
+All three land in the same place: `generate_reference_sheet` grows a registered
+character's reference set toward a standard turnaround checklist (front/back/side/3-4
+views + expression close-ups), one Tier-2 identity-locked generation per view. By
+default all views are also laid out on one labeled grid image (`compose_sheet.py` —
+zero GPU, deterministic PIL) so you can eyeball the whole set at once, the way a
+traditional turnaround sheet reads — the individual files are still what you pass to
+`register_character`. You curate the keepers and register them in — the same
+append-on-reregister behavior every tier already relies on.
+
+**Write a real `description` before generating a sheet.** This turned out to matter
+more than expected: without visual detail in the character's bible entry (hair/eye/skin
+color, build, costume colors — see `register_character`'s docstring), the text prompt
+has nothing to anchor identity with, and the tool leans entirely on the reference
+image — dragging its *exact* pose and background along too, not just the character.
+`register_character(..., description="...")` fixes this at essentially zero cost.
+
+**For artists specifically** (this tool started life solving Tobias's own "ugh, my
+sensei wants back view, front view, hands, before I can even start the actual comic"
+problem): register your one drawing, then `generate_reference_sheet` answers the
+rotational questions — what does the back of the outfit look like, how does the
+silhouette read from the side — as **reference to draw from**, not final art. The
+output renders in the checkpoint/LoRA's style, not yours, so treat it the way you'd
+treat a 3D model turntable: a spatial answer key, not the page art itself. Pass
+`lora=""` if you don't want the Niji V5 style fighting your own art direction, and
+feed in a clean full-body drawing on a plain background — it conditions far better
+than a busy illustration.
+
+**Nothing auto-registers, ever.** `generate_character_concept` and
+`generate_reference_sheet` only ever produce candidates for you to look at — the same
+staging discipline as `bake_character_lora` never auto-training on garbage refs.
+A human always picks the canon.
+
+**Honest caveat:** genesis is bootstrapped, not solved. The very first image (or your
+own drawing) is the only ground truth; every other view is Tier-2 *inference* from it,
+which means back/side views of a character who only exists as one front-view image
+will drift and need retries. This is exactly what curation is for — and once you've
+accumulated ~10-20 curated views, `bake_character_lora` locks in the strongest version
+of what you approved.
+
+**Real-world tuning note (2026-07-19, from an actual test against RxR art):**
+`generate_reference_sheet`'s original defaults (`ip_adapter_weight=0.8`,
+`ref_denoise=0.7`) let a busy source illustration (dynamic pose, VFX) dominate every
+view regardless of the requested angle or the clean-backdrop prompt — every "view"
+came back as a near-identical re-roll of the source composition, VFX and all, and
+two people occasionally appeared in one frame. Fixed in three steps: `ref_denoise=1.0`
+and `ip_adapter_weight=0.25` (much lower — identity now leans on a real `description`
+instead of the reference's whole scene), explicit VFX-suppression terms and a `solo`
+tag added to `workflow.py`'s clean-backdrop prompt/negative globally (not just for
+sheets), which also fixed the two-people artifact. Backdrop cleanliness and identity
+consistency are now solid — but **genuine back-view turnarounds remain unreliable**
+even with all of this fixed: "back view" reliably renders a different 3/4-ish angle,
+not an actual view from behind. This looks like a real limitation of this SD1.5
+checkpoint for non-front angles, separate from the composition-anchoring bug above
+and not solved by further prompt/weight tuning. For a back view you actually need,
+`generate_character_pose`'s `pose_ref_path` (an actual back-facing photo, via
+OpenPose) forces the angle structurally instead of hoping the prompt gets there.
+
+## Genuine back views: the 3D mannequin
+
+A text prompt saying "back view" and a real photo fed through OpenPose both hit
+the same wall: the checkpoint can paint back-body geometry, but the *pose
+conditioning itself* never unambiguously says "this is the back" — a 2D photo's
+skeleton is *extracted* by guessing left/right limb assignment from appearance,
+which has no way to encode facing-away-from-camera, so every clean single-figure
+result relaxes back toward front/profile. (~12 tuning configurations confirmed
+this the hard way — see CHANGELOG's "back-view campaign.")
+
+`generate_pose_map(preset, yaw)` sidesteps extraction entirely: it poses and
+rotates a 3D skeleton, then projects it straight into an OpenPose-format map.
+At `yaw=180` the left/right limb colors flip and the face keypoints vanish —
+exactly like a real back-view annotation, because it's built from an actual 3D
+angle instead of guessed from a flat image. Feed the result to
+`generate_character_pose(pose_ref_path=<map>, pose_preprocess=False, pose_strength=1.4)`.
+
+**It works, but it's a curate-a-few-seeds tool, not a one-shot button** —
+identical settings with a different seed can still come back front-facing.
+Generate 2-3 seeds at `pose_strength≈1.4-1.5` for yaw≥135° and pick the hit,
+same discipline as everything else in this server. `identity_mode="off"` (or a
+low `ip_adapter_weight`) is recommended at this strength until identity
+retention on strongly-rotated poses gets its own testing pass.
 
 ## How a panel gets made
 
@@ -99,7 +198,10 @@ compatible shape.
                                                webcomic-background-mcp)
                     training.py   ──subprocess──►  kohya-ss/sd-scripts  ──►  GPU
                     (Tier-3, async)                (separate install/venv)
-                    tools/compose_panel.py  (pure PIL, no GPU)
+                    tools/compose_panel.py    (pure PIL, no GPU)
+                    tools/crop_reference.py  (pure PIL, no GPU)
+                    tools/compose_sheet.py   (pure PIL, no GPU)
+                    mannequin.py             (3D pose synthesis, pure numpy+PIL, no GPU)
 ```
 
 ### Why it's a *local* server
@@ -210,18 +312,36 @@ After adding it, **fully quit and relaunch the client** (see Troubleshooting).
 
 ## Step 6 — Use it
 
+**Already have reference art?**
 1. Register a character: *"Register these three images of Aria as a character named
    'aria' in project 'starry_knight'."*
+
+**No art yet?**
+1. *"Generate 4 character concepts: gaunt young man, long nose, manic grin,
+   purple-and-black military uniform, white gloves, gold pocket chain"*
+   (`generate_character_concept`) — pick the one that's your character, then
+   register it the same way as above.
+
+**Have a composite concept sheet (ChatGPT/Midjourney-generated)?**
+1. *"Crop this sheet into the hero pose and the three expression panels"*
+   (`crop_reference` — give it the pixel boxes, or ask the harness to look once
+   and propose them), then register the crops.
+
+**From here on, all paths converge:**
+
 2. Generate a pose: *"Generate a pose of aria: arms crossed, looking over her
    shoulder."* (Tier 1 only, always works once Step 4 is done.)
-3. **Tier 2, optional:** *"Generate that pose again with identity_mode='plus' so
+3. **Grow the reference set:** *"Generate a reference sheet for aria"*
+   (`generate_reference_sheet`) — front/back/side/3-4 views + expressions, one
+   generation each. Curate the keepers, `register_character` them in.
+4. **Tier 2, optional:** *"Generate that pose again with identity_mode='plus' so
    it locks onto her reference more strongly"* — or pass `pose_ref_path` to a
    photo of someone in the target pose to pin it via OpenPose.
-4. **Tier 3, optional:** *"Bake a LoRA for aria"* (`bake_character_lora`) once
+5. **Tier 3, optional:** *"Bake a LoRA for aria"* (`bake_character_lora`) once
    you have 10-20 good references — see Step 7 for its setup. Once it finishes
    (`check_lora_training`), every later `generate_character_pose` call for her
    uses it automatically.
-5. Composite it: *"Composite that onto backgrounds/alley.png with her feet at
+6. Composite it: *"Composite that onto backgrounds/alley.png with her feet at
    (512, 780), 340px tall."*
 
 ### Helper scripts (`tools/`)
@@ -230,6 +350,17 @@ After adding it, **fully quit and relaunch the client** (see Troubleshooting).
   ```bash
   python tools/compose_panel.py character.png --feet-x 512 --feet-y 780 \
       --height-px 340 --background plate.png --out panel.png
+  ```
+- **`crop_reference.py`** — also runnable standalone from the CLI:
+  ```bash
+  python tools/crop_reference.py sheet.png --box 40,20,300,600 \
+      --box 320,20,580,600 --out-dir crops/
+  ```
+- **`compose_sheet.py`** — the grid layout `generate_reference_sheet` builds
+  automatically; also runnable standalone on any set of images:
+  ```bash
+  python tools/compose_sheet.py front.png back.png side.png \
+      --label front --label back --label side --out sheet.png
   ```
 
 ### Your asset library (you provide this)
@@ -284,6 +415,40 @@ that first, or pass `style_lora=""` to bake against a plain checkpoint instead.
 
 ---
 
+## Step 8 — SDXL prototype (optional, experimental): `model="mj_manga_sdxl"`
+
+> Added 2026-07-19 after live testing showed the SD1.5 stack's ceiling: distorted
+> full-body anatomy ("spider legs") and no genuine back views, regardless of
+> tuning. SDXL + the [Midjourney Manga Art Style LoRA](https://civitai.com/models/185798)
+> **fixes the anatomy and art-quality problems outright** (verified live on a
+> 6 GB RTX 3060 Laptop — ~30s warm generations, ~75s cold). It does NOT solve
+> back views (see the honest limitation below).
+
+```bash
+python setup_models_sdxl.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI" --stage1-only
+```
+
+`--stage1-only` fetches checkpoint + VAE + LoRA (~7.5 GB) — enough for Tier-1
+generation. Run again without it for the SDXL IP-Adapter/CLIP-vision/OpenPose
+models (~4.5 GB more) once you want Tier 2. Then just pass
+`model="mj_manga_sdxl"` to any generation tool — the LoRA's `mj manga` trigger
+word and SDXL-native resolution (832×1216 when you leave width/height at their
+defaults) are applied automatically. Existing SD1.5 models are untouched; this
+is an additional option, not a migration.
+
+**Validated settings** (from the live tuning session): `ip_adapter_weight≈0.3`
+for identity without scene-dragging, `ref_denoise=1.0` for pose freedom, and the
+anti-duplicate negatives now baked into `generate_reference_sheet` by default.
+
+**Genuine back views:** ~12 tuning configurations across SD1.5 and SDXL
+(prompt-only, img2img, IP-Adapter sweeps, pure text, OpenPose ControlNet at
+strengths 1.0–1.6 with face keypoints on/off) all failed to reach a clean
+single-figure back view — a checkpoint-level prior in how 2D-extracted pose
+conditioning works, not a tuning problem. This is what the **3D mannequin**
+(`generate_pose_map`, see above) was built to solve, and does — see
+CHANGELOG's "back-view campaign" for the full record and its honest
+stochastic caveat.
+
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |
@@ -302,6 +467,8 @@ that first, or pass `style_lora=""` to bake against a plain checkpoint instead.
 | `WEBCOMIC_CHAR_KOHYA_PYTHON` | `<KOHYA_DIR>/venv/Scripts/python.exe` | **Tier 3 only** — the Python with sd-scripts' deps installed |
 | `WEBCOMIC_CHAR_BAKE_STYLE_LORA` | `NijiV5Style.safetensors` | **Tier 3 only** — default `style_lora` for `bake_character_lora` (merged into the checkpoint before training); set empty to default to plain-checkpoint bakes |
 | `WEBCOMIC_CHAR_BAKE_STYLE_LORA_MULTIPLIER` | `1.0` | **Tier 3 only** — default strength of that style merge |
+| `WEBCOMIC_CHAR_SDXL_LORA` | `MJMangaSDXL.safetensors` | **SDXL prototype** — style LoRA auto-applied with `model="mj_manga_sdxl"` (trigger word added automatically) |
+| `WEBCOMIC_CHAR_SDXL_LORA_STRENGTH` / `WEBCOMIC_CHAR_SDXL_CLIP_SKIP` | `0.8` / `2` | **SDXL prototype** — the LoRA author's recommended settings |
 
 ## Troubleshooting
 
@@ -333,17 +500,32 @@ that first, or pass `style_lora=""` to bake against a plain checkpoint instead.
   (`check_lora_training`'s response includes the path) for an out-of-memory error —
   a 3060 12GB is the assumed baseline; lower `resolution` or `network_dim` on a
   smaller GPU.
+- **`pose_ref_path` fails with "Generation produced no image" and the ComfyUI log
+  shows an `OpenposePreprocessor` download error** — the preprocessor tries to
+  fetch its three annotator models (`body_pose_model.pth`, `hand_pose_model.pth`,
+  `facenet.pth` from `lllyasviel/Annotators` on Hugging Face) on first use, and
+  that in-process download can fail on some setups. Fix: download those three
+  files manually and place them FLAT (no subfolders) in
+  `ComfyUI/custom_nodes/comfyui_controlnet_aux/ckpts/lllyasviel/Annotators/`.
+- **Asked for a back view, got a profile/front view** — text prompts and 2D-photo
+  `pose_ref_path` both hit this (see the SDXL section above). Use
+  `generate_pose_map(yaw=180)` + `pose_preprocess=False` + `pose_strength≈1.4-1.5`
+  instead — and generate a couple of seeds, it's stochastic.
 - **The tool never appears in your MCP client** — see
   `webcomic-background-mcp`'s note: fully quit (not just close the window) and relaunch.
 
 ## Status
 
-All three consistency tiers are implemented: Character Bible, Tier-1 img2img pose
-generation with auto-matting, Tier-2 IP-Adapter/OpenPose (graph construction unit-
-verified; live generation not yet exercised against a running ComfyUI), Tier-3
-async LoRA baking (dataset prep, command construction, and the job lifecycle
-verified with a stub trainer; a real kohya-ss training run not yet exercised
-live), and deterministic panel compositing — all callable from an MCP client.
-Verify Tier 2/3 end-to-end against real ComfyUI/kohya-ss installs before relying
-on them for production panels.
+**v1.0.0 — first release.** All three consistency tiers are implemented and
+live-tested: Character Bible, Tier-1 img2img pose generation with auto-matting,
+Tier-2 IP-Adapter/OpenPose, Tier-3 async LoRA baking (job lifecycle verified
+with a stub trainer; a real kohya-ss training run hasn't been exercised live
+yet), and deterministic panel compositing. Concept Genesis
+(`generate_character_concept`, `crop_reference`, `generate_reference_sheet`)
+is live-tested end-to-end against real character art, which surfaced and fixed
+real tuning bugs (see CHANGELOG). The optional SDXL prototype
+(`model="mj_manga_sdxl"`) fixes anatomy/backdrop quality outright, verified
+live on a 6 GB GPU. The 3D mannequin (`generate_pose_map`) solves genuine back
+views after ~12 failed 2D-extraction configurations — live-verified, with an
+honest stochastic caveat documented above and in CHANGELOG.
 Built with [Claude Code](https://claude.com/claude-code).
