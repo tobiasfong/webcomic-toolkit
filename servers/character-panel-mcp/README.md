@@ -92,8 +92,8 @@ has nothing to anchor identity with, and the tool leans entirely on the referenc
 image — dragging its *exact* pose and background along too, not just the character.
 `register_character(..., description="...")` fixes this at essentially zero cost.
 
-**For artists specifically** (this tool started life solving Tobias's own "ugh, my
-sensei wants back view, front view, hands, before I can even start the actual comic"
+**For artists specifically** (this tool started life solving Tobias's own "I need to find
+a more efficient way of drawing the same character multiple times in several different angles"
 problem): register your one drawing, then `generate_reference_sheet` answers the
 rotational questions — what does the back of the outfit look like, how does the
 silhouette read from the side — as **reference to draw from**, not final art. The
