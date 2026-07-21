@@ -13,6 +13,127 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — FLUX exploration (2026-07-21/22)
+
+**Nothing in this section is wired into `workflow.py`/`server.py` yet — this is an
+honest record of a still-open investigation, not a shipped feature.** Motivation:
+1.1.0's SDXL hand-anatomy fixes (CharTurn + RPGTurn + ClearHandsXL LoRA stacking)
+plateaued — hands kept coming back deformed even fully stacked. Prototyped
+FLUX.1-dev instead, GGUF-quantized (`flux1-dev-Q3_K_S.gguf`, ~5.0 GB, via
+`ComfyUI-GGUF`) to fit the same 6 GB VRAM budget.
+
+Validated in standalone scratch scripts (not yet ported):
+- Base FLUX txt2img + a manhwa-style LoRA (`manwha_style.safetensors`), no OOM,
+  clearly better anatomy on first look than SDXL.
+- Impact Pack `detail_fix` hand pass ported to FLUX — needs `denoise=0.7` (0.55 was
+  insufficient), confirmed 5-finger hands vs. SDXL's persistent deformity.
+- Mannequin-generated ControlNet back view (`flux_controlnet_union_alpha`, InstantX
+  Union, same `mannequin.render_pose_map` used since 1.0.0): genuine back-facing
+  views on 2 of 3 seeds across two separate rounds — real progress, but not reliable
+  enough to ship unattended (the same seed missed the direction lock both times it
+  was tried, so this is seed-dependent, not noise).
+- FLUX Kontext dev installed (`flux1-kontext-dev-Q3_K_S.gguf`) as an image *editor*
+  (not text-to-image): validated for **local anatomy fixes on an already-correctly-
+  posed image** (took a genuine back view with hands hidden in sleeve cuffs,
+  instructed a hand-exposure edit, got clean 5-finger hands with everything else
+  unchanged). **Not validated** for full front→back rotation as a single edit — one
+  test produced a chimera (back-facing head/hair/hands, but front-facing tank-top
+  neckline and shoe orientation), because "turn around" and "keep everything else
+  the same" are self-contradicting instructions for a full viewpoint change.
+- Kontext turnaround-sheet LoRA (Civitai 1753109): first test (recommended prompt
+  verbatim) produced 7 panels, none an actual back view. Traced to the recommended
+  prompt inserting "exact" into the creator's required trigger substring ("create
+  turnaround sheet of this character"), breaking it. **Retested same-session with
+  only that word dropped — fixed it.** Panel 4 of 7 came back a genuine back view,
+  verified whole-figure (correct back collar, back seam, rear pockets, no belt
+  buckle, clean hands) not just glanced at. Single successful seed so far, not yet
+  a reliability figure — needs a multi-seed re-run before comparing to
+  ControlNet's ~2/3 rate.
+
+Explicitly deferred: porting the validated recipe into `workflow.py` as a real
+`model=` option; deleting the ~12.5 GB of SDXL-era files (checkpoint, LoRAs,
+IP-Adapter, ControlNet); tuning the turnaround-sheet LoRA further; any FLUX/SDXL
+upgrade decision for the sibling `webcomic-background-mcp` server (still SD1.5, no
+demonstrated problem there).
+
+## [1.1.0] — 2026-07-20
+
+### Added — Avery-style poster sheet, restructured fields
+`generate_reference_sheet`'s combined output is now a real designed sheet (title,
+large front-view hero pose, back-view panel, labeled expression row, text blocks) —
+`tools/compose_sheet.py`'s new `compose_concept_sheet()`, modeled directly on Tobias's
+friend Avery's hand-composed character sheets, with deliberately far less text (no
+bio, no quotes, no lore boxes). Uses Noto Sans JP so mixed English/Japanese text
+renders correctly (needed for the personality field's speech-pattern notes). Character
+Bible fields reworked per direct feedback on the first cut: `role`/`status`/
+`personality` (three separate fields) consolidated into one `profile` field;
+`abilities` unchanged; the sheet's third block, "Appearance," is NOT a new field — it's
+`description` itself, shown on the sheet as well as fed to generation, so hair/eye/
+costume notes (including ones pulled from an artist's own markdown notes when
+ingesting their art) are only ever typed once, never duplicated between a
+generation-facing field and a sheet-facing one.
+
+### Added — disciplined sequential generation (scope corrected after live testing)
+`generate_reference_sheet` generates in a fixed order regardless of how `views` is
+passed: front view first, then back, then expressions. Once the front view succeeds,
+it becomes the **back view's** identity anchor (img2img seed + IP-Adapter reference)
+instead of the raw bible photo — chaining an already-in-style render should hold
+costume/color continuity better than re-deriving it from a raw source photo.
+**Expression/face close-ups deliberately do NOT chain off the front view** — the
+first cut of this feature chained everything, and live testing caught it immediately:
+a "face close-up, smiling" request came back as a repeat of the front view's full-body
+action pose, because IP-Adapter conditions on the whole reference image, not just "this
+person's face." Reverted that part; close-ups use the bible's own primary reference,
+same as before this feature existed. Also reworded the close-up view prompts
+("close-up portrait, head and shoulders only, head turned three-quarters, ...")
+after live testing showed "face close-up, 3/4 view" alone was ambiguous enough to
+render as a 3/4-angle body shot instead of a tight face crop.
+
+### Investigated and reverted — automatic back-view ControlNet in generate_reference_sheet
+Tried wiring the (already-shipped, already-validated as its own manual tool)
+mannequin ControlNet pose map automatically into the back view here, forcing
+`identity_mode="off"` to stop IP-Adapter from fighting the pose signal (confirmed
+live that `identity_mode="plus"`, this tool's default, wins that fight and keeps the
+render front-facing even at `pose_strength=1.45`). With identity_mode forced off,
+genuine back-facing content DID start appearing — but **full-resolution scrutiny of
+hands and feet, not just checking facing direction, found it came with a fused,
+fingerless hand and hoof-like feet**, and retrying the same call reproduced the same
+failure rather than a clean result. Reverted entirely rather than ship a mechanism
+that trades one failure mode (wrong direction) for a worse one (deformed anatomy) on
+an unattended, un-curated bulk call. **Back view remains an honest, open limitation
+of this tool** — text + IP-Adapter alone still doesn't produce one reliably (matches
+every prior finding in this project's history). The validated path when a real back
+view is needed stays `generate_pose_map` + `generate_character_pose`, run and curated
+by hand across a few seeds — a deliberately reviewed one-at-a-time flow, not
+something safe to fire unattended inside a 5-view bulk sheet call.
+
+### Added — `detail_fix`: the actual fix for hallucinated hands/faces
+New opt-in pass on `generate_character_pose`/`generate_reference_sheet`
+(`workflow.py`'s `build_graph`/`generate`), needing two new custom nodes
+(`ComfyUI-Impact-Pack`, `ComfyUI-Impact-Subpack`) and two YOLOv8 detector models
+(`face_yolov8m.pt`, `hand_yolov8s.pt` from `Bingsu/adetailer`). Detects the face and
+hands, re-samples each region at a much higher effective resolution, composites back —
+the standard fix for a resolution problem (a hand is a small fraction of a full-body
+frame) that no amount of prompt/negative tuning was ever going to solve, which is what
+every earlier hand-anatomy complaint in this project's history actually was. **Found
+via live before/after comparison, not assumed:** the first tuning pass
+(`denoise=0.45`) detected hands correctly but didn't give the sampler enough freedom
+to redraw them — visually indistinguishable from doing nothing. `denoise=0.6` produced
+a real, visible fix (individual finger separation instead of a featureless fist) on
+the same seed; shipped as the default. Face pass stayed at `denoise=0.4`. Off by
+default — extra install, roughly doubles generation time.
+
+### Fixed
+- Downloading the two YOLOv8 detector models hit the same SSL revocation-check
+  failure documented in 1.0.0's OpenPose-annotator fix (`curl`/Python's own SSL stack
+  both failed; `CRYPT_E_NO_REVOCATION_CHECK` / `unable to get local issuer
+  certificate`) — worked around with PowerShell's `Invoke-WebRequest` (Windows
+  certificate store, different validation path), not by disabling verification.
+- Impact-Subpack's model whitelist (a PyTorch 2.6+ `weights_only` safety feature)
+  blocks loading `.pt` files by default; documented adding the two detector filenames
+  to `ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt` in README.md's
+  setup steps.
+
 ## [1.0.0] — 2026-07-19
 
 ### Added — the three consistency tiers

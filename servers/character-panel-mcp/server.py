@@ -53,6 +53,7 @@ import mannequin
 from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
 from tools.compose_sheet import compose_sheet as _compose_sheet
+from tools.compose_sheet import compose_concept_sheet as _compose_concept_sheet
 
 mcp = FastMCP("character-panel-generator")
 
@@ -67,6 +68,8 @@ def register_character(
     description: str = "",
     tags: list[str] | None = None,
     notes: str = "",
+    profile: str = "",
+    abilities: str = "",
     project: str = characters.DEFAULT_PROJECT,
 ) -> str:
     """Add (or grow) a character's reference set in the Character Bible.
@@ -76,7 +79,8 @@ def register_character(
     as valid as commissioned art; this tool never judges provenance. Calling this
     again on an existing character_id APPENDS the new images to the reference set
     rather than replacing it (turnarounds and expression sheets accumulate over
-    time), and only overwrites name/description/tags/notes if you pass them.
+    time), and only overwrites a field if you pass it — omitted fields keep their
+    existing value.
 
     Args:
         image_paths: One or more reference images to add (concept art, turnarounds,
@@ -84,11 +88,28 @@ def register_character(
         character_id: Short id to reference later (e.g. "aria"). Auto-slugged from
             name/first filename if omitted.
         name: Human name (e.g. "Aria Solstice").
-        description: What defines this character's look — age, build, signature
-            costume elements. Free text; be specific, this is authorial canon.
+        description: Hair/eye color, build, costume, signature elements — what
+            defines this character's look. Free text, be specific. This is the
+            ONLY field that feeds generation prompts, and it also becomes the
+            reference sheet's "Appearance" text block — write it once, it does
+            both jobs. If you're ingesting an artist's existing drawing and they
+            already wrote appearance notes in a markdown file, pass that text
+            straight through here rather than asking them to retype it.
         tags: Optional labels, e.g. ["protagonist", "mage"].
         notes: Anything that helps keep the character on-model (e.g. "always
-            barefoot indoors", "never smiles fully").
+            barefoot indoors", "never smiles fully"). Internal reminder, not
+            shown on the reference sheet.
+        profile: Who they are — role in the story (e.g. "protagonist's rival,
+            defects to the hero's side in act 2"), standing/affiliation, and
+            personality, including (if relevant) Japanese speech patterns:
+            register (丁寧語 vs 普通語, formal/casual shifts by listener) and
+            self-referential pronoun (僕/俺/私/あたし/わし/吾輩/etc.). E.g.
+            "Exiled court mage, wanted in three kingdoms. Guarded, dry wit;
+            丁寧語 with strangers, 普通語 with her sister; refers to herself as
+            私, never うち." Reference-sheet text only, not a generation prompt
+            input — this is for you and your artist, not the model.
+        abilities: Free text on powers/skills/equipment — as much or as little
+            as you want on the reference sheet.
         project: Which comic this character belongs to. Defaults to "default".
 
     Returns:
@@ -97,7 +118,9 @@ def register_character(
     try:
         entry = characters.register_character(
             image_paths=image_paths, character_id=character_id, name=name,
-            description=description, tags=tags, notes=notes, project=project,
+            description=description, tags=tags, notes=notes,
+            profile=profile, abilities=abilities,
+            project=project,
         )
         return (f"Registered '{entry['id']}' in project '{entry['project']}' — {entry['name']}\n"
                 f"  references: {len(entry['refs'])}\n"
@@ -224,14 +247,22 @@ def generate_character_concept(
 def _render_pose(
     character, pose, prompt, negative, project, model, width, height, seed,
     ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
-    lora, lora_strength, out_dir, pose_preprocess=True,
+    lora, lora_strength, out_dir, pose_preprocess=True, ref_override=None,
+    detail_fix=False,
 ):
     """Core Tier 1/2/3 pose rendering, shared by generate_character_pose and
     generate_reference_sheet. Raises characters.CharacterError if the character
     isn't registered, workflow.ComfyUIError on generation failure. Returns
     (raw_path, tier_note) — matting is each caller's own responsibility (they
-    want different messaging around a matting failure)."""
-    ref_path = characters.primary_ref_path(character, project)
+    want different messaging around a matting failure).
+
+    ref_override: use this image as the img2img seed / IP-Adapter identity
+    source instead of the bible's primary reference — generate_reference_sheet's
+    sequential chaining (front view generated first, then reused as the anchor
+    for back/expression views) passes the freshly-generated front view here,
+    since it's already in the target render style, which should condition
+    identity more reliably than jumping styles from a raw source photo."""
+    ref_path = ref_override or characters.primary_ref_path(character, project)
     entry = characters.get_character(character, project)
     full_prompt = f"{entry['name']}, {pose}"
     if prompt:
@@ -259,6 +290,7 @@ def _render_pose(
         pose_ref_path=pose_ref_path,
         pose_strength=pose_strength,
         pose_preprocess=pose_preprocess,
+        detail_fix=detail_fix,
     )
 
     tier_note = "Tier 1 (img2img)"
@@ -269,6 +301,8 @@ def _render_pose(
     if pose_ref_path:
         tier_note += (" + Tier 2 pose (synthesized mannequin map)" if not pose_preprocess
                       else " + Tier 2 pose (OpenPose)")
+    if detail_fix:
+        tier_note += " + face/hand detail fix"
     return raw_path, tier_note
 
 
@@ -349,6 +383,7 @@ def generate_character_pose(
     pose_ref_path: str | None = None,
     pose_strength: float = 1.0,
     pose_preprocess: bool = True,
+    detail_fix: bool = False,
     lora: str | None = None,
     lora_strength: float | None = None,
     matte: bool = True,
@@ -371,6 +406,14 @@ def generate_character_pose(
     - Tier 3 (automatic once baked): if bake_character_lora has completed for
       this character, its LoRA is used automatically unless you pass your own
       `lora=`. Strongest consistency, no extra args needed here.
+
+    detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack, see
+    README.md): a detect-and-repair pass on the face and hands after the main
+    render — the actual fix for hallucinated hands (missing/extra fingers) and
+    mangled faces, which are a resolution problem (a face or hand is a small
+    fraction of a full-body frame) that prompt/negative wording can't solve.
+    Roughly doubles generation time; silently does nothing if a face/hand isn't
+    confidently detected in frame (not an error, just nothing to fix there).
 
     Output is auto-matted to an RGBA cutout by default, ready for compose_panel.
 
@@ -402,6 +445,9 @@ def generate_character_pose(
             straight to ControlNet unprocessed — use this for maps already in
             OpenPose format, i.e. anything from generate_pose_map (running the
             human-detector preprocessor on a stick figure fails).
+        detail_fix: Auto-repair hallucinated hands/faces after the main render.
+            Default False (needs extra custom nodes — see README.md; costs
+            roughly 2x generation time when on).
         lora / lora_strength: Optional style LoRA — same pool as the background
             server's (e.g. the Niji V5 Style LoRA). Overrides the character's own
             baked LoRA (Tier 3) if one exists; pass lora="" to force neither.
@@ -416,7 +462,7 @@ def generate_character_pose(
         raw_path, tier_note = _render_pose(
             character, pose, prompt, negative, project, model, width, height, seed,
             ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
-            lora, lora_strength, out_dir, pose_preprocess=pose_preprocess)
+            lora, lora_strength, out_dir, pose_preprocess=pose_preprocess, detail_fix=detail_fix)
     except characters.CharacterError as e:
         return f"Could not generate pose: {e}"
     except workflow.ComfyUIError as e:
@@ -435,14 +481,33 @@ def generate_character_pose(
             f"Feed this to compose_panel as character_layer_path.")
 
 
+
+def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int] | None:
+    if not hex_color:
+        return None
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return None
+    try:
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
+# Reduced from the original 7-view checklist (front/back/side/3-4 body + 3 face)
+# to match Avery's actual template (2026-07-19, per Tobias): a frontal view, a
+# back view, and a few 3/4 close-ups with different expressions — not a full
+# angle survey. "3/4 view" for the close-ups (Avery's expression rows use that
+# angle), applied to the head/face specifically — "face close-up, 3/4 view"
+# alone was ambiguous enough that a live test (2026-07-20) got interpreted as
+# a 3/4-angle BODY shot, not a tight face crop; "close-up portrait, head/
+# shoulders only" makes the framing an instruction, not just a vibe.
 DEFAULT_SHEET_VIEWS = [
     "full body, front view",
     "full body, back view",
-    "full body, side profile",
-    "full body, 3/4 view",
-    "face close-up, neutral expression",
-    "face close-up, smiling",
-    "face close-up, angry expression",
+    "close-up portrait, head and shoulders only, head turned three-quarters, neutral expression",
+    "close-up portrait, head and shoulders only, head turned three-quarters, smiling",
+    "close-up portrait, head and shoulders only, head turned three-quarters, determined expression",
 ]
 
 # Real-world tuning (2026-07-19, against actual RxR art — see CHANGELOG): the
@@ -484,23 +549,55 @@ def generate_reference_sheet(
     identity_mode: str = "plus",
     ip_adapter_weight: float = 0.25,
     ref_denoise: float = 1.0,
+    detail_fix: bool = False,
     lora: str | None = None,
     lora_strength: float | None = None,
     matte: bool = False,
     combine: bool = True,
 ) -> str:
     """Grow a registered character's reference set toward a standard turnaround
-    checklist (front/back/side/3-4 body views + expression close-ups) — Concept
+    checklist (front view, back view, a few 3/4 expression close-ups) — Concept
     Genesis on-ramp for both a writer who just registered a first concept and an
     artist with one finished drawing who doesn't want to redraw six angles by
-    hand (ARCHITECTURE.md §8b.6). One Tier-2 generation per view, seeded from the
-    character's primary reference with IP-Adapter identity locking on by default
-    (turnarounds need it far more than a single same-angle pose does).
+    hand (ARCHITECTURE.md §8b.6). One Tier-2 generation per view.
 
-    By default (combine=True) all views are ALSO laid out on one labeled grid
-    sheet (like a traditional turnaround sheet), in addition to the individual
-    files — the grid is for looking at everything at once; the individual files
-    are what you actually pass to register_character.
+    Generation is a disciplined SEQUENCE, not N independent rolls: regardless of
+    the order `views` is passed in, the front view is always rendered first,
+    then the back view, then everything else (expressions). Once the front
+    view succeeds, it becomes the back view's identity anchor (img2img seed +
+    IP-Adapter reference) instead of the bible's raw source photo — expression/
+    face close-ups deliberately do NOT chain off it (tried, reverted: a
+    close-up chained off a full-body reference drags that framing and pose
+    along, since IP-Adapter conditions on the whole reference image, not just
+    "this person's face"). If front-view generation fails, the back view falls
+    back to the bible's primary reference instead.
+
+    Honest limitation, not solved by the above: genuine back views remain
+    unreliable through this tool. Automatically wiring in the 3D mannequin's
+    ControlNet pose map here was tried and reverted (2026-07-20) — forcing
+    identity_mode="off" to win the direction fight against IP-Adapter did get
+    back-facing content into frame, but full-resolution review found it came
+    with a fused hand and hoof-like feet, worse anatomy than just being
+    front-facing, and it didn't improve on retry. If you actually need a back
+    view, use generate_pose_map + generate_character_pose directly and curate
+    across a few seeds by hand — the validated, reviewed, one-at-a-time flow
+    (ARCHITECTURE.md §8b.7) — rather than expecting this bulk multi-view call
+    to land one unattended.
+
+    By default (combine=True) all views are ALSO laid out on one poster-style
+    reference sheet, in addition to the individual files — modeled on Tobias's
+    friend Avery's hand-composed character sheets: title, a large front-view
+    hero pose, a back-view panel, a labeled row of expression close-ups, and
+    short text blocks pulled from the Character Bible's profile/abilities
+    fields plus its description (shown here as "Appearance" — see
+    register_character's docstring; set these before calling this for a sheet
+    worth looking at, empty fields are just skipped, no blank boxes).
+    Deliberately far less text than Avery's actual sheets (no bio paragraphs,
+    no quotes) — this server generates panels, it doesn't write your story.
+    Needs a front view among the generated views to build the poster; falls
+    back to a plain labeled grid otherwise (e.g. redoing a single non-front
+    view). The individual files are still what you pass to register_character
+    — the composed sheet is for looking at everything at once.
 
     Nothing is auto-appended to the bible. Look at each view, then
     register_character(image_paths=[<the keepers>], character_id=<character>,
@@ -545,12 +642,17 @@ def generate_reference_sheet(
             instead of the source image) — much higher than
             generate_character_pose's 0.55; turnarounds need real freedom from
             the source framing, not a nudge away from it.
+        detail_fix: Auto-repair hallucinated hands/faces on every view. Default
+            False — see generate_character_pose's docstring. Costs ~2x
+            generation time per view when on; consider enabling only once you
+            like the poses and are generating the keeper set.
         lora / lora_strength: Optional style LoRA; defaults to the character's
             baked Tier-3 LoRA if one exists, same as generate_character_pose.
         matte: Auto-remove the clean backdrop to RGBA. Default False — sheet
             views are reference material to look at/draw from, not compositing
             layers (compose_panel is what wants RGBA cutouts).
-        combine: Also lay every view out on one labeled grid sheet. Default True.
+        combine: Also lay every view out on the poster-style sheet (or a plain
+            grid, if no front view was generated this call). Default True.
 
     Returns:
         The filesystem path for each view, one line each, plus the combined
@@ -561,16 +663,57 @@ def generate_reference_sheet(
     if not view_list:
         return "generate_reference_sheet needs at least one view."
 
+    # Sequential discipline: front first, then back, then everything else —
+    # regardless of the order the caller listed them in. See the docstring
+    # above for why (front becomes the identity anchor for what follows).
+    def _bucket(v: str) -> int:
+        vl = v.lower()
+        if "front" in vl:
+            return 0
+        if "back" in vl:
+            return 1
+        return 2
+    view_list = sorted(view_list, key=_bucket)
+
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
                            "_concepts", "sheet")
     lines = []
     ok_paths, ok_labels = [], []
+    front_path = back_path = None
+    expr_items = []  # (path, short_label)
+    chain_ref = None  # set once the front view succeeds; reused for the back view only
     for view in view_list:
+        bucket = _bucket(view)
+        # Automatically wiring the mannequin's ControlNet pose map into the back
+        # view was tried and reverted (2026-07-20): forcing identity_mode="off"
+        # + pose_strength=1.45 to win the direction fight against IP-Adapter did
+        # get genuine back-facing content into frame, but live scrutiny (not
+        # just checking "does it face backward") showed it came with a fused,
+        # fingerless hand and hoof-like feet — worse overall anatomy, not just
+        # a wrong-direction one, and retrying didn't fix it. Back view stays
+        # plain text + IP-Adapter here, honestly unreliable (see the docstring
+        # caveat below) — the validated mannequin recipe
+        # (pose_strength=1.4-1.5, identity_mode="off", multi-seed curation) is
+        # a deliberate, reviewed, one-at-a-time flow via generate_pose_map +
+        # generate_character_pose, not something safe to bulk-automate
+        # unattended inside a multi-view sheet call.
+        #
+        # Only the back view (still a full-body shot, like the front) reuses
+        # the front view as an img2img/IP-Adapter identity anchor for costume/
+        # color continuity. Expression/face close-ups do NOT chain off front —
+        # a close-up chained off a full-body reference drags that framing and
+        # pose along (IP-Adapter conditions on the whole reference image, not
+        # just "this person's face"), which is exactly what broke here: a
+        # "face close-up, smiling" request came back as a repeat of the front
+        # view's full-body pose. Expressions fall back to the bible's own
+        # primary reference, matching this tool's pre-chaining behavior.
+        view_ref_override = chain_ref if bucket == 1 else None
         try:
             raw_path, tier_note = _render_pose(
                 character, view, "", SHEET_NEGATIVE, project, model, width, height, None,
                 ref_denoise, identity_mode, ip_adapter_weight, None, 1.0,
-                lora, lora_strength, out_dir)
+                lora, lora_strength, out_dir,
+                ref_override=view_ref_override, detail_fix=detail_fix)
         except characters.CharacterError as e:
             return f"Could not generate reference sheet: {e}"
         except workflow.ComfyUIError as e:
@@ -588,12 +731,40 @@ def generate_reference_sheet(
         ok_paths.append(view_path)
         ok_labels.append(view)
 
+        if bucket == 0:  # front
+            if front_path is None:
+                front_path = raw_path
+            chain_ref = raw_path  # anchor the back view off this
+        elif bucket == 1:  # back
+            if back_path is None:
+                back_path = raw_path
+        else:
+            expr_items.append((raw_path, view.split(",")[-1].strip() or view))
+
     combined_note = ""
-    if combine and ok_paths:
+    if combine and front_path:
+        try:
+            entry = characters.get_character(character, project) or {}
+            sheet_path = _compose_concept_sheet(
+                front_path=front_path,
+                back_path=back_path,
+                expression_paths=[p for p, _ in expr_items],
+                expression_labels=[lbl for _, lbl in expr_items],
+                name=entry.get("name", character),
+                profile=entry.get("profile", ""),
+                abilities=entry.get("abilities", ""),
+                appearance=entry.get("description", ""),
+                accent_color=_hex_to_rgb((entry.get("palette") or [None])[0]),
+                out=os.path.join(out_dir, "concept_sheet.png"),
+            )
+            combined_note = f"\nCombined sheet (Avery-style layout): {sheet_path}"
+        except SystemExit as e:
+            combined_note = f"\n(Could not build the combined sheet: {e})"
+    elif combine and ok_paths:
         try:
             sheet_path = _compose_sheet(ok_paths, ok_labels,
                                         out=os.path.join(out_dir, "combined_sheet.png"))
-            combined_note = f"\nCombined sheet (all views on one image): {sheet_path}"
+            combined_note = f"\nCombined sheet (plain grid — no front view generated this call, so the poster layout was skipped): {sheet_path}"
         except SystemExit as e:
             combined_note = f"\n(Could not build the combined sheet: {e})"
 

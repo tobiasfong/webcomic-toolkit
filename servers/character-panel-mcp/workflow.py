@@ -205,6 +205,8 @@ def build_graph(
     pose_strength: float = 1.0,
     sdxl: bool = False,
     pose_preprocess: bool = True,
+    detail_fix: bool = False,
+    extra_loras: list[tuple[str, float]] | None = None,
 ) -> dict:
     """Assemble the ComfyUI API graph.
 
@@ -227,7 +229,21 @@ def build_graph(
     and resolves the OpenPose ControlNet filename from the SDXL registry
     instead of the SD1.5 one. IPAdapterUnifiedLoader needs no special handling
     here — its preset resolution is expected to auto-detect SD1.5 vs SDXL from
-    the loaded checkpoint architecture (verify this holds in practice)."""
+    the loaded checkpoint architecture (verify this holds in practice).
+
+    detail_fix (2026-07-20, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack
+    custom nodes, see README.md): when True, chains a face FaceDetailer pass and
+    a hand FaceDetailer pass onto the decoded image before SaveImage — detect
+    the region (UltralyticsDetectorProvider + the face/hand YOLOv8 models from
+    Bingsu/adetailer), crop, re-sample it at a moderate denoise, composite back.
+    This is the actual fix for the hallucinated-hand/mangled-face failures this
+    project hit repeatedly (a missing thumb, "grotesque" faces) — those are a
+    base-resolution problem (a face or hand is a small fraction of a full-body
+    frame, too few pixels for the model to render correctly), and a detect-then-
+    inpaint-at-higher-effective-resolution pass is the standard fix, not
+    something prompt/negative tuning alone can solve. Off by default: it roughly
+    doubles generation time and needs the extra custom nodes + ~75MB of detector
+    models installed."""
     g = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt_name}},
         "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
@@ -250,6 +266,18 @@ def build_graph(
                    "inputs": {"model": ["4", 0], "clip": ["4", 1], "lora_name": use_lora,
                               "strength_model": use_lora_strength, "strength_clip": use_lora_strength}}
         base_model, base_clip = ["40", 0], ["40", 1]
+
+    # Extra LoRA slots stacked on top of the style LoRA above, each independent
+    # of use_lora_strength — e.g. a "CharTurn"-style multi-view/turnaround LoRA
+    # and a dedicated hand-repair LoRA (2026-07-20), which are a different kind
+    # of thing than a style LoRA (they bias composition/anatomy, not rendering
+    # style) and each needs its own strength control. Chained in list order.
+    for i, (name, strength) in enumerate(extra_loras or []):
+        node_id = str(43 + i)
+        g[node_id] = {"class_type": "LoraLoader",
+                      "inputs": {"model": base_model, "clip": base_clip, "lora_name": name,
+                                 "strength_model": strength, "strength_clip": strength}}
+        base_model, base_clip = [node_id, 0], [node_id, 1]
 
     if sdxl and CLIP_SKIP_SDXL:
         g["42"] = {"class_type": "CLIPSetLastLayer",
@@ -318,7 +346,41 @@ def build_graph(
                          "model": base_model, "positive": pos_ref, "negative": neg_ref,
                          "latent_image": latent_ref}}
     g["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": vae_ref}}
-    g["9"] = {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "pose"}}
+
+    final_image_ref = ["8", 0]
+    if detail_fix:
+        def _detailer(node_id: int, bbox_model: str, image_ref, seed_offset: int, denoise: float):
+            provider_id, detailer_id = str(node_id), str(node_id + 1)
+            g[provider_id] = {"class_type": "UltralyticsDetectorProvider",
+                              "inputs": {"model_name": bbox_model}}
+            g[detailer_id] = {"class_type": "FaceDetailer",
+                              "inputs": {
+                                  "image": image_ref, "model": base_model, "clip": base_clip,
+                                  "vae": vae_ref, "guide_size": 512, "guide_size_for": True,
+                                  "max_size": 1024, "seed": seed + seed_offset, "steps": steps,
+                                  "cfg": cfg, "sampler_name": "dpmpp_2m", "scheduler": "karras",
+                                  "positive": pos_ref, "negative": neg_ref, "denoise": denoise,
+                                  "feather": 5, "noise_mask": True, "force_inpaint": True,
+                                  "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0,
+                                  "sam_detection_hint": "center-1", "sam_dilation": 0,
+                                  "sam_threshold": 0.93, "sam_bbox_expansion": 0,
+                                  "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False",
+                                  "drop_size": 10, "bbox_detector": [provider_id, 0],
+                                  "wildcard": "", "cycle": 1}}
+            return [detailer_id, 0]
+
+        # Moderate denoise for the face — enough to clean it up without
+        # drifting identity/style. Hands need much more: live testing
+        # (2026-07-20) found 0.45 detected the hand correctly but wasn't
+        # enough denoise to let the sampler actually redraw finger structure —
+        # the result was visually indistinguishable from no fix at all, just a
+        # re-rendered blob. 0.6 produced a real, visible improvement (distinct
+        # finger separation instead of a featureless fist) on the same seed —
+        # verified by direct crop comparison, not assumed.
+        final_image_ref = _detailer(80, "bbox/face_yolov8m.pt", final_image_ref, 0, 0.4)
+        final_image_ref = _detailer(82, "bbox/hand_yolov8s.pt", final_image_ref, 1, 0.6)
+
+    g["9"] = {"class_type": "SaveImage", "inputs": {"images": final_image_ref, "filename_prefix": "pose"}}
     return g
 
 
@@ -361,6 +423,8 @@ def generate(
     pose_ref_path: str | None = None,
     pose_strength: float = 1.0,
     pose_preprocess: bool = True,
+    detail_fix: bool = False,
+    extra_loras: list[tuple[str, float]] | None = None,
     timeout: int = 300,
 ) -> str:
     """Run the pipeline; return the path to the saved (un-matted) PNG.
@@ -380,7 +444,12 @@ def generate(
     the ComfyUI_IPAdapter_plus custom node — see README.md.
 
     model may also be an SDXL prototype entry (see SDXL_MODELS, 2026-07-19) —
-    resolved automatically here, no separate flag needed from callers."""
+    resolved automatically here, no separate flag needed from callers.
+
+    detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack, see
+    README.md): detect-and-repair pass on the face and hands after the main
+    render — see build_graph's docstring for why this (not prompt tuning) is
+    the real fix for hallucinated hands/faces. Roughly doubles generation time."""
     ensure_comfy_running()
 
     sdxl = model in SDXL_MODELS
@@ -431,7 +500,8 @@ def generate(
                         ckpt_name, vae_name, ref_image_name, ref_denoise,
                         use_lora_name, lora_strength,
                         ip_adapter_image_name, ip_adapter_preset, ip_adapter_weight,
-                        pose_ref_name, pose_strength, sdxl, pose_preprocess)
+                        pose_ref_name, pose_strength, sdxl, pose_preprocess, detail_fix,
+                        extra_loras)
 
     data = _submit_and_wait(graph, timeout)
     os.makedirs(out_dir, exist_ok=True)

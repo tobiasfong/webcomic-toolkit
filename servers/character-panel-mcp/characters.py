@@ -22,6 +22,11 @@ A character entry:
     "name":        "Aria Solstice",
     "description": "17yo mage, silver hair, blue robes",
     "notes":       "signature costume: star pendant, always barefoot indoors",
+    "profile":     "who they are — role in the story, standing/affiliation,
+                   personality, and (if relevant) Japanese speech patterns:
+                   register (丁寧語 vs 普通語, formal/casual shifts by listener)
+                   and self-referential pronoun (僕/俺/私/あたし/わし/吾輩/etc.)",
+    "abilities":   "short free-text summary of powers/skills/equipment",
     "palette":     ["#1a2b3c", "#8a9bb0", "#d4c9a8"],
     "tags":        ["protagonist", "mage"],
     "refs":        ["starry_knight/aria/ref_01.png", "starry_knight/aria/ref_02.png"],
@@ -32,6 +37,16 @@ A character entry:
                    ComfyUI's models/loras/, auto-used by generate_character_pose)
     "added":       "2026-07-18T..."
   }
+
+`profile`/`abilities` are optional free-text fields (unlike `description`,
+which drives generation prompts) used only for the composed reference sheet's
+text blocks (see server.py's generate_reference_sheet) — modeled on Avery's
+hand-composed character sheets, deliberately much shorter than hers (no bio
+paragraphs, no quotes). The sheet's third text block, "Appearance," is NOT a
+separate field — it's `description` itself, shown on the sheet as well as fed
+to generation, specifically so hair/eye color/physical-trait notes (including
+ones pulled from an artist's own markdown notes when ingesting their art) are
+only ever typed once.
 
 Registering an existing character id APPENDS new refs rather than replacing them —
 the reference set is meant to grow over time (more turnarounds, or curated good
@@ -117,6 +132,8 @@ def register_character(
     description: str = "",
     tags: list[str] | None = None,
     notes: str = "",
+    profile: str = "",
+    abilities: str = "",
     project: str | None = None,
 ) -> dict:
     """Add (or grow) a character's reference set in a project's bible.
@@ -125,8 +142,8 @@ def register_character(
     records/updates the character's metadata. If `character_id` is omitted it's
     slugged from `name` or the first image's filename. Re-registering an existing
     id APPENDS the new images to the existing reference set (never replaces it) —
-    name/description/tags/notes are only overwritten if explicitly passed, otherwise
-    the existing values are preserved.
+    name/description/tags/notes/profile/abilities are only overwritten if
+    explicitly passed, otherwise the existing values are preserved.
     """
     if isinstance(image_paths, str):
         image_paths = [image_paths]
@@ -177,6 +194,8 @@ def register_character(
         "name": resolved_name,
         "description": description or entry.get("description", ""),
         "notes": notes or entry.get("notes", ""),
+        "profile": profile or entry.get("profile", ""),
+        "abilities": abilities or entry.get("abilities", ""),
         "palette": palette,
         "tags": tags if tags is not None else entry.get("tags", []),
         "refs": all_refs,

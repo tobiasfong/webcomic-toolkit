@@ -65,6 +65,20 @@ not silently dropped; revisit if `"plus_face"` proves insufficient in practice.
 strongest tier drifts on extreme angles, complex hand poses, and costume details. The
 writer curates; the tool narrows the drift, it doesn't eliminate it.
 
+**Cross-cutting fix, not a tier: `detail_fix`.** Hallucinated hands (missing/extra
+fingers) and mangled faces aren't a consistency problem — they're a *resolution*
+problem: a face or hand is a small fraction of a full-body frame, too few pixels for
+the checkpoint to render correctly, no matter how good the prompt or which tier is
+active. `detail_fix=True` on `generate_character_pose`/`generate_reference_sheet`
+detects the face and hands (ComfyUI-Impact-Pack's `FaceDetailer` + the YOLOv8
+detector models) and re-samples just that region at a much higher effective
+resolution before compositing it back — the standard fix for this class of failure.
+Verified live (2026-07-20): a closed-fist hand that rendered as a featureless blob
+came out with real finger separation after this pass, at `denoise=0.6` (0.45 detected
+the hand but didn't give the sampler enough freedom to fix it — this took an actual
+before/after comparison to find, not assumed). Off by default — needs the extra
+custom nodes (see Step 3) and roughly doubles generation time.
+
 ## Concept Genesis: getting a character into the bible
 
 Everything above assumes a character is already registered. Concept Genesis is the
@@ -77,13 +91,50 @@ on-ramp — **three starting points, all converging on the same reference-growth
 | One finished drawing of your own character | Nothing — `register_character` the drawing directly | Straight to `generate_reference_sheet` |
 
 All three land in the same place: `generate_reference_sheet` grows a registered
-character's reference set toward a standard turnaround checklist (front/back/side/3-4
-views + expression close-ups), one Tier-2 identity-locked generation per view. By
-default all views are also laid out on one labeled grid image (`compose_sheet.py` —
-zero GPU, deterministic PIL) so you can eyeball the whole set at once, the way a
-traditional turnaround sheet reads — the individual files are still what you pass to
-`register_character`. You curate the keepers and register them in — the same
-append-on-reregister behavior every tier already relies on.
+character's reference set toward a standard turnaround checklist (front view, back
+view, a few 3/4 expression close-ups — modeled on Tobias's friend Avery's own
+hand-composed character sheets), one Tier-2 identity-locked generation per view.
+
+**Generation is a disciplined sequence, not N independent dice rolls.** Regardless of
+the order views are requested in, the front view always renders first, then the back
+view, then expressions. Once the front view succeeds, the **back view** (only) is
+anchored (img2img seed + IP-Adapter identity) to that freshly-generated, already-in-
+style image instead of the bible's raw source photo, for costume/color continuity.
+Expression/face close-ups deliberately do NOT chain off the front view — an early cut
+of this feature chained everything, and live testing caught it fast: a "smiling
+close-up" request came back as a repeat of the front view's full-body pose, because
+IP-Adapter conditions on the whole reference image, not just "this person's face."
+Close-ups use the bible's own primary reference instead. If the front view fails, the
+back view falls back to that too.
+
+**Honest limitation, found and NOT solved despite trying:** genuine back views remain
+unreliable here. Automatically wiring in the 3D mannequin's ControlNet pose map for
+the back view was tried and reverted — forcing `identity_mode="off"` to stop
+IP-Adapter fighting the pose did get back-facing content into frame, but
+full-resolution review (hands and feet specifically, not just "does it face
+backward") found it came with a fused hand and hoof-like feet, and retrying reproduced
+the same failure. Reverted rather than ship a mechanism that trades wrong-direction
+for deformed. If you actually need a back view, use `generate_pose_map` +
+`generate_character_pose` directly and curate across a few seeds by hand (see below)
+— a reviewed one-at-a-time flow, not something safe to fire unattended in bulk.
+
+By default all views are also laid out on one poster-style reference sheet (title,
+large front-view hero pose, back-view panel, a labeled row of expression close-ups,
+and short text blocks — see below) via `compose_sheet.py`'s `compose_concept_sheet`
+(zero GPU, deterministic PIL, Noto Sans JP so Japanese text renders correctly) — the
+individual files are still what you pass to `register_character`. You curate the
+keepers and register them in — the same append-on-reregister behavior every tier
+already relies on.
+
+**Three text fields, shown on the sheet, deliberately far shorter than Avery's own
+sheets** (no bio paragraphs, no quotes, no lore boxes — this server generates panels,
+it doesn't write your story):
+
+| Field | What goes here |
+|---|---|
+| `profile` | Who they are — role in the story, standing/affiliation, personality, and (if relevant) Japanese speech patterns: register (丁寧語 vs 普通語) and self-referential pronoun (僕/俺/私/あたし/わし/吾輩/etc.) |
+| `abilities` | Powers/skills/equipment, as much or as little as you want |
+| *(shown as "Appearance")* | This is `description` itself, not a separate field — hair/eye color, build, costume. It already drives generation prompts; showing it on the sheet too means it's written once, not twice. If you're ingesting an artist's own drawing and they already wrote appearance notes somewhere (a markdown file, a caption), pass that text straight into `description` rather than asking them to retype it. |
 
 **Write a real `description` before generating a sheet.** This turned out to matter
 more than expected: without visual detail in the character's bible entry (hair/eye/skin
@@ -277,6 +328,32 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus
 ```
 
+**`detail_fix` needs `ComfyUI-Impact-Pack` + `ComfyUI-Impact-Subpack`** (optional —
+only if you want the auto hand/face repair pass; nothing else depends on these):
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
+git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git
+<ComfyUI's python> -m pip install -r ComfyUI-Impact-Pack/requirements.txt
+<ComfyUI's python> -m pip install -r ComfyUI-Impact-Subpack/requirements.txt
+```
+
+Then get the two YOLOv8 detector models (~75 MB total, from
+[Bingsu/adetailer](https://huggingface.co/Bingsu/adetailer) on Hugging Face) into
+`ComfyUI/models/ultralytics/bbox/`:
+
+| File | → Folder |
+|------|----------|
+| [`face_yolov8m.pt`](https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt) | `models/ultralytics/bbox/` |
+| [`hand_yolov8s.pt`](https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt) | `models/ultralytics/bbox/` |
+
+Impact-Subpack whitelists `.pt` files by base filename before loading them with
+relaxed `weights_only` restrictions (a PyTorch 2.6+ safety feature) — add
+`face_yolov8m.pt` and `hand_yolov8s.pt`, one per line, to
+`ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt` (create it if the
+first ComfyUI launch after installing hasn't already created an empty one).
+
 Restart ComfyUI so it loads the new nodes.
 
 ## Step 4 — Set up this MCP server
@@ -449,6 +526,39 @@ conditioning works, not a tuning problem. This is what the **3D mannequin**
 CHANGELOG's "back-view campaign" for the full record and its honest
 stochastic caveat.
 
+## Step 9 — FLUX exploration (🔬 experimental, not yet usable): no `model=` option
+
+> Added 2026-07-21/22 after SDXL's hand-anatomy fixes (Step 7/CHANGELOG's LoRA-
+> stacking work) plateaued — hands kept coming back deformed even with every
+> correction LoRA stacked at once. Prototyped FLUX.1-dev as SD1.5→SDXL's natural
+> next step up. **This is NOT wired into `workflow.py`/`server.py` — there is no
+> `model="flux"` you can pass yet.** Everything below lives only in standalone
+> scratch scripts; see CHANGELOG's "FLUX exploration" entry for the full,
+> stage-by-stage record (what was validated, what failed, and why).
+
+Headline results, briefly: FLUX + a GGUF quantization (`flux1-dev-Q3_K_S.gguf`,
+~5 GB, via `ComfyUI-GGUF`) runs fine on the same 6 GB VRAM budget and produces
+genuinely better hand anatomy than SDXL once Impact Pack's `detail_fix` is applied
+at `denoise=0.7`. Back views via ControlNet + the existing 3D mannequin are real
+but only ~2/3-seed reliable (an alpha-quality community ControlNet adapter, not a
+tuning problem). FLUX Kontext dev (a separate image-*editing* model) validated as
+a surgical fix for hand anatomy on an already-correctly-posed image, but **not**
+as a direction-control mechanism — asking it to rotate a front view to a back view
+in one edit produced a chimera (back-facing head/hands, front-facing torso/shoes).
+A dedicated Kontext "turnaround sheet" LoRA is installed; its first test produced
+zero genuine back views out of 7 panels, but a same-session retest (fixing the
+prompt to match the LoRA's exact required trigger phrase) produced a genuine,
+whole-figure-verified back view — a real fix, though still only one successful
+seed, not yet a reliability figure.
+
+If you want to poke at this yourself before it's integrated: the models involved
+are `flux1-dev-Q3_K_S.gguf` and `flux1-kontext-dev-Q3_K_S.gguf` (both
+`models/unet/`, both from `QuantStack`/`city96`'s GGUF repos on HuggingFace),
+`manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safetensors` (both
+`models/loras/`), and `flux_controlnet_union_alpha.safetensors`
+(`models/controlnet/`, InstantX's community FLUX ControlNet). No setup script for
+these yet — they were fetched by hand during the investigation.
+
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |
@@ -511,6 +621,17 @@ stochastic caveat.
   `pose_ref_path` both hit this (see the SDXL section above). Use
   `generate_pose_map(yaw=180)` + `pose_preprocess=False` + `pose_strength≈1.4-1.5`
   instead — and generate a couple of seeds, it's stochastic.
+- **`detail_fix=True` fails with an unknown node / `FaceDetailer`/
+  `UltralyticsDetectorProvider` error** — `ComfyUI-Impact-Pack`/`ComfyUI-Impact-Subpack`
+  (Step 3) aren't installed, or their Python deps weren't installed into ComfyUI's own
+  Python (not this server's venv — see Step 3's exact commands).
+- **`detail_fix=True` runs but nothing looks different** — most likely the face/hand
+  detector didn't confidently find a region to fix (small/occluded hands are the usual
+  case) — this fails silently by design, not an error. Check the ComfyUI console for a
+  line like `0: 640x448 1 hand, ...`; no such line means nothing was detected. Could
+  also mean the two `.pt` files aren't in
+  `ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt` yet (Step 3) —
+  check the console for a whitelist warning.
 - **The tool never appears in your MCP client** — see
   `webcomic-background-mcp`'s note: fully quit (not just close the window) and relaunch.
 
@@ -527,5 +648,10 @@ real tuning bugs (see CHANGELOG). The optional SDXL prototype
 (`model="mj_manga_sdxl"`) fixes anatomy/backdrop quality outright, verified
 live on a 6 GB GPU. The 3D mannequin (`generate_pose_map`) solves genuine back
 views after ~12 failed 2D-extraction configurations — live-verified, with an
-honest stochastic caveat documented above and in CHANGELOG.
+honest stochastic caveat documented above and in CHANGELOG. A FLUX exploration
+(Step 9) is underway but **not yet shipped** — no `model=` option exists for it
+yet; see CHANGELOG's "FLUX exploration" entry for what's validated so far
+(better hand anatomy, ~2/3-reliable back views) versus what still needs work
+(back-view reliability, a Kontext turnaround-sheet LoRA retest, full
+`workflow.py` integration).
 Built with [Claude Code](https://claude.com/claude-code).
