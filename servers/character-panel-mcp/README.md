@@ -18,7 +18,7 @@ local ComfyUI by default.
 
 ## What it does
 
-Fourteen tools:
+Seventeen tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
@@ -33,6 +33,10 @@ Fourteen tools:
   prompt or a 2D reference photo can't force the direction (see below).
 - **`generate_character_pose`** — render the character in a new pose, layering all
   three consistency tiers (see below), auto-matted to a clean RGBA cutout.
+- **`generate_turnaround_sheet`** / **`edit_character_image`** / **`compose_reference_sheet`**
+  — FLUX-only staged workflow (Step 9 below): a multi-pose turnaround sheet from
+  one reference image, a plain-English image editor for surgical anatomy fixes,
+  and a poster composer that works from already-existing crops.
 - **`bake_character_lora`** / **`check_lora_training`** / **`cancel_lora_training`**
   — Tier 3: kick off, poll, and cancel per-character LoRA training (async — a bake
   takes 30-90 min, so these don't block).
@@ -526,38 +530,65 @@ conditioning works, not a tuning problem. This is what the **3D mannequin**
 CHANGELOG's "back-view campaign" for the full record and its honest
 stochastic caveat.
 
-## Step 9 — FLUX exploration (🔬 experimental, not yet usable): no `model=` option
+## Step 9 — FLUX: `model="flux_manwha"` + the staged concept-to-sheet workflow
 
 > Added 2026-07-21/22 after SDXL's hand-anatomy fixes (Step 7/CHANGELOG's LoRA-
 > stacking work) plateaued — hands kept coming back deformed even with every
 > correction LoRA stacked at once. Prototyped FLUX.1-dev as SD1.5→SDXL's natural
-> next step up. **This is NOT wired into `workflow.py`/`server.py` — there is no
-> `model="flux"` you can pass yet.** Everything below lives only in standalone
-> scratch scripts; see CHANGELOG's "FLUX exploration" entry for the full,
-> stage-by-stage record (what was validated, what failed, and why).
+> next step up, validated in scratch scripts, then wired into the live tool
+> (`flux_workflow.py`, new — see ARCHITECTURE.md §8b.9 "Stage 5" for the full
+> record of what was tried, what failed, and why, before this landed here).
 
-Headline results, briefly: FLUX + a GGUF quantization (`flux1-dev-Q3_K_S.gguf`,
-~5 GB, via `ComfyUI-GGUF`) runs fine on the same 6 GB VRAM budget and produces
-genuinely better hand anatomy than SDXL once Impact Pack's `detail_fix` is applied
-at `denoise=0.7`. Back views via ControlNet + the existing 3D mannequin are real
-but only ~2/3-seed reliable (an alpha-quality community ControlNet adapter, not a
-tuning problem). FLUX Kontext dev (a separate image-*editing* model) validated as
-a surgical fix for hand anatomy on an already-correctly-posed image, but **not**
-as a direction-control mechanism — asking it to rotate a front view to a back view
-in one edit produced a chimera (back-facing head/hands, front-facing torso/shoes).
-A dedicated Kontext "turnaround sheet" LoRA is installed; its first test produced
-zero genuine back views out of 7 panels, but a same-session retest (fixing the
-prompt to match the LoRA's exact required trigger phrase) produced a genuine,
-whole-figure-verified back view — a real fix, though still only one successful
-seed, not yet a reliability figure.
+**What's real:** `model="flux_manwha"` works anywhere a model name is accepted
+(`generate_character_concept`, `generate_character_pose`, `generate_reference_sheet`)
+— a GGUF-quantized FLUX.1-dev (`flux1-dev-Q3_K_S.gguf`, ~5 GB, fits the same 6 GB
+VRAM budget) with a manhwa-style LoRA, genuinely better hand anatomy than SDXL once
+`detail_fix=True` is on (hand-only pass, `denoise=0.7` — no face pass, that wasn't
+tested for FLUX), and the same 3D-mannequin `pose_ref_path` mechanism for back
+views, now ~2/3-seed reliable on FLUX's ControlNet too (an alpha-quality community
+adapter — reroll on a miss, don't expect every seed to land it). **Not supported**:
+`identity_mode`/IP-Adapter with FLUX — never tested, raises an error if you try.
 
-If you want to poke at this yourself before it's integrated: the models involved
-are `flux1-dev-Q3_K_S.gguf` and `flux1-kontext-dev-Q3_K_S.gguf` (both
-`models/unet/`, both from `QuantStack`/`city96`'s GGUF repos on HuggingFace),
-`manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safetensors` (both
-`models/loras/`), and `flux_controlnet_union_alpha.safetensors`
-(`models/controlnet/`, InstantX's community FLUX ControlNet). No setup script for
-these yet — they were fetched by hand during the investigation.
+Two new FLUX-only tools plus one general-purpose composer round out a staged
+workflow, designed specifically to catch mistakes early instead of discovering
+them after a whole sheet is built:
+
+1. **Intake** — `register_character` (unchanged) to save the character's
+   Profile/Abilities/Appearance text, whether you already have art or not.
+2. **One approved concept** — `generate_character_concept(description=...,
+   model="flux_manwha", n=1)`. Look at it before spending time on the next step;
+   regenerate if it's not right.
+3. **Make it canon** — `register_character(image_paths=[<the approved one>], ...)`.
+4. **`generate_turnaround_sheet`** (new) — FLUX Kontext dev + a dedicated
+   turnaround-sheet LoRA, reads the character's just-registered reference and
+   produces a multi-pose sheet (typically 7 panels: front/¾/profile repeats
+   alongside one back view). Scan the **whole figure** on every panel you care
+   about — collar shape, hands, shoe orientation — not just facing direction; a
+   partial rotation can look right at a glance (see ARCHITECTURE.md §8b.9 for
+   the chimera this exact mistake produced once).
+5. **`crop_reference`** (existing, unchanged, already generic) — slice out the
+   panels you want: front + back are mandatory, a profile/¾ view and 1-2
+   close-ups (crop tighter if the source panel is full-body) round out the
+   Avery template's three image slots.
+6. **`compose_reference_sheet`** (new) — assembles the final poster from those
+   crops (or any curated images), pulling Profile/Abilities/Appearance text from
+   the bible automatically — same layout as `generate_reference_sheet`'s
+   `combine=True` path, but composing from images you already have instead of
+   generating fresh ones.
+7. **`edit_character_image`** (new, optional) — FLUX Kontext dev as a plain-
+   English image editor, for surgical anatomy fixes (e.g. "show both hands
+   visible... keep everything else the same") on a pose that's already facing
+   the right way. **Not** for viewpoint changes — that's what step 4 is for;
+   asking this tool to rotate a figure produced a chimera in testing (see its
+   docstring).
+
+Models involved: `flux1-dev-Q3_K_S.gguf` and `flux1-kontext-dev-Q3_K_S.gguf`
+(both `models/unet/`, both from `QuantStack`/`city96`'s GGUF repos on
+HuggingFace), `manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safetensors`
+(both `models/loras/`), and `flux_controlnet_union_alpha.safetensors`
+(`models/controlnet/`, InstantX's community FLUX ControlNet). No setup script
+for these yet — fetched by hand during the investigation; see `flux_workflow.py`'s
+module docstring for the exact filenames each constant expects.
 
 ## Configuration (env vars)
 
@@ -648,10 +679,14 @@ real tuning bugs (see CHANGELOG). The optional SDXL prototype
 (`model="mj_manga_sdxl"`) fixes anatomy/backdrop quality outright, verified
 live on a 6 GB GPU. The 3D mannequin (`generate_pose_map`) solves genuine back
 views after ~12 failed 2D-extraction configurations — live-verified, with an
-honest stochastic caveat documented above and in CHANGELOG. A FLUX exploration
-(Step 9) is underway but **not yet shipped** — no `model=` option exists for it
-yet; see CHANGELOG's "FLUX exploration" entry for what's validated so far
-(better hand anatomy, ~2/3-reliable back views) versus what still needs work
-(back-view reliability, a Kontext turnaround-sheet LoRA retest, full
-`workflow.py` integration).
+honest stochastic caveat documented above and in CHANGELOG. **FLUX (Step 9,
+`model="flux_manwha"`) is now wired in** — `flux_workflow.py`, plus
+`generate_turnaround_sheet`/`edit_character_image`/`compose_reference_sheet`
+for the staged concept-to-sheet workflow — but individual pieces carry the same
+honest reliability caveats validated in scratch-script form: back views via
+ControlNet are ~2/3-seed reliable, the turnaround-sheet LoRA has one confirmed
+clean seed but no measured reliability rate yet, and `identity_mode`/IP-Adapter
+is not supported with FLUX at all (untested combination, raises an error).
+SDXL/SD1.5 remain fully intact and are still the default — FLUX is an
+additional option, same non-migration philosophy as the SDXL prototype.
 Built with [Claude Code](https://claude.com/claude-code).

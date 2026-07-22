@@ -13,16 +13,35 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
-## [Unreleased] — FLUX exploration (2026-07-21/22)
+## [Unreleased] — FLUX exploration + Stage 5: wired into the live tool (2026-07-21/22/23)
 
-**Nothing in this section is wired into `workflow.py`/`server.py` yet — this is an
-honest record of a still-open investigation, not a shipped feature.** Motivation:
-1.1.0's SDXL hand-anatomy fixes (CharTurn + RPGTurn + ClearHandsXL LoRA stacking)
-plateaued — hands kept coming back deformed even fully stacked. Prototyped
-FLUX.1-dev instead, GGUF-quantized (`flux1-dev-Q3_K_S.gguf`, ~5.0 GB, via
-`ComfyUI-GGUF`) to fit the same 6 GB VRAM budget.
+Motivation: 1.1.0's SDXL hand-anatomy fixes (CharTurn + RPGTurn + ClearHandsXL
+LoRA stacking) plateaued — hands kept coming back deformed even fully stacked.
+Prototyped FLUX.1-dev instead, GGUF-quantized (`flux1-dev-Q3_K_S.gguf`, ~5.0 GB,
+via `ComfyUI-GGUF`) to fit the same 6 GB VRAM budget.
 
-Validated in standalone scratch scripts (not yet ported):
+### Added — Stage 5: `model="flux_manwha"` + a staged concept-to-sheet workflow
+The validated scratch-script recipe below is now real, callable code, not just
+standalone test scripts. New `flux_workflow.py` (mirrors `workflow.py`'s shape
+for FLUX's distinct ComfyUI graph — GGUF unet loading, dual CLIP encoders,
+flux-specific sampling/guidance nodes — kept as a separate module rather than
+threading a third graph convention through `build_graph()`, which is already
+dense with SD1.5/SDXL/Tier-2 branches). `model="flux_manwha"` works anywhere a
+model name is accepted (`generate_character_concept`, `generate_character_pose`,
+`generate_reference_sheet`), routed via `_render_pose`'s new FLUX branch;
+`identity_mode`/IP-Adapter raises a clear error if requested with FLUX (that
+combination has never been tested). Three new tools complete the staged
+workflow the validated stages actually call for: `generate_turnaround_sheet`
+(FLUX Kontext dev + the turnaround-sheet LoRA, reading a character's registered
+reference), `edit_character_image` (FLUX Kontext dev as a general-purpose
+plain-English editor — the validated local-anatomy-fix mechanism), and
+`compose_reference_sheet` (assembles the Avery-style poster from
+already-existing images — e.g. panels `crop_reference` sliced out of a
+turnaround sheet — rather than generating fresh views the way
+`generate_reference_sheet` does). SDXL/SD1.5 are completely untouched; this is
+purely additive, same non-migration philosophy as the SDXL prototype.
+
+Validated in standalone scratch scripts before being ported into the above:
 - Base FLUX txt2img + a manhwa-style LoRA (`manwha_style.safetensors`), no OOM,
   clearly better anatomy on first look than SDXL.
 - Impact Pack `detail_fix` hand pass ported to FLUX — needs `denoise=0.7` (0.55 was
@@ -50,11 +69,12 @@ Validated in standalone scratch scripts (not yet ported):
   a reliability figure — needs a multi-seed re-run before comparing to
   ControlNet's ~2/3 rate.
 
-Explicitly deferred: porting the validated recipe into `workflow.py` as a real
-`model=` option; deleting the ~12.5 GB of SDXL-era files (checkpoint, LoRAs,
-IP-Adapter, ControlNet); tuning the turnaround-sheet LoRA further; any FLUX/SDXL
-upgrade decision for the sibling `webcomic-background-mcp` server (still SD1.5, no
-demonstrated problem there).
+Explicitly still deferred: deleting the ~12.5 GB of SDXL-era files (checkpoint,
+LoRAs, IP-Adapter, ControlNet) — held until the live tool above gets real
+end-to-end use, not just an import-time smoke test; tuning the turnaround-sheet
+LoRA's reliability further (one confirmed clean seed, not yet a measured rate);
+any FLUX/SDXL upgrade decision for the sibling `webcomic-background-mcp` server
+(still SD1.5, no demonstrated problem there — a separate investigation).
 
 ## [1.1.0] — 2026-07-20
 

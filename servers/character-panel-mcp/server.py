@@ -31,9 +31,24 @@ only reliable path to a genuine back view; 2D-photo pose extraction always
 relaxes back toward front-facing (see generate_pose_map's docstring for the
 validated recipe and its honest stochastic caveat).
 
+Also ships FLUX (ARCHITECTURE.md §8b.9, Stage 5): `model="flux_manwha"` is a new
+option on generate_character_concept/generate_character_pose/generate_reference_sheet,
+alongside the existing SD1.5/SDXL models — better hand anatomy once detail_fix
+is on, and the same mannequin ControlNet back-view path, now ~2/3-seed reliable
+on FLUX too. Two FLUX-only tools round out the recommended staged workflow for
+avoiding hallucinations (see generate_turnaround_sheet's docstring for the full
+sequence): generate_turnaround_sheet (FLUX Kontext dev + a turnaround-sheet
+LoRA — multi-pose sheet from one reference image) and edit_character_image
+(FLUX Kontext dev as a plain-English image editor — validated for local
+anatomy fixes, NOT for full viewpoint rotation, see its docstring).
+compose_reference_sheet assembles the Avery-style poster from already-existing
+images (e.g. panels cropped from a turnaround sheet), as opposed to
+generate_reference_sheet's own fresh-generation-per-view path.
+
 Exposes: register_character, list_characters, forget_character, list_projects,
 generate_character_concept, crop_reference, generate_pose_map,
-generate_character_pose, generate_reference_sheet, compose_panel, check_status,
+generate_character_pose, generate_reference_sheet, generate_turnaround_sheet,
+edit_character_image, compose_reference_sheet, compose_panel, check_status,
 bake_character_lora, check_lora_training, cancel_lora_training.
 
 Requires a running ComfyUI instance (default http://127.0.0.1:8188) for anything
@@ -48,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import characters
 import workflow
+import flux_workflow
 import training
 import mannequin
 from tools.compose_panel import compose_panel as _compose_panel
@@ -223,18 +239,34 @@ def generate_character_concept(
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_concepts", label_slug)
     full_prompt = f"{description}, {style_prompt}" if style_prompt else description
     try:
-        paths = workflow.generate_concepts(
-            prompt=full_prompt,
-            out_dir=out_dir,
-            n=n,
-            negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
-            width=width,
-            height=height,
-            seed=seed,
-            model=model,
-            lora=lora,
-            lora_strength=lora_strength,
-        )
+        if model in flux_workflow.FLUX_MODELS:
+            if (width, height) == (640, 896):
+                width, height = 832, 1216
+            paths = flux_workflow.generate_concepts(
+                prompt=full_prompt,
+                out_dir=out_dir,
+                n=n,
+                negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
+                width=width,
+                height=height,
+                seed=seed,
+                model=model,
+                lora=lora,
+                lora_strength=lora_strength,
+            )
+        else:
+            paths = workflow.generate_concepts(
+                prompt=full_prompt,
+                out_dir=out_dir,
+                n=n,
+                negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
+                width=width,
+                height=height,
+                seed=seed,
+                model=model,
+                lora=lora,
+                lora_strength=lora_strength,
+            )
     except workflow.ComfyUIError as e:
         return f"Generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
     lines = "\n".join(f"  {i + 1}. {p}" for i, p in enumerate(paths))
@@ -272,6 +304,49 @@ def _render_pose(
 
     # Tier 3: auto-use the character's own baked LoRA unless the caller overrides.
     effective_lora = lora if lora is not None else entry.get("lora")
+
+    if model in flux_workflow.FLUX_MODELS:
+        # FLUX branch (Stage 5) — no img2img/identity_mode support (untested
+        # combination; IP-Adapter has never been tried against FLUX). Identity
+        # comes from the prompt/description text alone, same as this project's
+        # plain-text-only path. pose_ref_path routes to FLUX's own ControlNet
+        # (InstantX Union, ~2/3-seed reliable for back views — see
+        # flux_workflow.py's docstring), independent of workflow.py's SD1.5/
+        # SDXL OpenPose branch.
+        if identity_mode != "off":
+            raise workflow.ComfyUIError(
+                "identity_mode is not supported with FLUX models — IP-Adapter + "
+                "FLUX has never been tested. Drop identity_mode (or pass "
+                "identity_mode='off') and rely on the prompt/description text "
+                "for identity, same as this project's plain-text-only path."
+            )
+        if (width, height) == (640, 896):
+            width, height = 832, 1216
+        raw_path = flux_workflow.generate(
+            prompt=full_prompt,
+            out_dir=out_dir,
+            negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
+            width=width,
+            height=height,
+            seed=seed,
+            model=model,
+            lora=effective_lora,
+            lora_strength=lora_strength,
+            pose_ref_path=pose_ref_path,
+            pose_strength=pose_strength,
+            pose_preprocess=pose_preprocess,
+            detail_fix=detail_fix,
+        )
+        tier_note = "FLUX base generation"
+        if effective_lora and effective_lora == entry.get("lora"):
+            tier_note = f"Tier 3 (baked LoRA '{effective_lora}') + " + tier_note
+        if pose_ref_path:
+            tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
+                          "reliable for back views — reroll on a miss)" if not pose_preprocess
+                          else " + ControlNet pose (OpenPose)")
+        if detail_fix:
+            tier_note += " + hand detail fix (no face pass — untested for FLUX)"
+        return raw_path, tier_note
 
     raw_path = workflow.generate(
         prompt=full_prompt,
@@ -425,6 +500,10 @@ def generate_character_pose(
         negative: Extra negative terms (appended to sane defaults).
         project: Which comic's bible/output to use.
         model / width / height / seed: As webcomic-background-mcp's generate_background.
+            model="flux_manwha" (Stage 5, ARCHITECTURE.md §8b.9) is a FLUX
+            option alongside the SD1.5/SDXL models above — better hand anatomy
+            with detail_fix=True, but identity_mode must stay "off" (IP-Adapter
+            + FLUX is untested); use pose_ref_path for pose control instead.
         ref_denoise: How much of the reference survives (0-1) for Tier 1's
             img2img seeding. Lower = closer to the reference (safer, less pose
             range); higher = more prompt-driven (more pose range, more drift
@@ -772,6 +851,199 @@ def generate_reference_sheet(
             + "\n".join(lines) + combined_note +
             f"\nNothing appended to the bible yet — curate these, then "
             f"register_character(image_paths=[<keepers>], character_id='{character}', "
+            f"project='{project}') to grow the reference set.")
+
+
+@mcp.tool()
+def generate_turnaround_sheet(
+    character: str,
+    project: str = characters.DEFAULT_PROJECT,
+    seed: int | None = None,
+    width: int = flux_workflow.FLUX_TURNAROUND_WIDTH,
+    height: int = flux_workflow.FLUX_TURNAROUND_HEIGHT,
+) -> str:
+    """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): generate a multi-pose
+    turnaround sheet from a registered character's primary reference image, via
+    FLUX Kontext dev + a dedicated turnaround-sheet LoRA. This is the
+    recommended staged workflow for getting a new character into the bible
+    with FLUX, designed to catch mistakes early rather than discover them after
+    a full sheet is built:
+
+    1. generate_character_concept(description=..., model="flux_manwha", n=1) —
+       one candidate front view. Look at it. Not right? Regenerate (different
+       seed, or n>1 to compare a few) before spending time on the next step.
+    2. register_character(image_paths=[<the approved concept>], ...) — make it
+       canon. This becomes the reference this tool reads from.
+    3. generate_turnaround_sheet(character=...) — this tool. Typically comes
+       back as 7 panels in a horizontal row (some front/3-4/profile repeats
+       alongside one back view, per the LoRA's own design — not exactly 5
+       distinct poses in practice). Inspect the WHOLE figure on every panel you
+       care about, not just whether it's facing the right way — check the
+       collar/neckline shape (front necklines dip toward the chest, back
+       collars sit flat), hands, and shoe orientation (toe box vs. heel). A
+       genuine back view has correct back-of-garment details throughout (back
+       seam, rear pockets, no belt buckle), not just a turned head. If the
+       back-view panel isn't genuinely clean, retry with a different seed —
+       one successful seed doesn't mean every seed will land it (this hasn't
+       been measured across many seeds the way the ControlNet path's ~2/3 rate
+       has).
+    4. crop_reference(sheet_path, boxes=[...]) — slice out the panels you want
+       to keep. Must include a front view and the back view; a profile/3-4 view
+       and 1-2 close-ups (crop tighter to head-and-shoulders if needed) round
+       out the Avery-template's three image slots (hero + back panel +
+       expression row).
+    5. compose_reference_sheet(character=..., front_path=..., back_path=...,
+       expression_paths=[...], ...) — assemble the final poster sheet from
+       those crops, pulling the bible's profile/abilities/appearance text in
+       automatically.
+    6. Optionally, edit_character_image on any panel with a specific anatomy
+       problem (e.g. hidden/malformed hands) before step 4/5 — validated for
+       local fixes on a pose that's already facing the right direction, see
+       its own docstring for what it's NOT good for.
+
+    Nothing is auto-registered or auto-composed by this tool — same staging
+    discipline as everything else here.
+
+    Args:
+        character: A character_id already in the bible, with a primary
+            reference image set.
+        project: Which comic's bible to use.
+        seed: Fixed seed for reproducibility; random if omitted.
+        width / height: Output canvas — wide, since panels lay out in a
+            horizontal row. Defaults validated 2026-07-22.
+
+    Returns:
+        The filesystem path to the raw (uncropped) turnaround sheet.
+    """
+    try:
+        ref_path = characters.primary_ref_path(character, project)
+    except characters.CharacterError as e:
+        return f"Could not generate turnaround sheet: {e}"
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
+                           "_concepts", "turnaround")
+    try:
+        sheet_path = flux_workflow.generate_turnaround_sheet(
+            image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height)
+    except workflow.ComfyUIError as e:
+        return f"Turnaround sheet generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+    return (f"Turnaround sheet generated: {sheet_path}\n"
+            f"Scan the WHOLE figure on each panel you care about (collar shape, "
+            f"hands, shoe orientation), not just facing direction — a partial "
+            f"rotation can look right at a glance and still be wrong. If the "
+            f"back view isn't genuinely clean, retry with a different seed.\n"
+            f"Next: crop_reference to slice out front + back (+ a profile view "
+            f"and 1-2 close-ups), then compose_reference_sheet to build the "
+            f"final poster.")
+
+
+@mcp.tool()
+def edit_character_image(
+    image_path: str,
+    instruction: str,
+    project: str = characters.DEFAULT_PROJECT,
+    seed: int | None = None,
+) -> str:
+    """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
+    image with a plain-English instruction, via FLUX Kontext dev as a pure
+    image editor (no LoRA).
+
+    Validated for LOCAL fixes on a pose that's already facing the right
+    direction — e.g. "show both of his hands fully visible hanging at his
+    sides, relaxed and open, fingers clearly separated. Keep everything else
+    exactly the same." That combination (a targeted ask + an explicit
+    "keep everything else the same") produced a clean result with no
+    side effects on direction, costume, or pose.
+
+    NOT validated, and one test actively disproved, for a full viewpoint
+    rotation in a single edit — asking it to both "turn him around" and "keep
+    everything else the same" is self-contradicting for a full pose change: one
+    test produced a chimera (back-facing head/hair/hands, but front-facing
+    torso/shoes — the tank-top's neckline was still a front-facing scoop and
+    both shoes still showed their toe box, not the heel). Use
+    generate_turnaround_sheet for direction changes instead of trying to
+    reproduce that here.
+
+    Args:
+        image_path: An existing image to edit (any generated output, or a
+            registered reference).
+        instruction: Plain-English edit instruction. Be specific about what to
+            keep unchanged, not just what to change — vague instructions risk
+            the same kind of partial-edit inconsistency described above.
+        project: Which comic's output folder to save under.
+        seed: Fixed seed for reproducibility; random if omitted.
+
+    Returns:
+        The filesystem path to the edited image.
+    """
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_edits")
+    try:
+        edited_path = flux_workflow.edit_image(
+            image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed)
+    except workflow.ComfyUIError as e:
+        return f"Edit failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+    return (f"Edited image: {edited_path}\n"
+            f"Scan the WHOLE figure before trusting this — head, collar/"
+            f"neckline, hands, legs, shoes — not just the region the "
+            f"instruction targeted; a local edit can succeed exactly where "
+            f"asked and still leave the rest of the figure inconsistent with "
+            f"it.")
+
+
+@mcp.tool()
+def compose_reference_sheet(
+    character: str,
+    front_path: str,
+    back_path: str | None = None,
+    expression_paths: list[str] | None = None,
+    expression_labels: list[str] | None = None,
+    project: str = characters.DEFAULT_PROJECT,
+) -> str:
+    """Assemble the Avery-style poster sheet (same layout as
+    generate_reference_sheet's combine=True path) from images that already
+    exist — e.g. panels sliced out of generate_turnaround_sheet's output via
+    crop_reference, or any other curated set of views — instead of generating
+    fresh views the way generate_reference_sheet does. Pulls the character's
+    name/profile/abilities/description text from the bible automatically, same
+    as generate_reference_sheet.
+
+    Args:
+        character: A character_id already in the bible.
+        front_path: The full-body front view — the large hero image, center of
+            the sheet.
+        back_path: The full-body back view, its own labeled panel.
+        expression_paths / expression_labels: Parallel lists — face/angle
+            close-ups and their captions (e.g. "3/4 left", "profile"). Crop
+            tighter to head-and-shoulders if the source panel is full-body.
+        project: Which comic's bible to use.
+
+    Returns:
+        The filesystem path to the composed sheet.
+    """
+    try:
+        entry = characters.get_character(character, project)
+    except characters.CharacterError as e:
+        return f"Could not compose reference sheet: {e}"
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
+                           "_concepts", "sheet")
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        sheet_path = _compose_concept_sheet(
+            front_path=front_path,
+            back_path=back_path,
+            expression_paths=expression_paths or [],
+            expression_labels=expression_labels or [],
+            name=entry.get("name", character),
+            profile=entry.get("profile", ""),
+            abilities=entry.get("abilities", ""),
+            appearance=entry.get("description", ""),
+            accent_color=_hex_to_rgb((entry.get("palette") or [None])[0]),
+            out=os.path.join(out_dir, "concept_sheet.png"),
+        )
+    except SystemExit as e:
+        return f"Could not compose reference sheet: {e}"
+    return (f"Composed reference sheet: {sheet_path}\n"
+            f"Nothing auto-registered — register_character(image_paths=[<the "
+            f"individual crops you used>], character_id='{character}', "
             f"project='{project}') to grow the reference set.")
 
 
