@@ -34,22 +34,28 @@ validated recipe and its honest stochastic caveat).
 Also ships FLUX (ARCHITECTURE.md §8b.9, Stage 5): `model="flux_manwha"` is a new
 option on generate_character_concept/generate_character_pose/generate_reference_sheet,
 alongside the existing SD1.5/SDXL models — better hand anatomy once detail_fix
-is on, and the same mannequin ControlNet back-view path, now ~2/3-seed reliable
-on FLUX too. Two FLUX-only tools round out the recommended staged workflow for
-avoiding hallucinations (see generate_turnaround_sheet's docstring for the full
-sequence): generate_turnaround_sheet (FLUX Kontext dev + a turnaround-sheet
-LoRA — multi-pose sheet from one reference image) and edit_character_image
-(FLUX Kontext dev as a plain-English image editor — validated for local
-anatomy fixes, NOT for full viewpoint rotation, see its docstring).
-compose_reference_sheet assembles the Avery-style poster from already-existing
-images (e.g. panels cropped from a turnaround sheet), as opposed to
-generate_reference_sheet's own fresh-generation-per-view path.
+is on, and pose_ref_path-driven back views via ControlNet, in two flavors
+(pose_control_type): the mannequin's line-skeleton ("openpose", ~2/3-seed
+reliable) or generate_pose_depth_map's real posable VRM mesh ("depth", ~3/3
+once calibrated — ARCHITECTURE.md §8b.9). Three FLUX-only tools round out the
+recommended staged workflow for avoiding hallucinations (see
+generate_turnaround_sheet's and generate_pose_depth_map's docstrings for the
+full sequences): generate_turnaround_sheet (FLUX Kontext dev + a turnaround-
+sheet LoRA — multi-pose sheet from one reference image), generate_pose_depth_map
+(VRM mesh depth map — pose/anatomy only, NOT costume; needs a separate Blender
+install, see vrm_depth.py), and edit_character_image (FLUX Kontext dev as a
+plain-English image editor — validated for local anatomy/costume fixes, NOT
+for full viewpoint rotation, see its docstring). compose_reference_sheet
+assembles the Avery-style poster from already-existing images (e.g. panels
+cropped from a turnaround sheet), as opposed to generate_reference_sheet's own
+fresh-generation-per-view path.
 
 Exposes: register_character, list_characters, forget_character, list_projects,
 generate_character_concept, crop_reference, generate_pose_map,
-generate_character_pose, generate_reference_sheet, generate_turnaround_sheet,
-edit_character_image, compose_reference_sheet, compose_panel, check_status,
-bake_character_lora, check_lora_training, cancel_lora_training.
+generate_pose_depth_map, generate_character_pose, generate_reference_sheet,
+generate_turnaround_sheet, edit_character_image, compose_reference_sheet,
+compose_panel, check_status, bake_character_lora, check_lora_training,
+cancel_lora_training.
 
 Requires a running ComfyUI instance (default http://127.0.0.1:8188) for anything
 that generates pixels — the bible, cropping, and compositing tools are GPU-free.
@@ -64,6 +70,7 @@ from mcp.server.fastmcp import FastMCP
 import characters
 import workflow
 import flux_workflow
+import vrm_depth
 import training
 import mannequin
 from tools.compose_panel import compose_panel as _compose_panel
@@ -280,7 +287,7 @@ def _render_pose(
     character, pose, prompt, negative, project, model, width, height, seed,
     ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
     lora, lora_strength, out_dir, pose_preprocess=True, ref_override=None,
-    detail_fix=False,
+    detail_fix=False, pose_control_type="openpose",
 ):
     """Core Tier 1/2/3 pose rendering, shared by generate_character_pose and
     generate_reference_sheet. Raises characters.CharacterError if the character
@@ -293,13 +300,21 @@ def _render_pose(
     sequential chaining (front view generated first, then reused as the anchor
     for back/expression views) passes the freshly-generated front view here,
     since it's already in the target render style, which should condition
-    identity more reliably than jumping styles from a raw source photo."""
+    identity more reliably than jumping styles from a raw source photo.
+
+    pose_control_type="depth" (FLUX + pose_ref_path only, ARCHITECTURE.md
+    §8b.9): the character's bible `description` is deliberately EXCLUDED from
+    the auto-built prompt here — the VRM depth mesh wears a plain t-shirt, and
+    including a costume description (the usual case) causes a text-vs-geometry
+    conflict that produces ragged texture-clash artifacts. Only the name and
+    the explicit `pose`/`prompt` text are used; apply the character's actual
+    costume afterward via edit_character_image, as its own separate pass."""
     ref_path = ref_override or characters.primary_ref_path(character, project)
     entry = characters.get_character(character, project)
     full_prompt = f"{entry['name']}, {pose}"
     if prompt:
         full_prompt = f"{full_prompt}, {prompt}"
-    if entry.get("description"):
+    if entry.get("description") and pose_control_type != "depth":
         full_prompt = f"{full_prompt}, {entry['description']}"
 
     # Tier 3: auto-use the character's own baked LoRA unless the caller overrides.
@@ -335,15 +350,20 @@ def _render_pose(
             pose_ref_path=pose_ref_path,
             pose_strength=pose_strength,
             pose_preprocess=pose_preprocess,
+            pose_control_type=pose_control_type,
             detail_fix=detail_fix,
         )
         tier_note = "FLUX base generation"
         if effective_lora and effective_lora == entry.get("lora"):
             tier_note = f"Tier 3 (baked LoRA '{effective_lora}') + " + tier_note
         if pose_ref_path:
-            tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
-                          "reliable for back views — reroll on a miss)" if not pose_preprocess
-                          else " + ControlNet pose (OpenPose)")
+            if pose_control_type == "depth":
+                tier_note += (" + ControlNet pose (VRM depth map, ~3/3-seed reliable "
+                              "for back views once calibrated — see vrm_depth.py)")
+            else:
+                tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
+                              "reliable for back views — reroll on a miss)" if not pose_preprocess
+                              else " + ControlNet pose (OpenPose)")
         if detail_fix:
             tier_note += " + hand detail fix (no face pass — untested for FLUX)"
         return raw_path, tier_note
@@ -442,6 +462,60 @@ def generate_pose_map(
 
 
 @mcp.tool()
+def generate_pose_depth_map(
+    yaw: float = 180.0,
+    width: int = 832,
+    height: int = 1216,
+    out: str | None = None,
+) -> str:
+    """FLUX-only (ARCHITECTURE.md §8b.9): render a depth map from a real,
+    posable VRM mesh (assets/Base_Male.vrm), standing pose — validated
+    2026-07-22/23 as MORE reliable than generate_pose_map's line-skeleton for
+    genuine back views (~3/3 seeds vs. ~2/3), once the depth map's near/far
+    window is properly calibrated (already done here — see vrm_depth.py).
+
+    Requires a separate Blender install (not bundled — see vrm_depth.py's
+    docstring for one-time setup: download Blender, install the community VRM
+    Add-on, set WEBCOMIC_CHAR_BLENDER to the executable path).
+
+    IMPORTANT — this is a pose/anatomy tool, not a costume tool. The VRM mesh
+    wears a plain t-shirt. Feed the output to
+    generate_character_pose(pose_ref_path=<this path>, pose_preprocess=False,
+    model="flux_manwha", pose_control_type="depth") with a prompt that does
+    NOT describe the character's actual costume (their bible `description` is
+    automatically excluded from the prompt in this mode for exactly this
+    reason) — otherwise the text and the plain-shirt geometry conflict,
+    producing ragged texture-clash artifacts (confirmed live). Once you have
+    a clean pose/anatomy result, dress it in the real costume via
+    edit_character_image as a separate pass — validated end-to-end
+    2026-07-23, including fixing a follow-up logical error (a necktie
+    rendered on the back of a back-view figure) with a second, precise edit.
+
+    Only the "standing" pose (arms at sides) is implemented.
+
+    Args:
+        yaw: Degrees around the vertical axis. 0 = facing the viewer, 180 =
+            seen from behind — same convention as generate_pose_map.
+        width / height: Canvas size — match what you'll pass to
+            generate_character_pose (defaults are FLUX-native portrait).
+        out: Output path. Defaults to a scratch file named by yaw.
+
+    Returns:
+        The filesystem path to the rendered depth map PNG.
+    """
+    try:
+        path = vrm_depth.render_depth_map(yaw, width, height, out)
+    except vrm_depth.VrmDepthError as e:
+        return f"Could not generate depth map: {e}"
+    return (f"Depth map generated: {path}\n"
+            f"Feed to generate_character_pose(pose_ref_path='{path}', "
+            f"pose_preprocess=False, model='flux_manwha', "
+            f"pose_control_type='depth', pose_strength=0.8) with a "
+            f"costume-neutral prompt — then edit_character_image to apply "
+            f"the real costume afterward.")
+
+
+@mcp.tool()
 def generate_character_pose(
     character: str,
     pose: str,
@@ -458,6 +532,7 @@ def generate_character_pose(
     pose_ref_path: str | None = None,
     pose_strength: float = 1.0,
     pose_preprocess: bool = True,
+    pose_control_type: str = "openpose",
     detail_fix: bool = False,
     lora: str | None = None,
     lora_strength: float | None = None,
@@ -524,6 +599,17 @@ def generate_character_pose(
             straight to ControlNet unprocessed — use this for maps already in
             OpenPose format, i.e. anything from generate_pose_map (running the
             human-detector preprocessor on a stick figure fails).
+        pose_control_type: FLUX models + pose_ref_path only (ARCHITECTURE.md
+            §8b.9). "openpose" (default) uses mannequin.py's line-skeleton
+            maps, ~2/3-seed direction-lock reliability. "depth" uses
+            generate_pose_depth_map's VRM mesh depth maps instead — ~3/3-seed
+            reliability once calibrated, but the character's bible
+            `description` is automatically EXCLUDED from the prompt in this
+            mode (the VRM mesh wears a plain t-shirt; describing a different
+            costume causes text-vs-geometry texture-clash artifacts) — apply
+            the real costume afterward via edit_character_image. Forces
+            pose_preprocess off automatically (OpenposePreprocessor doesn't
+            apply to depth maps).
         detail_fix: Auto-repair hallucinated hands/faces after the main render.
             Default False (needs extra custom nodes — see README.md; costs
             roughly 2x generation time when on).
@@ -541,7 +627,8 @@ def generate_character_pose(
         raw_path, tier_note = _render_pose(
             character, pose, prompt, negative, project, model, width, height, seed,
             ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
-            lora, lora_strength, out_dir, pose_preprocess=pose_preprocess, detail_fix=detail_fix)
+            lora, lora_strength, out_dir, pose_preprocess=pose_preprocess,
+            detail_fix=detail_fix, pose_control_type=pose_control_type)
     except characters.CharacterError as e:
         return f"Could not generate pose: {e}"
     except workflow.ComfyUIError as e:

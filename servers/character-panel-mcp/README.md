@@ -18,7 +18,7 @@ local ComfyUI by default.
 
 ## What it does
 
-Seventeen tools:
+Eighteen tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
@@ -31,6 +31,9 @@ Seventeen tools:
 - **`generate_pose_map`** — synthesize an OpenPose control map from a posable 3D
   skeleton at any angle (front, side, **genuine back view**), for when a text
   prompt or a 2D reference photo can't force the direction (see below).
+- **`generate_pose_depth_map`** — a more reliable alternative to
+  `generate_pose_map` for back views (Step 10 below): a depth map rendered
+  from a real posable VRM mesh in Blender, instead of a line skeleton.
 - **`generate_character_pose`** — render the character in a new pose, layering all
   three consistency tiers (see below), auto-matted to a clean RGBA cutout.
 - **`generate_turnaround_sheet`** / **`edit_character_image`** / **`compose_reference_sheet`**
@@ -590,6 +593,53 @@ HuggingFace), `manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safete
 for these yet — fetched by hand during the investigation; see `flux_workflow.py`'s
 module docstring for the exact filenames each constant expects.
 
+## Step 10 — `generate_pose_depth_map`: a more reliable back view (optional, needs Blender)
+
+> Added 2026-07-22/23 (ARCHITECTURE.md §8b.10) — Step 9's mannequin-skeleton
+> ControlNet back view is real but capped at ~2/3-seed direction-lock
+> reliability. A depth map rendered from a real posable VRM mesh
+> (`assets/Base_Male.vrm`) instead of a line skeleton reaches **~3/3** once
+> properly calibrated. Same `flux_controlnet_union_alpha.safetensors` model
+> you already have — just a different `SetUnionControlNetType` mode
+> (`pose_control_type="depth"` instead of the default `"openpose"`).
+
+**This needs a separate Blender install** — `pip install bpy` doesn't work for
+this project (the pip package skips Python 3.12 entirely, jumping 3.11→3.13),
+so this drives a real Blender executable via subprocess, the same pattern
+`workflow.py` already uses for ComfyUI. One-time setup:
+
+1. Download the portable Blender 5.2 LTS zip (no installer needed) from
+   [blender.org/download](https://www.blender.org/download/) and unzip it
+   anywhere.
+2. Install the community [VRM Add-on for Blender](https://github.com/saturday06/VRM-Addon-for-Blender)
+   (the "Extension" package, not the legacy "-addon" one) headlessly:
+   ```
+   blender.exe --background --python-expr "
+   import bpy
+   bpy.ops.extensions.package_install_files(
+       filepath=r'<path to VRM_Addon_for_Blender-Extension-*.zip>',
+       repo='user_default', enable_on_install=True)
+   bpy.ops.wm.save_userpref()"
+   ```
+   The `save_userpref()` call is required — without it the addon silently
+   reverts to disabled on the next headless launch.
+3. Set `WEBCOMIC_CHAR_BLENDER` to your `blender.exe` path.
+
+**Usage**: `generate_pose_depth_map(yaw=180)` → feed the result to
+`generate_character_pose(pose_ref_path=<that path>, pose_preprocess=False,
+model="flux_manwha", pose_control_type="depth")`. Only the "standing" pose
+is implemented.
+
+**This is a pose/anatomy tool, not a costume tool** — the VRM mesh wears a
+plain t-shirt, and describing a different outfit in the prompt causes a
+text-vs-geometry conflict (ragged texture-clash artifacts, confirmed live).
+`pose_control_type="depth"` automatically drops the character bible's
+`description` from the prompt for exactly this reason. Once you have a clean
+structural result, dress it in the real costume via `edit_character_image` as
+a separate pass — validated end-to-end, including catching and fixing a real
+logical error (a necktie rendered on the *back* of a back-view figure — a tie
+is front-only) with a second, precise edit.
+
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |
@@ -689,4 +739,10 @@ clean seed but no measured reliability rate yet, and `identity_mode`/IP-Adapter
 is not supported with FLUX at all (untested combination, raises an error).
 SDXL/SD1.5 remain fully intact and are still the default — FLUX is an
 additional option, same non-migration philosophy as the SDXL prototype.
+**A second, more reliable back-view path landed the same arc** (Step 10,
+`generate_pose_depth_map` + `pose_control_type="depth"`): a real VRM mesh's
+depth map, rendered via a separate Blender install, reaches ~3/3-seed
+direction-lock reliability once properly calibrated — a real improvement
+over the mannequin skeleton's ~2/3, validated live including a full
+pose-then-costume-then-fix pipeline (see CHANGELOG/ARCHITECTURE §8b.10).
 Built with [Claude Code](https://claude.com/claude-code).

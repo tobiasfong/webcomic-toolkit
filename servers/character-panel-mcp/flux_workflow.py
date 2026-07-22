@@ -79,13 +79,14 @@ FLUX_LORA = os.environ.get("WEBCOMIC_CHAR_FLUX_LORA", "manwha_style.safetensors"
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_FLUX_LORA_STRENGTH", "1.5"))
 FLUX_GUIDANCE = float(os.environ.get("WEBCOMIC_CHAR_FLUX_GUIDANCE", "3.5"))
 
-# InstantX's community "Union" ControlNet — explicitly alpha-quality, which is
-# the likely cause of its seed-dependent (~2/3) direction-lock reliability
-# rather than a strength-tuning problem (see CHANGELOG). Needs
-# SetUnionControlNetType(type="openpose") between the loader and apply node —
-# verified live against the running ComfyUI instance's /object_info, not
-# guessed from docs.
-FLUX_CONTROLNET_OPENPOSE = os.environ.get(
+# InstantX's community "Union" ControlNet — one model, multiple control types
+# selected via SetUnionControlNetType's `type` field ("openpose" or "depth",
+# both verified live against the running ComfyUI instance's /object_info
+# enum, not guessed from docs). Explicitly alpha-quality, which is the likely
+# cause of "openpose" mode's seed-dependent (~2/3) direction-lock reliability
+# rather than a strength-tuning problem (see CHANGELOG) — "depth" mode
+# reaches ~3/3 once the depth map itself is properly calibrated (vrm_depth.py).
+FLUX_CONTROLNET_UNION = os.environ.get(
     "WEBCOMIC_CHAR_FLUX_CONTROLNET", "flux_controlnet_union_alpha.safetensors")
 FLUX_DEFAULT_POSE_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_FLUX_POSE_STRENGTH", "0.8"))
 
@@ -174,6 +175,7 @@ def _build_base_graph(
     lora_name: str | None, lora_strength: float,
     pose_ref_name: str | None = None, pose_strength: float = FLUX_DEFAULT_POSE_STRENGTH,
     pose_preprocess: bool = True, detail_fix: bool = False,
+    pose_control_type: str = "openpose",
 ) -> dict:
     g = {
         "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": unet_name}},
@@ -201,8 +203,26 @@ def _build_base_graph(
     g["7"] = {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": base_clip}}
     pos_ref, neg_ref = ["6", 0], ["7", 0]
 
-    # ControlNet pose branch — same mannequin.py-synthesized map used since
-    # v1.0.0, fed through InstantX's Union ControlNet.
+    # ControlNet pose branch — two validated sources, selected by
+    # pose_control_type:
+    #   "openpose" — mannequin.py's synthesized line-skeleton (used since
+    #     v1.0.0), run through OpenposePreprocessor unless pose_preprocess is
+    #     False (the map is already OpenPose-format, e.g. from mannequin.py).
+    #   "depth" — vrm_depth.py's rendered depth map from the real VRM mesh
+    #     (ARCHITECTURE.md §8b.9) — validated 2026-07-22/23 as MORE reliable
+    #     for back views (3/3 seeds vs. ~2/3 for the skeleton), but ONLY once
+    #     the depth map's near/far window is properly calibrated (see
+    #     vrm_depth.py) and ONLY with a costume-neutral prompt (the VRM mesh's
+    #     plain-shirt geometry conflicts with text describing a different
+    #     outfit — see flux_workflow.py's/vrm_depth.py's docstrings). Never
+    #     run OpenposePreprocessor on a depth map — it isn't a pose skeleton.
+    if pose_control_type not in ("openpose", "depth"):
+        raise ComfyUIError(
+            f"Unknown pose_control_type '{pose_control_type}'. Options: openpose, depth."
+        )
+    if pose_control_type != "openpose":
+        pose_preprocess = False  # safety: OpenposePreprocessor never applies to depth maps
+
     if pose_ref_name:
         g["30"] = {"class_type": "LoadImage", "inputs": {"image": pose_ref_name}}
         if pose_preprocess:
@@ -213,10 +233,12 @@ def _build_base_graph(
             pose_image_ref = ["31", 0]
         else:
             pose_image_ref = ["30", 0]
+        # Same Union ControlNet model for both control types — SetUnionControlNetType's
+        # `type` value below is what actually switches its behavior, not the file.
         g["32"] = {"class_type": "ControlNetLoader",
-                   "inputs": {"control_net_name": FLUX_CONTROLNET_OPENPOSE}}
+                   "inputs": {"control_net_name": FLUX_CONTROLNET_UNION}}
         g["33"] = {"class_type": "SetUnionControlNetType",
-                   "inputs": {"control_net": ["32", 0], "type": "openpose"}}
+                   "inputs": {"control_net": ["32", 0], "type": pose_control_type}}
         g["34"] = {"class_type": "ControlNetApplyAdvanced",
                    "inputs": {"positive": pos_ref, "negative": neg_ref,
                               "control_net": ["33", 0], "image": pose_image_ref,
@@ -270,18 +292,30 @@ def generate(
     pose_ref_path: str | None = None,
     pose_strength: float = FLUX_DEFAULT_POSE_STRENGTH,
     pose_preprocess: bool = True,
+    pose_control_type: str = "openpose",
     detail_fix: bool = False,
     timeout: int = 600,
 ) -> str:
     """Base FLUX generation. No img2img/identity-conditioning ref_path (unlike
     workflow.generate()) — untested combination; identity comes from the
     prompt/description text alone, same as this project's plain-text-only
-    path. pose_ref_path + ControlNet is the validated mechanism for back
-    views: pass a mannequin.render_pose_map(yaw=180) map with
-    pose_preprocess=False, pose_strength=0.8 (validated; expect ~1-in-3 seeds
-    to miss the direction lock — reroll, don't assume a single seed proves
-    reliability). detail_fix runs the hand-only Impact Pack pass
-    (denoise=0.7) — no face pass, that combination was never tested for FLUX.
+    path. detail_fix runs the hand-only Impact Pack pass (denoise=0.7) — no
+    face pass, that combination was never tested for FLUX.
+
+    pose_ref_path + ControlNet is the validated mechanism for back views, in
+    two flavors selected by pose_control_type:
+
+    - "openpose" (default): mannequin.render_pose_map(yaw=180), pose_strength
+      =0.8, pose_preprocess=False. ~2/3-seed direction-lock reliability.
+    - "depth": vrm_depth.render_depth_map(yaw=180) — a real posable VRM
+      mesh's depth map, ~3/3-seed reliability once calibrated (see
+      vrm_depth.py). pose_preprocess is forced off automatically for this
+      mode. IMPORTANT: `prompt` must NOT describe the character's actual
+      costume in this mode — the VRM mesh wears a plain t-shirt, and
+      describing a different outfit causes a text-vs-geometry conflict
+      (ragged texture-clash artifacts). Use a costume-neutral prompt here,
+      then apply the real costume afterward via edit_character_image as a
+      separate pass (ARCHITECTURE.md §8b.9).
 
     Note: FLUX's negative conditioning has limited effect at cfg=1.0 (guidance
     comes from FluxGuidance instead) — `negative` is passed through for parity
@@ -305,6 +339,7 @@ def generate(
         m["unet"], m["clip1"], m["clip2"], m["vae"],
         use_lora, use_lora_strength,
         pose_ref_name, pose_strength, pose_preprocess, detail_fix,
+        pose_control_type,
     )
     data = _submit_and_wait(graph, "12", timeout)
     return _save(data, out_dir, f"flux_{seed}")

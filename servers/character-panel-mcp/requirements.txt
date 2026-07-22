@@ -8,6 +8,9 @@ pillow>=10.0.0
 # runtime with "No onnxruntime backend found") — onnxruntime must be explicit.
 rembg>=2.0.50
 onnxruntime>=1.16.0
-# assets/Base_Male.vrm (VRM/glTF humanoid base mesh) loading, for a future
-# mannequin.py extension (depth/normal-map rendering) — see assets/README.md.
-pygltflib>=1.16.0
+# vrm_depth.py: reads the raw depth/normal EXR passes rendered by Blender
+# (external dependency, NOT pip-installable — see vrm_depth.py's docstring for
+# the separate Blender install this needs). numpy comes in transitively via
+# rembg/onnxruntime already, but is used directly here too.
+OpenEXR>=3.3.0
+numpy>=2.0.0

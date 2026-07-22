@@ -13,6 +13,51 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — VRM depth-map ControlNet: a more reliable direction fix (2026-07-22/23)
+
+### Added — `generate_pose_depth_map`, `pose_control_type="depth"`
+A second, more reliable direction-control mechanism alongside Stage 5's
+mannequin-skeleton ControlNet path, built from a real posable VRM mesh
+(`assets/Base_Male.vrm`) rendered in Blender rather than a line skeleton.
+New `vrm_depth.py` drives a separate Blender install (portable Blender 5.2
+LTS + the community VRM Add-on — NOT pip-installable for this project's
+Python 3.12, since the `bpy` pip package skips 3.12 entirely) via subprocess,
+producing a depth map that `generate_character_pose`/`flux_workflow.py` can
+use via the new `pose_control_type="depth"` parameter (default remains
+`"openpose"`, the mannequin skeleton — nothing existing changes). New
+`generate_pose_depth_map` MCP tool wraps it, mirroring `generate_pose_map`'s
+shape.
+
+**Result: ~3/3-seed direction-lock reliability, up from ~2/3** — but only
+after fixing a real calibration bug (the depth remap's near/far window was
+~8x too wide, producing a near-flat, low-relief map that looked clean but
+gave the ControlNet almost no real structural information — the actual cause
+of a hallucinated second head and other artifacts in initial testing, not a
+ControlNet-strength problem). `type="normal"` was tested head-to-head and
+dropped — same direction reliability, markedly worse costume coherence (one
+seed's entire garment derailed into an unrelated robe).
+
+**A second, distinct bug found and fixed**: the VRM mesh wears a plain
+t-shirt, not any character's actual costume — describing a different outfit
+in the prompt while conditioning on this mesh's depth silhouette causes a
+text-vs-geometry conflict (ragged texture-clash artifacts). Fix: this mode's
+prompt automatically excludes the character bible's `description` (costume
+text) — use it for pose/anatomy only, then apply the real costume afterward
+via `edit_character_image` as a separate pass. Validated end-to-end,
+including catching and fixing a real logical error along the way (a necktie
+rendered on the back of a back-view figure — a tie is front-only and
+shouldn't be visible from behind at all) with a second, precise
+`edit_character_image` call. See ARCHITECTURE.md §8b.10 for the full,
+occasionally painful story (a lot of undocumented Blender 5.2 API churn
+along the way — `Scene.node_tree`, `CompositorNodeMapRange`/`Math`, and
+`CompositorNodeOutputFile`'s format-override handling all changed shape
+since most available documentation was written).
+
+`generate_reference_sheet` deliberately does NOT get `pose_control_type` —
+it has no `pose_ref_path` parameter to pair it with; this is a manual,
+curated flow (`generate_character_pose` + `generate_pose_depth_map` +
+`edit_character_image`), not the bulk sheet tool.
+
 ## [Unreleased] — FLUX exploration + Stage 5: wired into the live tool (2026-07-21/22/23)
 
 Motivation: 1.1.0's SDXL hand-anatomy fixes (CharTurn + RPGTurn + ClearHandsXL
