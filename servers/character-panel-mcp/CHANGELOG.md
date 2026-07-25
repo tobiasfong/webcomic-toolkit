@@ -13,6 +13,61 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Real Stage-6 run on Trevor + full-template reference sheet (2026-07-23/24)
+
+### Added — `compose_full_reference_sheet()` (`tools/compose_sheet.py`)
+A denser, bordered-box poster layout modeled on a real hand-composed Avery
+reference sheet, alongside the existing simpler `compose_concept_sheet`:
+scattered left/center/right columns instead of one stacked text column,
+front+back shown side by side in one box, an "IN ACTION" pose row, one boxed
+prop illustration, and a small ability-mechanism diagram box. Not yet wired
+into `server.py` as an MCP tool — called directly from a script so far.
+Deliberately does not model a stat block, personal quote, or mission
+statement — no real data for those fields; don't invent filler (see
+ARCHITECTURE.md §8b.11).
+
+### Fixed — three real bugs found live during the first full real-character run
+- **Turnaround-sheet proportions**: a short/wide canvas (1536×768) biases
+  Kontext toward a squat figure regardless of the reference image's own
+  proportions. Fixed by using a taller canvas (1536×1280) plus explicit
+  "maintain scale and proportion" language in the prompt itself, not just the
+  reference image.
+- **Glasses missing/faint in some panels**: patching a bad turnaround sheet
+  after the fact (whole-sheet edit, per-panel crop-and-paste) reliably failed
+  or introduced new regressions in untouched panels. Fix was to bake the
+  requirement into the main generation prompt and reroll fresh, not patch.
+- **Expression thumbnails cropped off the chin**: `row_box()`'s square,
+  top-anchored crop assumed roughly-square source images; a taller-than-wide
+  source lost the bottom of the face. Added a `square=False` mode that scales
+  to one shared height instead, preserving full aspect with no cropping.
+
+### Added — `tools/bg_composite.py`, `compose_full_reference_sheet`, `apply_gradient_background` MCP tools
+Tried a flat-cutout-plus-separate-illustrated-background approach first:
+connected-component background detection correctly told a shirt apart from
+a same-colored pose-gap (e.g. between crossed legs), but any pose with a
+glowing VFX element (ice-magic burst, glowing book) kept showing a visible
+halo — the glow renders as a genuine soft fade to white in the source art
+with no hard edge to cut along. Decided illustrated backgrounds weren't
+worth the time: plain white/gradient is the actual convention for model
+sheets, not a compromise. **Plain two-color gradients work cleanly**,
+including for glow poses, as long as the gradient is light-toned at the
+point the glow fades into — pairing the ice-magic/glowing-book poses with
+pale (winter/sunset-toned) gradients made the halo invisible, since it was
+never about background vs. no background, only contrast between the glow's
+white fade and whatever's behind it. Shipped as `tools/bg_composite.py`
+(`extract_alpha`, `make_gradient`, `composite_on_gradient` — the illustrated-
+background path was deliberately NOT carried over, see its module
+docstring) plus two new MCP tools: `compose_full_reference_sheet` (wraps
+`compose_sheet.py`'s new bordered-box poster layout, §8b.11) and
+`apply_gradient_background`. Trevor's sheet ships with gradient backgrounds
+(front=dusk, back=night, expressions=dusk/night/winter, action
+poses=sunset/winter). The illustrated-scene-compositing problem is
+real and left for whenever panel generation (character composited into an
+actual scene) is built properly, where it can be solved by generating the
+effect within the conditioned scene directly rather than cutting it from a
+white-background render. See ARCHITECTURE.md §8b.11 for the full
+step-by-step recipe, meant to be repeated for Lumiere.
+
 ## [Unreleased] — VRM depth-map ControlNet: a more reliable direction fix (2026-07-22/23)
 
 ### Added — `generate_pose_depth_map`, `pose_control_type="depth"`

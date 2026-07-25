@@ -77,6 +77,8 @@ from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
 from tools.compose_sheet import compose_sheet as _compose_sheet
 from tools.compose_sheet import compose_concept_sheet as _compose_concept_sheet
+from tools.compose_sheet import compose_full_reference_sheet as _compose_full_reference_sheet
+from tools.bg_composite import composite_on_gradient as _composite_on_gradient
 
 mcp = FastMCP("character-panel-generator")
 
@@ -1132,6 +1134,146 @@ def compose_reference_sheet(
             f"Nothing auto-registered — register_character(image_paths=[<the "
             f"individual crops you used>], character_id='{character}', "
             f"project='{project}') to grow the reference set.")
+
+
+@mcp.tool()
+def compose_full_reference_sheet(
+    character: str,
+    front_path: str,
+    back_path: str | None = None,
+    expression_paths: list[str] | None = None,
+    expression_labels: list[str] | None = None,
+    subtitle: str = "",
+    functions: list[str] | None = None,
+    notes: list[str] | None = None,
+    prop_path: str | None = None,
+    prop_label: str = "",
+    prop_caption: str = "",
+    diagram_path: str | None = None,
+    action_paths: list[str] | None = None,
+    action_labels: list[str] | None = None,
+    project: str = characters.DEFAULT_PROJECT,
+) -> str:
+    """A denser Avery-template-style poster than compose_reference_sheet:
+    bordered boxes scattered across left/center/right columns (not one
+    stacked text column), front+back shown side by side in one box, plus
+    optional FUNCTIONS/FILE NOTES bullet boxes, a boxed prop illustration, an
+    ability-mechanism diagram box, and an "IN ACTION" pose row. Built from
+    the real Trevor sheet run (ARCHITECTURE.md §8b.11) — same staging
+    discipline as compose_reference_sheet: nothing auto-registered.
+
+    Do NOT invent content for functions/notes/prop/diagram — these need real
+    text/images the caller actually has (derived from the bible's real
+    abilities/profile text, or genuinely generated assets). Leave a param
+    unset rather than filling it with placeholder content; the layout skips
+    any section with nothing given it.
+
+    Args:
+        character: A character_id already in the bible (pulls name/profile/
+            abilities/description/palette from it, same as
+            compose_reference_sheet).
+        front_path / back_path: full-body views, shown side by side.
+        expression_paths / expression_labels: face/angle close-ups shown as
+            a row of same-height crops (full aspect preserved, not
+            square-cropped — a square top-anchored crop can cut off the chin
+            on a taller-than-wide source).
+        subtitle: one line under the character's name.
+        functions: bullet list for a "FUNCTIONS" box — short phrases derived
+            from the bible's real abilities text.
+        notes: bullet list for a "FILE NOTES" box — short phrases derived
+            from the bible's real profile text.
+        prop_path / prop_label / prop_caption: one boxed illustration (a
+            signature item/artifact).
+        diagram_path: one boxed illustration explaining how the character's
+            ability works — render this separately (e.g. PIL boxes+arrows)
+            and just pass the path; this tool only embeds it.
+        action_paths / action_labels: a labeled row of action/combat poses,
+            shown at full aspect ratio (not square-cropped, since the
+            prop/effect can be anywhere in frame).
+        project: Which comic's bible to use.
+
+    Returns:
+        The filesystem path to the composed sheet.
+    """
+    try:
+        entry = characters.get_character(character, project)
+    except characters.CharacterError as e:
+        return f"Could not compose reference sheet: {e}"
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
+                           "_concepts", "sheet")
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        sheet_path = _compose_full_reference_sheet(
+            front_path=front_path,
+            back_path=back_path,
+            expression_paths=expression_paths or [],
+            expression_labels=expression_labels or [],
+            name=entry.get("name", character),
+            subtitle=subtitle,
+            profile=entry.get("profile", ""),
+            abilities=entry.get("abilities", ""),
+            appearance=entry.get("description", ""),
+            functions=functions or [],
+            notes=notes or [],
+            prop_path=prop_path,
+            prop_label=prop_label,
+            prop_caption=prop_caption,
+            diagram_path=diagram_path,
+            action_paths=action_paths or [],
+            action_labels=action_labels or [],
+            accent_color=_hex_to_rgb((entry.get("palette") or [None])[0]),
+            out=os.path.join(out_dir, "full_sheet.png"),
+        )
+    except SystemExit as e:
+        return f"Could not compose reference sheet: {e}"
+    return (f"Composed full reference sheet: {sheet_path}\n"
+            f"Nothing auto-registered — register_character(image_paths=[<the "
+            f"individual crops you used>], character_id='{character}', "
+            f"project='{project}') to grow the reference set.")
+
+
+@mcp.tool()
+def apply_gradient_background(
+    image_path: str,
+    top_color: list[int],
+    bottom_color: list[int],
+    project: str = characters.DEFAULT_PROJECT,
+    out: str | None = None,
+) -> str:
+    """Cut a character image's white background out and place it over a
+    fresh vertical two-color gradient — a lightweight alternative to
+    compositing onto a full illustrated background (ARCHITECTURE.md §8b.11:
+    illustrated scenes were tried and abandoned for reference-sheet use — a
+    glowing VFX pose, e.g. a spell effect, renders with a soft fade to white
+    with no hard edge, and no cutout fix removed the resulting halo cleanly
+    against a high-contrast illustrated scene). Gradients sidestep that: for
+    a pose with a glow effect, pick a LIGHT-toned pair (close to white near
+    where the glow sits) and the leftover fade becomes invisible — this was
+    never really a "background vs. no background" problem, only contrast
+    between the glow's white fade and whatever's behind it.
+
+    Args:
+        image_path: A character image with a plain white background (any
+            generate_character_pose / edit_character_image / turnaround-sheet
+            crop output).
+        top_color / bottom_color: [r, g, b] triples, 0-255. E.g. a dusk
+            gradient: top_color=[120,90,140], bottom_color=[40,30,60].
+        project: Which comic's output folder to save under.
+        out: Output path. Auto-derived next to image_path if omitted.
+
+    Returns:
+        The filesystem path to the composited image.
+    """
+    if not os.path.isfile(image_path):
+        return f"Could not read image: {image_path}"
+    if out is None:
+        root, ext = os.path.splitext(image_path)
+        out = f"{root}_gradient{ext or '.png'}"
+    try:
+        result = _composite_on_gradient(image_path, out, tuple(top_color), tuple(bottom_color))
+    except Exception as e:
+        return f"Could not apply gradient background: {e}"
+    return f"Composited onto gradient background: {result}"
 
 
 @mcp.tool()
