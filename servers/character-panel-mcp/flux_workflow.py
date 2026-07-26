@@ -126,14 +126,32 @@ FLUX_TURNAROUND_LORA_STRENGTH = float(
 # attempt with "exact" produced zero genuine back views out of 7 panels; the
 # identical settings minus that one word produced a genuine, whole-figure-
 # verified back view. Do not reintroduce "exact" here without retesting.
+#
+# Second validated fix (2026-07-23/24, real Trevor run, ARCHITECTURE.md
+# §8b.11): a short/wide canvas (the old 1536x768 default) biases Kontext
+# toward a squat figure regardless of what the reference image actually
+# shows — Kontext appears to infer body proportions partly from absolute
+# canvas HEIGHT, not just the reference. Fixed by both raising the default
+# height (768 -> 1280, a taller canvas, not just the same aspect scaled up)
+# AND stating the proportion requirement directly in the prompt itself — the
+# canvas fix alone was not enough, and the prompt fix alone was not enough
+# either; both together is what fixed it. Confirmed on a live reroll: this
+# combination can still occasionally over-anchor a panel's POSE (e.g.
+# produce a duplicate front view instead of a genuine 3/4 angle) — if that
+# happens, a plain reroll with a new seed at the same settings resolved it
+# for free, cheaper than fighting the prompt further.
 FLUX_TURNAROUND_PROMPT = (
     "create a turnaround sheet of this character, 5 full-body poses on pure white "
     "background: front view, 3/4 left, left profile, back view, right profile, 3/4 right "
     "— evenly spaced in a clean horizontal row, consistent lighting and style, no "
-    "background noise, no shadows, same proportions and detailing across all views"
+    "background noise, no shadows, same proportions and detailing across all views. "
+    "Maintain scale and proportion — do not compress, squash, or shorten the figure "
+    "vertically to fit the frame. Preserve the character's exact body proportions from "
+    "the reference image in every one of the five poses — do not draw the figure "
+    "shorter, stumpier, or more squat in any panel than in the reference."
 )
 FLUX_TURNAROUND_WIDTH = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_WIDTH", "1536"))
-FLUX_TURNAROUND_HEIGHT = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_HEIGHT", "768"))
+FLUX_TURNAROUND_HEIGHT = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_HEIGHT", "1280"))
 
 
 def _submit_and_wait(graph: dict, output_node: str = "12", timeout: int = 300) -> bytes:
@@ -380,11 +398,19 @@ def edit_image(
     seed: int | None = None,
     guidance: float = FLUX_KONTEXT_GUIDANCE,
     steps: int = FLUX_KONTEXT_STEPS,
+    lora: str | None = None,
+    lora_strength: float = 0.8,
     timeout: int = 300,
 ) -> str:
     """FLUX Kontext dev as a pure image editor — see module docstring for what
     this is and is not validated for (local fixes: yes; full viewpoint
-    rotation in one edit: no, produces a chimera)."""
+    rotation in one edit: no, produces a chimera).
+
+    lora: optional LoRA filename (e.g. FLUX_LORA, the manwha/webtoon style
+    LoRA) loaded onto the base model before editing — for a restyle pass
+    (redraw this exact pose/figure in a specific art style) rather than a
+    structural edit. None (default) runs the base Kontext model with no
+    LoRA, same as before this parameter existed."""
     ensure_comfy_running()
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
@@ -405,9 +431,6 @@ def edit_image(
         "6": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["44", 0], "guidance": guidance}},
         "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},
         "45": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
-        "3": {"class_type": "ModelSamplingFlux",
-              "inputs": {"model": ["1", 0], "max_shift": 1.15, "base_shift": 0.5,
-                         "width": ["42", 0], "height": ["42", 1]}},
         "8": {"class_type": "EmptySD3LatentImage",
               "inputs": {"width": ["42", 0], "height": ["42", 1], "batch_size": 1}},
         "9": {"class_type": "KSampler",
@@ -418,6 +441,15 @@ def edit_image(
         "11": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["10", 0]}},
         "12": {"class_type": "SaveImage", "inputs": {"images": ["11", 0], "filename_prefix": "flux_edit"}},
     }
+    if lora:
+        g["2"] = {"class_type": "LoraLoaderModelOnly",
+                   "inputs": {"model": ["1", 0], "lora_name": lora, "strength_model": lora_strength}}
+        model_ref = ["2", 0]
+    else:
+        model_ref = ["1", 0]
+    g["3"] = {"class_type": "ModelSamplingFlux",
+              "inputs": {"model": model_ref, "max_shift": 1.15, "base_shift": 0.5,
+                         "width": ["42", 0], "height": ["42", 1]}}
     data = _submit_and_wait(g, "12", timeout)
     return _save(data, out_dir, f"edit_{seed}")
 
@@ -431,6 +463,7 @@ def generate_turnaround_sheet(
     steps: int = FLUX_KONTEXT_STEPS,
     guidance: float = FLUX_KONTEXT_GUIDANCE,
     lora_strength: float = FLUX_TURNAROUND_LORA_STRENGTH,
+    extra_prompt: str = "",
     timeout: int = 900,
 ) -> str:
     """FLUX Kontext dev + the turnaround-sheet LoRA — see module docstring for
@@ -438,12 +471,22 @@ def generate_turnaround_sheet(
     confirmed clean back view so far; not yet a measured reliability rate —
     treat like the mannequin ControlNet path early on: generate, inspect the
     whole figure (not just direction), reroll with a different seed if the
-    back-view panel isn't genuinely clean."""
+    back-view panel isn't genuinely clean.
+
+    extra_prompt: appended to FLUX_TURNAROUND_PROMPT — use this for a
+    character-specific accessory that needs reinforcing across all 5 panels
+    (found live on Trevor: glasses were missing/faint in 2 of 5 panels until
+    "bold, clearly visible black rectangular glasses in EVERY panel" was
+    baked into the prompt directly — patching a bad sheet after the fact
+    reliably failed, rerolling with the requirement stated upfront worked).
+    Leave blank for characters with no single accessory that needs that kind
+    of reinforcement."""
     ensure_comfy_running()
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
     uploaded = _upload_image(image_path)
     m = FLUX_KONTEXT_MODEL
+    prompt = f"{FLUX_TURNAROUND_PROMPT} {extra_prompt}" if extra_prompt else FLUX_TURNAROUND_PROMPT
 
     g = {
         "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": m["unet"]}},
@@ -456,7 +499,7 @@ def generate_turnaround_sheet(
         "40": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
         "41": {"class_type": "FluxKontextImageScale", "inputs": {"image": ["40", 0]}},
         "43": {"class_type": "VAEEncode", "inputs": {"pixels": ["41", 0], "vae": ["10", 0]}},
-        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": FLUX_TURNAROUND_PROMPT, "clip": ["4", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 0]}},
         "44": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["5", 0], "latent": ["43", 0]}},
         "6": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["44", 0], "guidance": guidance}},
         "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},

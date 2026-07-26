@@ -13,6 +13,22 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Token-budget optimization pass (2026-07-26)
+
+### Changed — trimmed `@mcp.tool()` docstrings in `server.py`
+Every tool docstring is sent as that tool's `description` in the MCP schema on
+every request where this server is connected — a recurring per-request cost,
+not a one-time read (the same lesson `novel-translation-mcp` already
+documented for its own schema trim, ARCHITECTURE.md §8a). Light-trimmed 10 of
+21 tools (biggest cuts: `generate_character_pose` ~84→~58 lines,
+`generate_reference_sheet` ~104→~62 lines), cutting restated/redundant
+phrasing while preserving every distinct number, date, failure mode, and
+rationale. 1546→1452 lines. Left untouched: the module-level top docstring,
+inline code comments, and non-`@mcp.tool()` private helpers (e.g.
+`_render_pose`) — none of these are part of the schema sent per-request, so
+trimming them wouldn't have saved anything. `webcomic-background-mcp` and
+`novel-translation-mcp` were not touched in this pass.
+
 ## [Unreleased] — Real Stage-6 run on Trevor + full-template reference sheet (2026-07-23/24)
 
 ### Added — `compose_full_reference_sheet()` (`tools/compose_sheet.py`)

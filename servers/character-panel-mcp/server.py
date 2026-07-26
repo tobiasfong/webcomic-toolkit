@@ -79,6 +79,7 @@ from tools.compose_sheet import compose_sheet as _compose_sheet
 from tools.compose_sheet import compose_concept_sheet as _compose_concept_sheet
 from tools.compose_sheet import compose_full_reference_sheet as _compose_full_reference_sheet
 from tools.bg_composite import composite_on_gradient as _composite_on_gradient
+from tools.bg_composite import screen_blend as _screen_blend
 
 mcp = FastMCP("character-panel-generator")
 
@@ -99,42 +100,32 @@ def register_character(
 ) -> str:
     """Add (or grow) a character's reference set in the Character Bible.
 
-    Copies each image into the bible and records/updates the character's metadata.
-    References are input-format agnostic — a ChatGPT/Midjourney character sheet is
-    as valid as commissioned art; this tool never judges provenance. Calling this
-    again on an existing character_id APPENDS the new images to the reference set
-    rather than replacing it (turnarounds and expression sheets accumulate over
-    time), and only overwrites a field if you pass it — omitted fields keep their
-    existing value.
+    Copies each image into the bible and records/updates metadata. Input-format
+    agnostic — a ChatGPT/Midjourney sheet is as valid as commissioned art.
+    Calling again on an existing character_id APPENDS new images (turnarounds/
+    expression sheets accumulate over time); only overwrites a field if passed
+    — omitted fields keep their existing value.
 
     Args:
-        image_paths: One or more reference images to add (concept art, turnarounds,
-            expression sheets — whatever exists for this character).
-        character_id: Short id to reference later (e.g. "aria"). Auto-slugged from
-            name/first filename if omitted.
+        image_paths: One or more reference images to add.
+        character_id: Short id to reference later (e.g. "aria"). Auto-slugged
+            from name/first filename if omitted.
         name: Human name (e.g. "Aria Solstice").
-        description: Hair/eye color, build, costume, signature elements — what
-            defines this character's look. Free text, be specific. This is the
-            ONLY field that feeds generation prompts, and it also becomes the
-            reference sheet's "Appearance" text block — write it once, it does
-            both jobs. If you're ingesting an artist's existing drawing and they
-            already wrote appearance notes in a markdown file, pass that text
-            straight through here rather than asking them to retype it.
+        description: Hair/eye color, build, costume, signature elements. Free
+            text, be specific — the ONLY field that feeds generation prompts,
+            and also becomes the reference sheet's "Appearance" block, so it
+            does both jobs. If an artist already has appearance notes written,
+            pass that text through directly.
         tags: Optional labels, e.g. ["protagonist", "mage"].
-        notes: Anything that helps keep the character on-model (e.g. "always
-            barefoot indoors", "never smiles fully"). Internal reminder, not
-            shown on the reference sheet.
-        profile: Who they are — role in the story (e.g. "protagonist's rival,
-            defects to the hero's side in act 2"), standing/affiliation, and
-            personality, including (if relevant) Japanese speech patterns:
-            register (丁寧語 vs 普通語, formal/casual shifts by listener) and
-            self-referential pronoun (僕/俺/私/あたし/わし/吾輩/etc.). E.g.
-            "Exiled court mage, wanted in three kingdoms. Guarded, dry wit;
-            丁寧語 with strangers, 普通語 with her sister; refers to herself as
-            私, never うち." Reference-sheet text only, not a generation prompt
-            input — this is for you and your artist, not the model.
-        abilities: Free text on powers/skills/equipment — as much or as little
-            as you want on the reference sheet.
+        notes: Anything that keeps the character on-model (e.g. "always
+            barefoot indoors"). Internal reminder, not shown on the sheet.
+        profile: Role in the story, standing/affiliation, personality,
+            including (if relevant) Japanese speech patterns: register (丁寧語
+            vs 普通語, shifts by listener) and self-referential pronoun (僕/俺/
+            私/あたし/わし/吾輩/etc). E.g. "Exiled court mage. Guarded, dry
+            wit; 丁寧語 with strangers, 普通語 with her sister; refers to
+            herself as 私, never うち." Reference-sheet text, not a model prompt.
+        abilities: Free text on powers/skills/equipment for the reference sheet.
         project: Which comic this character belongs to. Defaults to "default".
 
     Returns:
@@ -213,32 +204,28 @@ def generate_character_concept(
 ) -> str:
     """Generate a batch of character-concept candidates for a character who
     doesn't exist in the bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md
-    §8b.6): a writer with a story but no reference art at all. Pure txt2img, n
-    distinct seeds, the same clean backdrop as every other tier (matting-ready).
+    §8b.6): a writer with a story but no reference art. Pure txt2img, n distinct
+    seeds, the same clean backdrop as every other tier (matting-ready).
 
-    This does NOT register anything. Look at the candidates, pick the one that
-    matches your character, then register_character(image_paths=['<the winner>'],
-    ...) to make it canon — the other candidates are disposable drafts. This is
-    the same staging discipline the bible already uses everywhere else (nothing
-    auto-commits; a human always picks).
+    Does NOT register anything. Look at the candidates, then
+    register_character(image_paths=['<the winner>'], ...) to make one canon —
+    the rest are disposable drafts (nothing auto-commits; a human always picks).
 
     Args:
-        description: Visually renderable identity facts ONLY — build, face, hair,
-            costume, signature elements, palette. NOT quotes, backstory, stats,
-            or birthdays (those belong in your own story docs, not the bible —
-            the bible is a generation asset). E.g. "gaunt young man, long nose,
-            manic grin, purple-and-black military uniform, white gloves, gold
-            pocket chain, slicked dark hair".
-        style_prompt: Extra rendering-style detail (e.g. "anime style, dynamic
-            lighting"). Appended after description.
+        description: Visually renderable identity facts ONLY — build, face,
+            hair, costume, signature elements, palette. Not quotes/backstory/
+            stats (belongs in your own story docs, not this generation asset).
+            E.g. "gaunt young man, long nose, manic grin, purple-and-black
+            military uniform, white gloves, gold pocket chain, slicked dark hair".
+        style_prompt: Extra rendering-style detail, appended after description.
         negative: Extra negative terms (appended to sane defaults).
         n: How many candidates to generate (default 4). Each costs one GPU render.
-        label: Optional name to organize the output folder under (e.g. "aria").
-            Defaults to a slug of description if omitted.
+        label: Optional output-folder name (e.g. "aria"); defaults to a slug
+            of description.
         project: Which comic this is for.
         model / width / height: As generate_character_pose.
-        seed: If set, candidates use seed, seed+1, seed+2… (a reproducible
-            batch); if omitted, each candidate gets its own random seed.
+        seed: If set, candidates use seed, seed+1, seed+2… (reproducible batch);
+            omitted gives each its own random seed.
         lora / lora_strength: Optional style LoRA (same pool as generate_character_pose).
 
     Returns:
@@ -412,41 +399,37 @@ def generate_pose_map(
     out: str | None = None,
 ) -> str:
     """Synthesize an OpenPose-format pose map from a 3D posable skeleton, at any
-    viewing angle — the fix for back/angled views that no amount of prompt or
-    reference-photo tuning could reach (ARCHITECTURE.md §8b.7). A real 2D photo
-    fed to generate_character_pose's pose_ref_path gets its skeleton *extracted*
-    by OpenposePreprocessor, which guesses left/right limb assignment from
-    appearance and has no way to know the person is facing away from camera —
-    so it always relaxes back toward a front-facing figure. This tool instead
-    poses and rotates a 3D skeleton and projects it directly: at yaw=180 the
-    left/right color assignment flips and the face keypoints vanish, exactly
-    like a genuine back-view annotation, because it's built from an unambiguous
+    viewing angle — the fix for back/angled views that no prompt or reference-
+    photo tuning could reach (ARCHITECTURE.md §8b.7). A real 2D photo fed to
+    pose_ref_path gets its skeleton *extracted* by OpenposePreprocessor, which
+    guesses left/right limb assignment from appearance and can't tell the
+    person is facing away — so it always relaxes back toward front-facing.
+    This tool instead poses/rotates a 3D skeleton and projects it directly: at
+    yaw=180 the left/right assignment flips and face keypoints vanish, exactly
+    like a genuine back-view annotation, since it's built from an unambiguous
     3D angle rather than guessed from a flat image.
 
     Feed the output to generate_character_pose(pose_ref_path=<this path>,
-    pose_preprocess=False, ...) — pose_preprocess=False is required, since
-    running the human-detector preprocessor on an already-synthesized stick
-    figure fails.
+    pose_preprocess=False, ...) — required, since running the human-detector
+    preprocessor on an already-synthesized stick figure fails.
 
-    Validated recipe for a genuine back view (2026-07-19 live test, after this
-    took ~12 failed 2D-extraction configurations to reach): yaw=180,
-    pose_strength=1.4-1.5 (1.0 pins the pose but drifts back to front-facing),
-    identity_mode="off" or a low ip_adapter_weight (~0.3), and the sheet's
-    anti-duplicate negative terms (SHEET_NEGATIVE, or add your own — "2boys",
-    "duplicate character", "fused body" etc.). This is stochastic, not
-    deterministic — in testing, identical settings with a different seed
-    produced a front-facing figure instead. Generate 2-3 seeds and curate the
-    hit, the same propose-then-curate discipline as every other tier here.
+    Validated recipe for a genuine back view (2026-07-19, after ~12 failed 2D-
+    extraction configs): yaw=180, pose_strength=1.4-1.5 (1.0 pins the pose but
+    drifts back to front-facing), identity_mode="off" or ip_adapter_weight~0.3,
+    plus anti-duplicate negative terms (SHEET_NEGATIVE, or your own — "2boys",
+    "duplicate character", "fused body"). Stochastic, not deterministic —
+    identical settings with a different seed have produced a front-facing
+    figure instead. Generate 2-3 seeds and curate the hit.
 
     Args:
         preset: A named pose — "standing", "t_pose", "hands_behind_back",
             "arms_crossed", or "walking". Add new presets in mannequin.py's
-            POSES dict (hand-authored joint-coordinate overrides, no IK).
-        yaw: Degrees around the vertical axis. 0 = facing the viewer, 90 = their
-            left side toward the viewer, 180 = seen from behind. Any value works
+            POSES dict (hand-authored joint coordinates, no IK).
+        yaw: Degrees around the vertical axis. 0 = facing viewer, 90 = their
+            left side toward viewer, 180 = seen from behind. Any value works
             (e.g. 135 for a 3/4-back angle).
-        width / height: Canvas size — match what you'll pass to
-            generate_character_pose (defaults are SDXL-native portrait).
+        width / height: Canvas size — match generate_character_pose (defaults
+            are SDXL-native portrait).
         out: Output path. Defaults to a scratch file named by preset/yaw.
 
     Returns:
@@ -474,32 +457,29 @@ def generate_pose_depth_map(
     posable VRM mesh (assets/Base_Male.vrm), standing pose — validated
     2026-07-22/23 as MORE reliable than generate_pose_map's line-skeleton for
     genuine back views (~3/3 seeds vs. ~2/3), once the depth map's near/far
-    window is properly calibrated (already done here — see vrm_depth.py).
+    window is calibrated (already done — see vrm_depth.py).
 
-    Requires a separate Blender install (not bundled — see vrm_depth.py's
-    docstring for one-time setup: download Blender, install the community VRM
-    Add-on, set WEBCOMIC_CHAR_BLENDER to the executable path).
+    Requires a separate Blender install (see vrm_depth.py's docstring:
+    download Blender, install the community VRM Add-on, set
+    WEBCOMIC_CHAR_BLENDER to the executable path).
 
-    IMPORTANT — this is a pose/anatomy tool, not a costume tool. The VRM mesh
-    wears a plain t-shirt. Feed the output to
-    generate_character_pose(pose_ref_path=<this path>, pose_preprocess=False,
-    model="flux_manwha", pose_control_type="depth") with a prompt that does
-    NOT describe the character's actual costume (their bible `description` is
-    automatically excluded from the prompt in this mode for exactly this
-    reason) — otherwise the text and the plain-shirt geometry conflict,
-    producing ragged texture-clash artifacts (confirmed live). Once you have
-    a clean pose/anatomy result, dress it in the real costume via
-    edit_character_image as a separate pass — validated end-to-end
-    2026-07-23, including fixing a follow-up logical error (a necktie
-    rendered on the back of a back-view figure) with a second, precise edit.
+    Pose/anatomy tool, NOT a costume tool — the VRM mesh wears a plain
+    t-shirt. Feed the output to generate_character_pose(pose_ref_path=<this
+    path>, pose_preprocess=False, model="flux_manwha", pose_control_type=
+    "depth") with a prompt that does NOT describe the actual costume (the
+    bible `description` is auto-excluded in this mode) — otherwise text and
+    plain-shirt geometry conflict, producing ragged texture-clash artifacts
+    (confirmed live). Once the pose/anatomy result is clean, dress it in the
+    real costume via edit_character_image as a separate pass — validated
+    end-to-end 2026-07-23.
 
-    Only the "standing" pose (arms at sides) is implemented.
+    Only "standing" (arms at sides) is implemented.
 
     Args:
-        yaw: Degrees around the vertical axis. 0 = facing the viewer, 180 =
-            seen from behind — same convention as generate_pose_map.
-        width / height: Canvas size — match what you'll pass to
-            generate_character_pose (defaults are FLUX-native portrait).
+        yaw: Degrees around the vertical axis. 0 = facing viewer, 180 = seen
+            from behind — same convention as generate_pose_map.
+        width / height: Canvas size — match generate_character_pose (defaults
+            are FLUX-native portrait).
         out: Output path. Defaults to a scratch file named by yaw.
 
     Returns:
@@ -542,84 +522,63 @@ def generate_character_pose(
 ) -> str:
     """Render a registered character alone, in a new pose, on a clean backdrop.
 
-    Layers this server's three consistency tiers (see README.md), all available
-    on this one tool:
+    Layers three consistency tiers (README.md): Tier 1 (always on) img2img
+    seeds from the character's primary reference, drifts on ambitious poses.
+    Tier 2 (opt-in, identity_mode) adds IP-Adapter identity conditioning —
+    stack with Tier 1, or ref_denoise=1.0 for pure txt2img + IP-Adapter (more
+    pose range); needs setup_models.py's Tier-2 models + ComfyUI_IPAdapter_plus.
+    pose_ref_path additionally pins the pose via OpenPose ControlNet
+    (independent of identity_mode) — generate_pose_map is the only reliable
+    way to get a genuine back view. Tier 3 (automatic once baked) uses
+    bake_character_lora's LoRA unless you pass your own `lora=`.
 
-    - Tier 1 (always on): img2img seeded from the character's primary reference
-      image, so the render stays recognizably them. Drifts on ambitious poses.
-    - Tier 2 (opt-in, identity_mode): IP-Adapter conditions the render on the
-      reference's *identity* — stacks with Tier 1's img2img, or use
-      ref_denoise=1.0 for pure txt2img + IP-Adapter (more pose range). Needs
-      setup_models.py's Tier-2 models + the ComfyUI_IPAdapter_plus custom node.
-      pose_ref_path (a photo of someone in the target pose, or a synthesized
-      map from generate_pose_map) additionally pins the pose via OpenPose
-      ControlNet, independent of identity_mode. generate_pose_map is the only
-      reliable way to get a genuine back view — see its docstring.
-    - Tier 3 (automatic once baked): if bake_character_lora has completed for
-      this character, its LoRA is used automatically unless you pass your own
-      `lora=`. Strongest consistency, no extra args needed here.
+    detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack):
+    detect-and-repair pass on face/hands after the main render — fixes
+    hallucinated hands/faces, a resolution problem (small in a full-body
+    frame) that prompt wording can't solve. ~2x generation time; no-ops
+    silently if nothing's confidently detected.
 
-    detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack, see
-    README.md): a detect-and-repair pass on the face and hands after the main
-    render — the actual fix for hallucinated hands (missing/extra fingers) and
-    mangled faces, which are a resolution problem (a face or hand is a small
-    fraction of a full-body frame) that prompt/negative wording can't solve.
-    Roughly doubles generation time; silently does nothing if a face/hand isn't
-    confidently detected in frame (not an error, just nothing to fix there).
-
-    Output is auto-matted to an RGBA cutout by default, ready for compose_panel.
+    Output is auto-matted to RGBA by default, ready for compose_panel.
 
     Args:
-        character: A character_id already in the bible (register_character first).
+        character: A character_id already in the bible.
         pose: The pose/action to render (e.g. "arms crossed, looking over shoulder").
-        prompt: Extra scene-agnostic detail (lighting, angle). The character's own
-            name/description from the bible is prepended automatically.
+        prompt: Extra scene-agnostic detail (lighting, angle) — the character's
+            bible name/description is prepended automatically.
         negative: Extra negative terms (appended to sane defaults).
         project: Which comic's bible/output to use.
-        model / width / height / seed: As webcomic-background-mcp's generate_background.
-            model="flux_manwha" (Stage 5, ARCHITECTURE.md §8b.9) is a FLUX
-            option alongside the SD1.5/SDXL models above — better hand anatomy
-            with detail_fix=True, but identity_mode must stay "off" (IP-Adapter
-            + FLUX is untested); use pose_ref_path for pose control instead.
-        ref_denoise: How much of the reference survives (0-1) for Tier 1's
-            img2img seeding. Lower = closer to the reference (safer, less pose
-            range); higher = more prompt-driven (more pose range, more drift
-            risk unless identity_mode compensates). Default 0.55.
-        identity_mode: "off" (default), "plus" (body/identity, the Tier-2
-            default), or "plus_face" (portraits — NOT true FaceID, see README).
+        model / width / height / seed: As generate_background. model="flux_manwha"
+            (Stage 5) gives better hand anatomy with detail_fix=True, but
+            identity_mode must stay "off" (IP-Adapter+FLUX untested) — use
+            pose_ref_path for pose control instead.
+        ref_denoise: 0-1, how much of the reference survives Tier 1's img2img.
+            Lower = closer/safer/less pose range; higher = more prompt-driven,
+            more drift risk unless identity_mode compensates. Default 0.55.
+        identity_mode: "off" (default), "plus" (body/identity, Tier-2 default),
+            or "plus_face" (portraits — not true FaceID).
         ip_adapter_weight: IP-Adapter strength when identity_mode is set. Default 0.8.
-        pose_ref_path: A pose reference — either a photo of someone in the target
-            pose (extracted to an OpenPose skeleton), or a synthesized map from
-            generate_pose_map (pass pose_preprocess=False for those). Pinned via
-            ControlNet.
-        pose_strength: OpenPose ControlNet strength when pose_ref_path is set.
-            For genuine back views (yaw=180 mannequin maps), 1.0 pins the pose
-            but drifts back toward a front-facing figure — 1.4-1.5 is what
-            actually forces the direction; see generate_pose_map's docstring.
-        pose_preprocess: True (default) runs OpenposePreprocessor on
-            pose_ref_path — use this for real photos/art. False feeds the image
-            straight to ControlNet unprocessed — use this for maps already in
-            OpenPose format, i.e. anything from generate_pose_map (running the
-            human-detector preprocessor on a stick figure fails).
-        pose_control_type: FLUX models + pose_ref_path only (ARCHITECTURE.md
-            §8b.9). "openpose" (default) uses mannequin.py's line-skeleton
-            maps, ~2/3-seed direction-lock reliability. "depth" uses
-            generate_pose_depth_map's VRM mesh depth maps instead — ~3/3-seed
-            reliability once calibrated, but the character's bible
-            `description` is automatically EXCLUDED from the prompt in this
-            mode (the VRM mesh wears a plain t-shirt; describing a different
-            costume causes text-vs-geometry texture-clash artifacts) — apply
-            the real costume afterward via edit_character_image. Forces
-            pose_preprocess off automatically (OpenposePreprocessor doesn't
-            apply to depth maps).
-        detail_fix: Auto-repair hallucinated hands/faces after the main render.
-            Default False (needs extra custom nodes — see README.md; costs
-            roughly 2x generation time when on).
-        lora / lora_strength: Optional style LoRA — same pool as the background
-            server's (e.g. the Niji V5 Style LoRA). Overrides the character's own
-            baked LoRA (Tier 3) if one exists; pass lora="" to force neither.
-        matte: Auto-remove the clean backdrop to RGBA (default True). Set False to
-            keep the raw render with its backdrop, e.g. to eyeball the pose first.
+        pose_ref_path: A pose photo (extracted to OpenPose) or a
+            generate_pose_map output (pass pose_preprocess=False). Pinned via ControlNet.
+        pose_strength: ControlNet strength for pose_ref_path. For genuine back
+            views (yaw=180 mannequin maps), 1.0 pins the pose but drifts back
+            toward front-facing — 1.4-1.5 actually forces the direction.
+        pose_preprocess: True (default) runs OpenposePreprocessor — use for real
+            photos/art. False feeds the image straight to ControlNet unprocessed
+            — use for generate_pose_map output (the preprocessor fails on a
+            stick figure).
+        pose_control_type: FLUX + pose_ref_path only. "openpose" (default,
+            ~2/3-seed direction-lock) or "depth" (generate_pose_depth_map's VRM
+            mesh, ~3/3-seed once calibrated, but excludes the bible
+            `description` from the prompt — the mesh wears a plain t-shirt, so
+            describing a costume causes texture-clash; apply the real costume
+            after via edit_character_image). Forces pose_preprocess off.
+        detail_fix: Auto-repair hallucinated hands/faces. Default False (needs
+            extra custom nodes; ~2x generation time when on).
+        lora / lora_strength: Optional style LoRA, same pool as the background
+            server's. Overrides the character's baked Tier-3 LoRA if any; pass
+            lora="" to force neither.
+        matte: Auto-remove the backdrop to RGBA (default True). False keeps the
+            raw render with backdrop, e.g. to eyeball the pose first.
 
     Returns:
         The filesystem path to the matted (or raw) pose PNG.
@@ -724,108 +683,82 @@ def generate_reference_sheet(
     combine: bool = True,
 ) -> str:
     """Grow a registered character's reference set toward a standard turnaround
-    checklist (front view, back view, a few 3/4 expression close-ups) — Concept
-    Genesis on-ramp for both a writer who just registered a first concept and an
-    artist with one finished drawing who doesn't want to redraw six angles by
-    hand (ARCHITECTURE.md §8b.6). One Tier-2 generation per view.
+    checklist (front, back, a few 3/4 expression close-ups) — Concept Genesis
+    on-ramp for a writer with no art yet, or an artist with one drawing who
+    doesn't want to hand-draw six angles (ARCHITECTURE.md §8b.6). One Tier-2
+    generation per view.
 
-    Generation is a disciplined SEQUENCE, not N independent rolls: regardless of
-    the order `views` is passed in, the front view is always rendered first,
-    then the back view, then everything else (expressions). Once the front
-    view succeeds, it becomes the back view's identity anchor (img2img seed +
-    IP-Adapter reference) instead of the bible's raw source photo — expression/
-    face close-ups deliberately do NOT chain off it (tried, reverted: a
-    close-up chained off a full-body reference drags that framing and pose
-    along, since IP-Adapter conditions on the whole reference image, not just
-    "this person's face"). If front-view generation fails, the back view falls
-    back to the bible's primary reference instead.
+    Sequential, not independent rolls: front is always rendered first, then
+    back, then expressions, regardless of `views` order. The front view then
+    anchors the back view (img2img seed + IP-Adapter ref) instead of the
+    bible's raw source photo. Expressions deliberately do NOT chain off front
+    (tried, reverted — a close-up chained off a full-body ref drags that
+    framing/pose along, since IP-Adapter conditions on the whole reference
+    image, not just "this person's face"); they fall back to the bible's
+    primary reference. If front generation fails, back falls back to the
+    bible's reference too.
 
-    Honest limitation, not solved by the above: genuine back views remain
-    unreliable through this tool. Automatically wiring in the 3D mannequin's
-    ControlNet pose map here was tried and reverted (2026-07-20) — forcing
-    identity_mode="off" to win the direction fight against IP-Adapter did get
-    back-facing content into frame, but full-resolution review found it came
-    with a fused hand and hoof-like feet, worse anatomy than just being
-    front-facing, and it didn't improve on retry. If you actually need a back
-    view, use generate_pose_map + generate_character_pose directly and curate
-    across a few seeds by hand — the validated, reviewed, one-at-a-time flow
-    (ARCHITECTURE.md §8b.7) — rather than expecting this bulk multi-view call
-    to land one unattended.
+    Honest limitation: genuine back views remain unreliable here. Auto-wiring
+    the 3D mannequin's ControlNet pose map into this tool was tried and
+    reverted (2026-07-20) — forcing identity_mode="off" won the direction
+    fight but produced a fused hand and hoof-like feet on review, and didn't
+    improve on retry. For an actual back view, use generate_pose_map +
+    generate_character_pose directly and curate across a few seeds by hand
+    (ARCHITECTURE.md §8b.7) instead of expecting this bulk call to land one
+    unattended.
 
-    By default (combine=True) all views are ALSO laid out on one poster-style
-    reference sheet, in addition to the individual files — modeled on Tobias's
-    friend Avery's hand-composed character sheets: title, a large front-view
-    hero pose, a back-view panel, a labeled row of expression close-ups, and
-    short text blocks pulled from the Character Bible's profile/abilities
-    fields plus its description (shown here as "Appearance" — see
-    register_character's docstring; set these before calling this for a sheet
-    worth looking at, empty fields are just skipped, no blank boxes).
-    Deliberately far less text than Avery's actual sheets (no bio paragraphs,
-    no quotes) — this server generates panels, it doesn't write your story.
-    Needs a front view among the generated views to build the poster; falls
-    back to a plain labeled grid otherwise (e.g. redoing a single non-front
-    view). The individual files are still what you pass to register_character
-    — the composed sheet is for looking at everything at once.
+    combine=True (default) also lays every view onto one poster-style sheet —
+    Avery-template layout: title, large front hero pose, back panel, labeled
+    expression row, text blocks from the bible's profile/abilities/description
+    ("Appearance") — set those before calling, for a sheet worth looking at.
+    Needs a front view to build the poster; falls back to a plain grid
+    otherwise. register_character still wants the individual files, not the
+    combined sheet.
 
-    Nothing is auto-appended to the bible. Look at each view, then
-    register_character(image_paths=[<the keepers>], character_id=<character>,
-    project=...) to grow the reference set — the same append-on-reregister
-    behavior every other tier already relies on (the §8b.2 bootstrap loop, now
-    with a front door).
+    Nothing auto-registers. Look at each view, then register_character
+    (image_paths=[<keepers>], character_id=<character>, project=...).
 
-    Write the character's `description` (register_character) with real visual
-    detail — hair/eye/skin color, build, costume colors — BEFORE calling this.
-    Without it, the text prompt has nothing to anchor identity with, and every
-    view leans entirely on the source image (dragging its exact pose/background
-    along too). This matters more than it sounds like it should.
+    Write the bible's `description` (register_character) with real visual
+    detail BEFORE calling this — without it the prompt has nothing to anchor
+    identity, and every view leans entirely on the source image (dragging its
+    exact pose/background along too).
 
-    Honest caveat: back/3-4 views drift more than front/face views even with
-    good settings — this looks like a real limitation of this checkpoint for
-    non-front angles, not just "needs curation." Expect to retry those
-    specifically, or supply an actual back-facing photo via
-    generate_character_pose's pose_ref_path (OpenPose) to force the angle
-    structurally instead of hoping the prompt/IP-Adapter balance gets there.
+    Back/3-4 views drift more than front/face even with good settings — a real
+    checkpoint limitation for non-front angles, not just "needs curation."
+    Expect to retry those, or supply a real back-facing photo via
+    generate_character_pose's pose_ref_path to force the angle structurally.
     This is genesis, not verification — curate hard, and consider
     bake_character_lora once ~10+ curated refs accumulate.
 
     Args:
-        character: A character_id already in the bible (register_character or
-            generate_character_concept first).
+        character: A character_id already in the bible.
         views: Which views to generate. Defaults to a 7-view standard checklist
             (front/back/side/3-4 body views + 3 face expressions). Pass a single
-            view (e.g. ["full body, back view"]) to redo just one.
+            view to redo just one.
         project: Which comic's bible/output to use.
         model / width / height: As generate_character_pose.
-        identity_mode: Defaults to "plus" (Tier 2 IP-Adapter identity lock) —
-            unlike generate_character_pose, this defaults ON. Needs the Tier-2
-            models + ComfyUI_IPAdapter_plus custom node (see README.md); pass
-            "off" if those aren't installed yet (Tier 1 alone, weaker turnarounds).
-        ip_adapter_weight: IP-Adapter strength. Default 0.25 — much lower than
-            generate_character_pose's 0.8, so identity locks (helped by a good
-            text description, see above) without dragging the reference's exact
-            composition/background along (see the module note above for how
-            this default was actually tuned).
-        ref_denoise: How much of the reference survives Tier-1 img2img seeding.
-            Default 1.0 (effectively lets the text prompt drive composition
-            instead of the source image) — much higher than
-            generate_character_pose's 0.55; turnarounds need real freedom from
-            the source framing, not a nudge away from it.
+        identity_mode: Defaults "plus" (unlike generate_character_pose, which
+            defaults "off") — needs Tier-2 models + ComfyUI_IPAdapter_plus;
+            pass "off" if those aren't installed.
+        ip_adapter_weight: Default 0.25, much lower than generate_character_pose's
+            0.8 — locks identity (helped by a good description) without
+            dragging the reference's exact composition/lighting along.
+        ref_denoise: Default 1.0 (text prompt drives composition), much higher
+            than generate_character_pose's 0.55 — turnarounds need real
+            freedom from the source framing.
         detail_fix: Auto-repair hallucinated hands/faces on every view. Default
-            False — see generate_character_pose's docstring. Costs ~2x
-            generation time per view when on; consider enabling only once you
-            like the poses and are generating the keeper set.
+            False — ~2x generation time per view; consider enabling once
+            you're generating the keeper set.
         lora / lora_strength: Optional style LoRA; defaults to the character's
-            baked Tier-3 LoRA if one exists, same as generate_character_pose.
-        matte: Auto-remove the clean backdrop to RGBA. Default False — sheet
-            views are reference material to look at/draw from, not compositing
-            layers (compose_panel is what wants RGBA cutouts).
-        combine: Also lay every view out on the poster-style sheet (or a plain
-            grid, if no front view was generated this call). Default True.
+            baked Tier-3 LoRA if any, same as generate_character_pose.
+        matte: Auto-remove the backdrop to RGBA. Default False — sheet views
+            are reference material, not compositing layers.
+        combine: Also build the poster-style sheet (or plain grid, if no front
+            view this call). Default True.
 
     Returns:
-        The filesystem path for each view, one line each, plus the combined
-        sheet path if requested. A single view's generation failure is reported
-        inline rather than aborting the whole sheet.
+        The filesystem path for each view, plus the combined sheet path if
+        requested. A single view's failure is reported inline, not fatal.
     """
     view_list = views if views else DEFAULT_SHEET_VIEWS
     if not view_list:
@@ -950,56 +883,56 @@ def generate_turnaround_sheet(
     seed: int | None = None,
     width: int = flux_workflow.FLUX_TURNAROUND_WIDTH,
     height: int = flux_workflow.FLUX_TURNAROUND_HEIGHT,
+    extra_prompt: str = "",
 ) -> str:
     """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): generate a multi-pose
     turnaround sheet from a registered character's primary reference image, via
-    FLUX Kontext dev + a dedicated turnaround-sheet LoRA. This is the
-    recommended staged workflow for getting a new character into the bible
-    with FLUX, designed to catch mistakes early rather than discover them after
-    a full sheet is built:
+    FLUX Kontext dev + a dedicated turnaround-sheet LoRA. Recommended staged
+    workflow for getting a new character into the bible with FLUX, designed to
+    catch mistakes early:
 
     1. generate_character_concept(description=..., model="flux_manwha", n=1) —
-       one candidate front view. Look at it. Not right? Regenerate (different
-       seed, or n>1 to compare a few) before spending time on the next step.
+       one candidate front view. Not right? Regenerate before the next step.
     2. register_character(image_paths=[<the approved concept>], ...) — make it
-       canon. This becomes the reference this tool reads from.
+       canon; becomes the reference this tool reads from.
     3. generate_turnaround_sheet(character=...) — this tool. Typically comes
-       back as 7 panels in a horizontal row (some front/3-4/profile repeats
-       alongside one back view, per the LoRA's own design — not exactly 5
-       distinct poses in practice). Inspect the WHOLE figure on every panel you
-       care about, not just whether it's facing the right way — check the
-       collar/neckline shape (front necklines dip toward the chest, back
-       collars sit flat), hands, and shoe orientation (toe box vs. heel). A
-       genuine back view has correct back-of-garment details throughout (back
-       seam, rear pockets, no belt buckle), not just a turned head. If the
-       back-view panel isn't genuinely clean, retry with a different seed —
-       one successful seed doesn't mean every seed will land it (this hasn't
-       been measured across many seeds the way the ControlNet path's ~2/3 rate
-       has).
-    4. crop_reference(sheet_path, boxes=[...]) — slice out the panels you want
-       to keep. Must include a front view and the back view; a profile/3-4 view
-       and 1-2 close-ups (crop tighter to head-and-shoulders if needed) round
+       back as 7 panels in a row (some front/3-4/profile repeats alongside one
+       back view, per the LoRA's own design). Inspect the WHOLE figure on
+       every panel that matters, not just facing direction — collar/neckline
+       shape (front dips toward chest, back sits flat), hands, shoe
+       orientation (toe box vs. heel). A genuine back view has correct
+       back-of-garment details throughout, not just a turned head. Retry with
+       a different seed if the back panel isn't genuinely clean.
+    4. crop_reference(sheet_path, boxes=[...]) — slice out panels to keep.
+       Must include front + back; a profile/3-4 view and 1-2 close-ups round
        out the Avery-template's three image slots (hero + back panel +
        expression row).
     5. compose_reference_sheet(character=..., front_path=..., back_path=...,
-       expression_paths=[...], ...) — assemble the final poster sheet from
-       those crops, pulling the bible's profile/abilities/appearance text in
-       automatically.
+       expression_paths=[...], ...) — assemble the final poster from those
+       crops, pulling bible text in automatically.
     6. Optionally, edit_character_image on any panel with a specific anatomy
-       problem (e.g. hidden/malformed hands) before step 4/5 — validated for
-       local fixes on a pose that's already facing the right direction, see
-       its own docstring for what it's NOT good for.
+       problem before step 4/5 — validated for local fixes on a pose already
+       facing the right direction (see its own docstring for what it's not
+       good for).
 
-    Nothing is auto-registered or auto-composed by this tool — same staging
-    discipline as everything else here.
+    Nothing is auto-registered or auto-composed — same staging discipline as
+    everything else here.
 
     Args:
         character: A character_id already in the bible, with a primary
             reference image set.
         project: Which comic's bible to use.
         seed: Fixed seed for reproducibility; random if omitted.
-        width / height: Output canvas — wide, since panels lay out in a
-            horizontal row. Defaults validated 2026-07-22.
+        width / height: Output canvas — wide (horizontal panel row), but tall
+            enough (default 1280) that Kontext doesn't infer squat proportions
+            from a short canvas.
+        extra_prompt: Reinforce ONE character-specific accessory across all
+            panels if it's prone to going missing/faint in some (found live:
+            Trevor's glasses) — e.g. "she wears a black choker with a round
+            jade pendant in every panel." Leave blank if nothing needs that.
+            If the sheet comes back wrong some other way (proportions, a
+            duplicate pose), try a plain reroll with a new seed first — that
+            alone has fixed it before.
 
     Returns:
         The filesystem path to the raw (uncropped) turnaround sheet.
@@ -1012,7 +945,8 @@ def generate_turnaround_sheet(
                            "_concepts", "turnaround")
     try:
         sheet_path = flux_workflow.generate_turnaround_sheet(
-            image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height)
+            image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height,
+            extra_prompt=extra_prompt)
     except workflow.ComfyUIError as e:
         return f"Turnaround sheet generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
     return (f"Turnaround sheet generated: {sheet_path}\n"
@@ -1036,28 +970,25 @@ def edit_character_image(
     image with a plain-English instruction, via FLUX Kontext dev as a pure
     image editor (no LoRA).
 
-    Validated for LOCAL fixes on a pose that's already facing the right
-    direction — e.g. "show both of his hands fully visible hanging at his
-    sides, relaxed and open, fingers clearly separated. Keep everything else
-    exactly the same." That combination (a targeted ask + an explicit
-    "keep everything else the same") produced a clean result with no
-    side effects on direction, costume, or pose.
+    Validated for LOCAL fixes on a pose already facing the right direction —
+    e.g. "show both of his hands fully visible hanging at his sides, relaxed
+    and open, fingers clearly separated. Keep everything else exactly the
+    same." A targeted ask + explicit "keep everything else the same" produces
+    a clean result with no side effects on direction, costume, or pose.
 
-    NOT validated, and one test actively disproved, for a full viewpoint
-    rotation in a single edit — asking it to both "turn him around" and "keep
-    everything else the same" is self-contradicting for a full pose change: one
-    test produced a chimera (back-facing head/hair/hands, but front-facing
-    torso/shoes — the tank-top's neckline was still a front-facing scoop and
-    both shoes still showed their toe box, not the heel). Use
-    generate_turnaround_sheet for direction changes instead of trying to
-    reproduce that here.
+    NOT validated for a full viewpoint rotation in one edit — one test
+    produced a chimera (back-facing head/hair/hands, front-facing torso/shoes:
+    the tank-top's neckline was still a front-facing scoop, both shoes still
+    showed toe box not heel), since "turn him around" + "keep everything else
+    the same" is self-contradicting for a full pose change. Use
+    generate_turnaround_sheet for direction changes instead.
 
     Args:
         image_path: An existing image to edit (any generated output, or a
             registered reference).
         instruction: Plain-English edit instruction. Be specific about what to
             keep unchanged, not just what to change — vague instructions risk
-            the same kind of partial-edit inconsistency described above.
+            the same partial-edit inconsistency described above.
         project: Which comic's output folder to save under.
         seed: Fixed seed for reproducibility; random if omitted.
 
@@ -1155,41 +1086,36 @@ def compose_full_reference_sheet(
     project: str = characters.DEFAULT_PROJECT,
 ) -> str:
     """A denser Avery-template-style poster than compose_reference_sheet:
-    bordered boxes scattered across left/center/right columns (not one
-    stacked text column), front+back shown side by side in one box, plus
-    optional FUNCTIONS/FILE NOTES bullet boxes, a boxed prop illustration, an
-    ability-mechanism diagram box, and an "IN ACTION" pose row. Built from
-    the real Trevor sheet run (ARCHITECTURE.md §8b.11) — same staging
-    discipline as compose_reference_sheet: nothing auto-registered.
+    bordered boxes across left/center/right columns (not one stacked text
+    column), front+back side by side in one box, plus optional FUNCTIONS/FILE
+    NOTES bullet boxes, a boxed prop illustration, an ability-mechanism
+    diagram box, and an "IN ACTION" pose row. Same staging discipline as
+    compose_reference_sheet: nothing auto-registered.
 
     Do NOT invent content for functions/notes/prop/diagram — these need real
-    text/images the caller actually has (derived from the bible's real
-    abilities/profile text, or genuinely generated assets). Leave a param
-    unset rather than filling it with placeholder content; the layout skips
-    any section with nothing given it.
+    text/images the caller has. Leave a param unset rather than filling it
+    with placeholder content; the layout skips any section left empty.
 
     Args:
         character: A character_id already in the bible (pulls name/profile/
-            abilities/description/palette from it, same as
-            compose_reference_sheet).
+            abilities/description/palette from it).
         front_path / back_path: full-body views, shown side by side.
-        expression_paths / expression_labels: face/angle close-ups shown as
-            a row of same-height crops (full aspect preserved, not
-            square-cropped — a square top-anchored crop can cut off the chin
-            on a taller-than-wide source).
+        expression_paths / expression_labels: face/angle close-ups shown as a
+            row of same-height crops (full aspect preserved, not square-
+            cropped — a square top-anchored crop can cut off the chin on a
+            taller-than-wide source).
         subtitle: one line under the character's name.
-        functions: bullet list for a "FUNCTIONS" box — short phrases derived
-            from the bible's real abilities text.
-        notes: bullet list for a "FILE NOTES" box — short phrases derived
-            from the bible's real profile text.
+        functions: bullet list for a "FUNCTIONS" box, from the bible's real
+            abilities text.
+        notes: bullet list for a "FILE NOTES" box, from the bible's real
+            profile text.
         prop_path / prop_label / prop_caption: one boxed illustration (a
             signature item/artifact).
-        diagram_path: one boxed illustration explaining how the character's
-            ability works — render this separately (e.g. PIL boxes+arrows)
-            and just pass the path; this tool only embeds it.
-        action_paths / action_labels: a labeled row of action/combat poses,
-            shown at full aspect ratio (not square-cropped, since the
-            prop/effect can be anywhere in frame).
+        diagram_path: one boxed illustration explaining the ability mechanism
+            — render separately (e.g. PIL boxes+arrows), this tool just embeds it.
+        action_paths / action_labels: a labeled row of action/combat poses, at
+            full aspect ratio (not square-cropped, since the prop/effect can
+            be anywhere in frame).
         project: Which comic's bible to use.
 
     Returns:
@@ -1277,6 +1203,54 @@ def apply_gradient_background(
 
 
 @mcp.tool()
+def apply_vfx_overlay(
+    base_path: str,
+    vfx_path: str,
+    x: int,
+    y: int,
+    project: str = characters.DEFAULT_PROJECT,
+    out: str | None = None,
+) -> str:
+    """Add a glow/spell-effect layer onto an already-composited image via
+    screen blend — the fix for the glow-halo problem (ARCHITECTURE.md
+    §8b.11/§8b.12): generate the character pose WITHOUT the effect baked in
+    (cuts out cleanly, no halo risk), generate the effect separately on a
+    plain BLACK background (e.g. "glowing blue-white ice crystals bursting in
+    the air, plain solid black background, no character"), then layer it on
+    with this tool. Screen blend is the correct math for light-on-black
+    source material: a black vfx pixel leaves the base unchanged, white
+    saturates to white, everything between adds light proportionally — no
+    background-removal step needed, so there's no fringe to leave.
+
+    Args:
+        base_path: The already-composited scene (character placed on its
+            background/gradient via apply_gradient_background or similar).
+        vfx_path: The effect image, rendered on a plain black backdrop.
+        x / y: Top-left pixel position where the vfx layer lands on base_path.
+            Pick by eye from the pose (e.g. where a raised hand sits) — no
+            auto-alignment, since effect and pose were generated independently.
+        project: Which comic's output folder to save under.
+        out: Output path. Auto-derived next to base_path if omitted.
+
+    Returns:
+        The filesystem path to the composited image.
+    """
+    if not os.path.isfile(base_path):
+        return f"Could not read base image: {base_path}"
+    if not os.path.isfile(vfx_path):
+        return f"Could not read VFX image: {vfx_path}"
+    if out is None:
+        root, ext = os.path.splitext(base_path)
+        out = f"{root}_vfx{ext or '.png'}"
+    try:
+        result = _screen_blend(base_path, vfx_path, position=(x, y))
+        result.save(out)
+    except Exception as e:
+        return f"Could not apply VFX overlay: {e}"
+    return f"Composited VFX overlay: {out}"
+
+
+@mcp.tool()
 def bake_character_lora(
     character: str,
     project: str = characters.DEFAULT_PROJECT,
@@ -1292,17 +1266,17 @@ def bake_character_lora(
     style_lora_multiplier: float = training.STYLE_LORA_MULTIPLIER,
 ) -> str:
     """Start Tier-3 training: bake a per-character LoRA from the character's
-    reference set. Strongest consistency tier — but takes 30-90 min on a
-    3060-class GPU, so this returns immediately once training has STARTED, not
-    once it's done. Poll with check_lora_training.
+    reference set. Strongest consistency tier, but takes 30-90 min on a
+    3060-class GPU — returns immediately once training has STARTED, not once
+    done. Poll with check_lora_training.
 
-    Needs a separate kohya-ss/sd-scripts install (see README.md's Tier-3 setup
-    steps) — this is heavier than Tier 1/2, which only need ComfyUI.
+    Needs a separate kohya-ss/sd-scripts install (README.md's Tier-3 setup) —
+    heavier than Tier 1/2, which only need ComfyUI.
 
     Best with 10-20 reference images. Fewer still works but risks overfitting;
-    the bootstrap loop (register_character with curated Tier-1/2 renders you
-    like, then re-bake) is the intended way to grow a thin reference set. Only
-    one training job per character at a time.
+    the bootstrap loop (register_character with curated Tier-1/2 renders, then
+    re-bake) is the intended way to grow a thin reference set. One training
+    job per character at a time.
 
     Args:
         character: A character_id already in the bible, with at least one
@@ -1311,18 +1285,18 @@ def bake_character_lora(
         epochs / repeats: Training length — total exposure per image ≈
             epochs × repeats. Defaults (10, 10) suit a 10-20 image set.
         network_dim / network_alpha: LoRA rank/scale. Defaults (32, 16) are a
-            reasonable general-purpose starting point.
+            reasonable starting point.
         learning_rate: Default 1e-4.
         resolution: Training resolution, default 512 (SD1.5-native).
-        class_word: The regularization class word paired with the character's
-            own trigger token in captions (default "person").
-        model: Which checkpoint to train against (default: the server's default
-            render model). Use the same one you'll generate poses with.
+        class_word: Regularization class word paired with the character's own
+            trigger token in captions (default "person").
+        model: Which checkpoint to train against (default: the server's
+            default render model) — use the same one you'll generate poses with.
         style_lora: Merged into the checkpoint before training, so the baked
-            character LoRA carries this style permanently — same mechanism as
-            generate_character_pose's `lora=`, but baked in rather than applied
-            per call. Defaults to the Niji V5 Style LoRA (matching the project's
-            usual style pool); pass "" to train against a plain checkpoint instead.
+            LoRA carries this style permanently — same mechanism as
+            generate_character_pose's `lora=`, but baked in rather than
+            applied per call. Defaults to the Niji V5 Style LoRA; pass "" to
+            train against a plain checkpoint instead.
         style_lora_multiplier: Strength of the style merge (default 1.0).
 
     Returns:
