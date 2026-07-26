@@ -965,10 +965,17 @@ def edit_character_image(
     instruction: str,
     project: str = characters.DEFAULT_PROJECT,
     seed: int | None = None,
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
 ) -> str:
     """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
     image with a plain-English instruction, via FLUX Kontext dev as a pure
     image editor (no LoRA).
+
+    canvas_width / canvas_height: explicit output panel size, e.g. a
+    landscape action panel (1600x900) from a portrait character reference.
+    Default (both None) matches the reference image's own aspect ratio, same
+    as before this parameter existed. Supply both or neither.
 
     Validated for LOCAL fixes on a pose already facing the right direction —
     e.g. "show both of his hands fully visible hanging at his sides, relaxed
@@ -998,7 +1005,8 @@ def edit_character_image(
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_edits")
     try:
         edited_path = flux_workflow.edit_image(
-            image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed)
+            image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
+            canvas_width=canvas_width, canvas_height=canvas_height)
     except workflow.ComfyUIError as e:
         return f"Edit failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
     return (f"Edited image: {edited_path}\n"

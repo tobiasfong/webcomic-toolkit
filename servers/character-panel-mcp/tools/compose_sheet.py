@@ -577,15 +577,23 @@ def compose_full_reference_sheet(
     # front + back shown side by side in one box, scaled to a shared height —
     # no per-image caption needed, front/back is obvious from position.
     FB_GAP = 18
+    # Scale is constrained by BOTH the max hero height AND the center box's inner
+    # width — whichever binds first. Height-only scaling (the original behavior)
+    # silently overflowed the box for tall sources: fb_w exceeded CENTER_W, which
+    # made paste_x below negative, pasting the figures on top of the left text
+    # column instead of inside their own box. Figures ending up shorter than
+    # HERO_MAX_H is correct and expected when width is the binding constraint.
+    FB_MAX_W = CENTER_W - BOX_PAD * 2
     if back is not None:
-        fb_scale = HERO_MAX_H / max(front.height, back.height)
+        fb_scale = min(HERO_MAX_H / max(front.height, back.height),
+                       (FB_MAX_W - FB_GAP) / (front.width + back.width))
         front_scaled = front.resize((round(front.width * fb_scale), round(front.height * fb_scale)), Image.LANCZOS)
         back_scaled = back.resize((round(back.width * fb_scale), round(back.height * fb_scale)), Image.LANCZOS)
         fb_w = front_scaled.width + FB_GAP + back_scaled.width
         fb_h = max(front_scaled.height, back_scaled.height)
     else:
-        fb_scale = HERO_MAX_H / front.height
-        front_scaled = front.resize((round(front.width * fb_scale), HERO_MAX_H), Image.LANCZOS)
+        fb_scale = min(HERO_MAX_H / front.height, FB_MAX_W / front.width)
+        front_scaled = front.resize((round(front.width * fb_scale), round(front.height * fb_scale)), Image.LANCZOS)
         back_scaled = None
         fb_w, fb_h = front_scaled.width, front_scaled.height
 

@@ -400,6 +400,8 @@ def edit_image(
     steps: int = FLUX_KONTEXT_STEPS,
     lora: str | None = None,
     lora_strength: float = 0.8,
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
     timeout: int = 300,
 ) -> str:
     """FLUX Kontext dev as a pure image editor — see module docstring for what
@@ -410,8 +412,21 @@ def edit_image(
     LoRA) loaded onto the base model before editing — for a restyle pass
     (redraw this exact pose/figure in a specific art style) rather than a
     structural edit. None (default) runs the base Kontext model with no
-    LoRA, same as before this parameter existed."""
+    LoRA, same as before this parameter existed.
+
+    canvas_width / canvas_height: explicit output canvas size (e.g. for a
+    landscape action panel from a portrait character reference). Default
+    (None, None) keeps the old behavior — output canvas matches the
+    reference image's own (Kontext-rescaled) aspect ratio exactly. The
+    reference is still encoded at its own native scaled size for identity
+    conditioning (ReferenceLatent) either way — only the output latent's
+    canvas changes; Kontext is designed to tolerate reference and output
+    differing in aspect (this is how official 'extend the canvas' edits
+    work), so this isn't expected to weaken identity preservation. Must
+    supply both or neither."""
     ensure_comfy_running()
+    if bool(canvas_width) != bool(canvas_height):
+        raise ComfyUIError("edit_image needs both canvas_width and canvas_height, or neither.")
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
     uploaded = _upload_image(image_path)
@@ -431,8 +446,6 @@ def edit_image(
         "6": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["44", 0], "guidance": guidance}},
         "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},
         "45": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
-        "8": {"class_type": "EmptySD3LatentImage",
-              "inputs": {"width": ["42", 0], "height": ["42", 1], "batch_size": 1}},
         "9": {"class_type": "KSampler",
               "inputs": {"model": ["3", 0], "seed": seed, "steps": steps, "cfg": 1.0,
                          "sampler_name": "euler", "scheduler": "simple",
@@ -441,6 +454,12 @@ def edit_image(
         "11": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["10", 0]}},
         "12": {"class_type": "SaveImage", "inputs": {"images": ["11", 0], "filename_prefix": "flux_edit"}},
     }
+    if canvas_width and canvas_height:
+        out_size = [canvas_width, canvas_height]
+    else:
+        out_size = [["42", 0], ["42", 1]]
+    g["8"] = {"class_type": "EmptySD3LatentImage",
+              "inputs": {"width": out_size[0], "height": out_size[1], "batch_size": 1}}
     if lora:
         g["2"] = {"class_type": "LoraLoaderModelOnly",
                    "inputs": {"model": ["1", 0], "lora_name": lora, "strength_model": lora_strength}}
@@ -449,7 +468,7 @@ def edit_image(
         model_ref = ["1", 0]
     g["3"] = {"class_type": "ModelSamplingFlux",
               "inputs": {"model": model_ref, "max_shift": 1.15, "base_shift": 0.5,
-                         "width": ["42", 0], "height": ["42", 1]}}
+                         "width": out_size[0], "height": out_size[1]}}
     data = _submit_and_wait(g, "12", timeout)
     return _save(data, out_dir, f"edit_{seed}")
 

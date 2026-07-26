@@ -13,6 +13,75 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Fixed: front/back hero images overflowing their box (2026-07-26)
+
+### Fixed — `compose_full_reference_sheet()` scaled hero images by height only
+`fb_scale` was computed purely as `HERO_MAX_H / max(front.height, back.height)`,
+never checking the resulting combined width against `CENTER_W`. For tall source
+images the pair overflowed the center box, and because the paste offset is
+`cx0 + (CENTER_W - fb_w) // 2`, an oversized `fb_w` made that offset **negative**
+— silently pasting the figures on top of the left-hand PROFILE/APPEARANCE text
+column, truncating the last characters of every wrapped line. Found on a real
+Trevor sheet rebuild (591x1248 front + 532x1248 back overflowed to 756px against
+a 580px inner width). Now constrained by both height and inner width, whichever
+binds first; figures coming out shorter than `HERO_MAX_H` is the correct outcome
+when width binds. Ri Hwa's earlier sheet happened to fit under the old code, so
+this was latent rather than previously visible.
+
+## [Unreleased] — Investigated and reverted — FLUX Redux for multi-character panels (2026-07-26)
+
+### The problem this was chasing
+A real two-character crossover test (Namgoong Ri Hwa x Trevor, `murim_test`/`rxr`
+projects) surfaced that `edit_image()` only accepts one reference image —
+in a contact/action panel with both characters, the unanchored one drifts
+(observed: eye-color drift on the anchored character, costume drift on the
+unanchored one, and the requested contact choreography was ignored outright
+on two separate attempts).
+
+### Tried: FLUX Redux (`StyleModelLoader`/`CLIPVisionEncode`/`StyleModelApply`,
+native ComfyUI-core, no custom node needed) — chain one `StyleModelApply` per
+reference image onto the text conditioning, hypothesis being it'd hold both
+characters' identity in one txt2img generation. Four staged tests (single
+reference, strength 0.5/0.2/0.08, then a face-only crop at 0.4) all showed
+the same failure: Redux reproduces the *entire composition* of whatever
+reference image it's given — pose, framing, background — regardless of what
+the text prompt asks for, and regardless of whether the reference is a
+full-body shot or a tight face crop. Lower strength let the background start
+following the prompt but never freed the pose. Higher strength also visibly
+degraded output sharpness. **Not a tuning problem — StyleModelApply's global,
+whole-image conditioning is structurally the wrong tool for "new pose/
+composition, held identity."** `generate_with_redux()` and its model
+constants have been removed from `flux_workflow.py`; the two downloaded
+model files (`flux1-redux-dev.safetensors`,
+`sigclip_vision_patch14_384.safetensors`, ~940MB combined) were deleted from
+the ComfyUI install, and `setup_models_flux_redux.py` was deleted.
+
+### Also researched, not yet tried: FLUX IP-Adapter
+Checked both real options before writing any code. **Neither supports the
+regional/spatial masking this problem actually needs** (confining each
+character's identity to its own part of the frame) — confirmed by reading
+source, not just docs:
+- XLabs-AI/x-flux-comfyui: attention-mask support was requested in
+  [issue #120](https://github.com/XLabs-AI/x-flux-comfyui/issues/120)
+  (Sept 2024), a maintainer said "we are going to do this," never shipped;
+  repo has had no commits since Oct 2024 — abandoned.
+- Shakker-Labs/ComfyUI-IPAdapter-Flux (InstantX's model, more recently
+  active): `ApplyIPAdapterFlux`'s actual `INPUT_TYPES` only exposes `weight`
+  and temporal (`start_percent`/`end_percent`) controls — no mask input.
+
+Without spatial masking, two IP-Adapter references would condition the whole
+image at once, same failure class as Redux just via a different mechanism.
+
+### Leading candidate for next attempt: per-character LoRA + regional
+conditioning ("Latent Couple"-style canvas-region splitting during sampling),
+not reference-image conditioning at all. This is how the commercial AI-comic
+platforms that have actually solved this (Dashtoon, ComicsMaker.ai) do it,
+and it's this project's own already-documented Tier 3 — the strongest
+consistency tier — just never applied to a *multi*-character scene before.
+Architecturally the right shape for this problem either way: identity (LoRA)
+and spatial placement (regional conditioning) are independently controllable,
+unlike Redux/IP-Adapter's single global reference-image conditioning.
+
 ## [Unreleased] — Token-budget optimization pass (2026-07-26)
 
 ### Changed — trimmed `@mcp.tool()` docstrings in `server.py`
