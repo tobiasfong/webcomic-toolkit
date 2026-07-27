@@ -6,3 +6,7 @@ venv/
 .env
 .DS_Store
 Thumbs.db
+
+# generated debug artifacts from mannequin.render_pose_map / vrm_depth defaults
+pose_map_*.png
+vrm_depth_*.png
