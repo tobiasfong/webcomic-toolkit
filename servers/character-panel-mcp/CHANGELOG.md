@@ -13,6 +13,53 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Sketch-driven ControlNet: found the real cause of the line bleed (2026-07-27)
+
+### Fixed — the "white scratch lines" were Canny's doubled edges, not the ControlNet model
+Storyboard-sketch ControlNet runs had been compositing visible white hairlines
+over the finished art and desaturating the whole frame, at every strength strong
+enough to hold a composition. Six tests against `flux_controlnet_union_alpha`
+(strengths 0.45/0.60/0.70/0.75, preprocessor on and off, noisy and cleaned
+sketch) pinned it on the model, since the control map itself verified clean.
+
+That was the wrong conclusion. Swapping in Shakker-Labs Union Pro 2.0
+(`setup_models_controlnet_pro.py`) improved anatomy markedly — two-body frames
+stopped dropping limbs and rendering hands as feet — but reproduced the same
+bleed. The actual cause is `CannyEdgePreprocessor` run over a *pencil sketch*:
+Canny detects both sides of every drawn stroke, so each line becomes two
+parallel control edges, and the model renders the doubled hairlines literally.
+
+Fix: binarize the sketch to a single-stroke white-on-black map and feed it
+directly with `pose_preprocess=False`. New `tools/sketch_to_lineart.py` does
+this (deliberately high default threshold of 215 — hand sketches are faint, and
+a conventional 128 drops most of the drawing).
+
+### Added — `canny_auto` control type
+Union Pro 2.0 dropped the per-type embedding the alpha model had; it is trained
+as one unified conditioner, so naming a specific type misroutes it. `canny_auto`
+sets the union type to `auto`. Measured effect on Pro 2.0 was near-nil, which is
+itself the confirmation.
+
+### Known — strength trades composition against art quality, and ControlNet only draws what you drew
+On lineart input at seed 7777, 1216x1088: **0.65 / end_percent 0.80** is the
+working setting. 0.80 reproduces the drawn composition exactly but smears and
+desaturates; 0.40-0.50 render cleanly but ignore the pose.
+
+Separately: limbs left undrawn in the sketch come out missing or as empty
+sleeves. This is a property of the input, not a model defect — a sketch is a
+specification, and an incomplete one is followed faithfully.
+
+### Known — Kontext cannot relocate a limb between figures in a two-character frame
+Attempted to drive pose from a clean 0.65 render instead of raising ControlNet
+strength: 0 for 7 across two rounds. Asked to raise the *woman's* leg into a
+kick, Kontext raised the *man's* leg in 6 of 7 runs — placing it exactly where
+hers belonged, so the geometry was right and the subject attribution wrong. The
+7th gave her a raised arm instead. Positional anchoring ("the figure on the
+right in the lavender robe"), an explicit "do not lift the boy's leg", and a
+framing lock did not help, and tightening constraints degraded held details
+(boots became dress shoes, framing zoomed out). Composition must come from the
+control map, not from a post-hoc edit.
+
 ## [Unreleased] — Fixed: front/back hero images overflowing their box (2026-07-26)
 
 ### Fixed — `compose_full_reference_sheet()` scaled hero images by height only

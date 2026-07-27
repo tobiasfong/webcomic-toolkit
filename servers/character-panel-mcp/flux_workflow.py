@@ -90,6 +90,20 @@ FLUX_CONTROLNET_UNION = os.environ.get(
     "WEBCOMIC_CHAR_FLUX_CONTROLNET", "flux_controlnet_union_alpha.safetensors")
 FLUX_DEFAULT_POSE_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_FLUX_POSE_STRENGTH", "0.8"))
 
+# pose_control_type -> (SetUnionControlNetType enum value, preprocessor node or None).
+# The enum strings are verified live against this ComfyUI's /object_info rather
+# than guessed — the union model packs several control modes behind one file and
+# rejects anything not in its own list.
+CONTROL_TYPES = {
+    "openpose": ("openpose", "OpenposePreprocessor"),
+    "depth": ("depth", None),
+    "canny": ("canny/lineart/anime_lineart/mlsd", "CannyEdgePreprocessor"),
+    # Union Pro 2.0 dropped the per-type embedding the alpha model had — it is
+    # trained as one unified conditioner, so naming a specific type misroutes
+    # it. Same canny preprocessing, "auto" union type.
+    "canny_auto": ("auto", "CannyEdgePreprocessor"),
+}
+
 # Impact Pack hand-only detail_fix. FLUX needed a higher denoise than SDXL's
 # 0.6 — 0.55 detected the hand correctly but wasn't enough to redraw finger
 # structure (still 6 fingers on live inspection); 0.7 fixed it. No face-pass
@@ -192,6 +206,7 @@ def _build_base_graph(
     guidance: float, unet_name: str, clip1: str, clip2: str, vae_name: str,
     lora_name: str | None, lora_strength: float,
     pose_ref_name: str | None = None, pose_strength: float = FLUX_DEFAULT_POSE_STRENGTH,
+    pose_start_percent: float = 0.0, pose_end_percent: float = 1.0,
     pose_preprocess: bool = True, detail_fix: bool = False,
     pose_control_type: str = "openpose",
 ) -> dict:
@@ -234,34 +249,51 @@ def _build_base_graph(
     #     plain-shirt geometry conflicts with text describing a different
     #     outfit — see flux_workflow.py's/vrm_depth.py's docstrings). Never
     #     run OpenposePreprocessor on a depth map — it isn't a pose skeleton.
-    if pose_control_type not in ("openpose", "depth"):
+    #   "canny" — a hand-drawn storyboard sketch (or any line art), run through
+    #     CannyEdgePreprocessor to normalise it to the white-lines-on-black edge
+    #     map the ControlNet expects. This is the path for reproducing a
+    #     specific composition an author has drawn — notably multi-character
+    #     contact poses, which text prompting alone has repeatedly failed to
+    #     place (see CHANGELOG, 2026-07-26). Controls composition only;
+    #     character identity still comes from the prompt.
+    if pose_control_type not in CONTROL_TYPES:
         raise ComfyUIError(
-            f"Unknown pose_control_type '{pose_control_type}'. Options: openpose, depth."
+            f"Unknown pose_control_type '{pose_control_type}'. "
+            f"Options: {', '.join(CONTROL_TYPES)}."
         )
-    if pose_control_type != "openpose":
-        pose_preprocess = False  # safety: OpenposePreprocessor never applies to depth maps
+    union_type, preprocessor = CONTROL_TYPES[pose_control_type]
+    if preprocessor is None:
+        # safety: a depth map is not a pose skeleton and must never be
+        # run through a preprocessor that assumes one
+        pose_preprocess = False
 
     if pose_ref_name:
         g["30"] = {"class_type": "LoadImage", "inputs": {"image": pose_ref_name}}
-        if pose_preprocess:
+        if pose_preprocess and preprocessor == "OpenposePreprocessor":
             g["31"] = {"class_type": "OpenposePreprocessor",
                        "inputs": {"image": ["30", 0], "detect_hand": "enable",
                                   "detect_body": "enable", "detect_face": "enable",
                                   "resolution": 512}}
             pose_image_ref = ["31", 0]
+        elif pose_preprocess and preprocessor == "CannyEdgePreprocessor":
+            g["31"] = {"class_type": "CannyEdgePreprocessor",
+                       "inputs": {"image": ["30", 0], "low_threshold": 100,
+                                  "high_threshold": 200, "resolution": 1024}}
+            pose_image_ref = ["31", 0]
         else:
             pose_image_ref = ["30", 0]
-        # Same Union ControlNet model for both control types — SetUnionControlNetType's
+        # Same Union ControlNet model for every control type — SetUnionControlNetType's
         # `type` value below is what actually switches its behavior, not the file.
         g["32"] = {"class_type": "ControlNetLoader",
                    "inputs": {"control_net_name": FLUX_CONTROLNET_UNION}}
         g["33"] = {"class_type": "SetUnionControlNetType",
-                   "inputs": {"control_net": ["32", 0], "type": pose_control_type}}
+                   "inputs": {"control_net": ["32", 0], "type": union_type}}
         g["34"] = {"class_type": "ControlNetApplyAdvanced",
                    "inputs": {"positive": pos_ref, "negative": neg_ref,
                               "control_net": ["33", 0], "image": pose_image_ref,
                               "vae": vae_ref, "strength": pose_strength,
-                              "start_percent": 0.0, "end_percent": 1.0}}
+                              "start_percent": pose_start_percent,
+                              "end_percent": pose_end_percent}}
         pos_ref, neg_ref = ["34", 0], ["34", 1]
 
     g["8"] = {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}}
@@ -309,9 +341,12 @@ def generate(
     lora_strength: float | None = None,
     pose_ref_path: str | None = None,
     pose_strength: float = FLUX_DEFAULT_POSE_STRENGTH,
+    pose_start_percent: float = 0.0,
+    pose_end_percent: float = 1.0,
     pose_preprocess: bool = True,
     pose_control_type: str = "openpose",
     detail_fix: bool = False,
+    clean_backdrop: bool = True,
     timeout: int = 600,
 ) -> str:
     """Base FLUX generation. No img2img/identity-conditioning ref_path (unlike
@@ -348,7 +383,13 @@ def generate(
 
     use_lora = FLUX_LORA if lora is None else lora
     use_lora_strength = FLUX_LORA_STRENGTH if lora_strength is None else lora_strength
-    full_prompt = f"{prompt}{CLEAN_BACKDROP_SUFFIX}{FLUX_HAND_VISIBLE_SUFFIX}"
+    # Both suffixes exist for reference-sheet work and are wrong for a story
+    # panel: the backdrop suffix asks for "solo, plain studio backdrop,
+    # standing pose" (a two-character fight in a forest is none of those) and
+    # the hand suffix asks for "relaxed open hands". Pass clean_backdrop=False
+    # for scene panels.
+    full_prompt = (f"{prompt}{CLEAN_BACKDROP_SUFFIX}{FLUX_HAND_VISIBLE_SUFFIX}"
+                   if clean_backdrop else prompt)
 
     pose_ref_name = _upload_image(pose_ref_path) if pose_ref_path else None
 
@@ -356,7 +397,8 @@ def generate(
         full_prompt, negative, width, height, seed, steps, guidance,
         m["unet"], m["clip1"], m["clip2"], m["vae"],
         use_lora, use_lora_strength,
-        pose_ref_name, pose_strength, pose_preprocess, detail_fix,
+        pose_ref_name, pose_strength, pose_start_percent, pose_end_percent,
+        pose_preprocess, detail_fix,
         pose_control_type,
     )
     data = _submit_and_wait(graph, "12", timeout)
