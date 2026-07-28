@@ -30,3 +30,21 @@ and the project task list for the next steps (load skeleton, map VRM bone names 
 `mannequin.py`'s existing joint/pose-preset convention, pose via bone rotations,
 render a depth or normal map, wire into `workflow.py`'s ControlNet branch as an
 additional/alternative conditioning to the current OpenPose line-skeleton map).
+
+## `Base_Female.vrm`
+
+The female counterpart, from the **same** OpenGameArt CC0 pack
+(`base_female.zip`, 13.1 MB download, 16.3 MB extracted) — same provenance and
+same CC0 licence as `Base_Male.vrm` above.
+
+Added 2026-07-29 after a two-character action panel was posed with the male mesh
+for *both* figures, which is wrong at the depth-map level: hip width, shoulder
+width and overall proportion all feed the silhouette the ControlNet conditions
+on, so a female character posed on a male body is mis-shaped before generation
+even starts.
+
+Rig is identical in naming — 64 `J_Bip_*` bones including the finger bones
+(`J_Bip_L_Middle3` etc.) that `vrm_scene.py`'s hand handling looks for — so it
+needs no code changes. Select it per figure via the scene spec's `"vrm"` key:
+
+    {"vrm": ".../assets/Base_Female.vrm", "location": [...], "bones": {...}}

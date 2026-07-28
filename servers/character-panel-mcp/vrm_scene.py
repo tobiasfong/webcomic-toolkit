@@ -50,10 +50,56 @@ _SCRIPT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "blender_scripts", "vrm_scene_depth.py")
 
 
-def render_scene_depth(spec: dict, out: str | None = None, timeout: int = 300) -> str:
+def _mask_hands(arr: np.ndarray, marks: list, feather: float = 0.45) -> np.ndarray:
+    """Fade the depth map to background over each hand.
+
+    FLUX draws hands well on its own — that capability is why this project
+    moved off SD1.5/SDXL — but Base_Male.vrm's hands are low-poly mittens, and
+    conditioning on them makes hands measurably worse than leaving them
+    unconstrained (claws and fused fingers, live 2026-07-28). Fading them out
+    of the control map hands that region back to the base model.
+
+    The region is BLURRED, not painted over. Two earlier attempts both failed
+    the same way (live, 2026-07-28): fading the disc to background made a
+    bright-rim/dark-centre gradient, which is the depth signature of a sphere —
+    the model drew a translucent bubble over every hand. Flattening it to wrist
+    depth instead produced haloed discs. The lesson is that compositing any
+    CIRCLE into a region spanning both body and background yields a circular
+    artifact, however it is shaded, because the shape is not in the geometry.
+
+    Blur adds nothing. It only removes the high-frequency finger detail that
+    was driving the claws, while preserving the local mean and the silhouette,
+    so there is no new edge for ControlNet to find. FLUX then fills in hand
+    detail from its own prior, which is what it is good at.
+    """
+    from PIL import ImageFilter
+
+    h, w = arr.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    # m["r"] is a wrist-to-fingertip span, i.e. already the whole hand
+    radii = [max(4.0, m["r"] * w * 0.75) for m in marks]
+    if not radii:
+        return arr
+    blurred = np.asarray(
+        Image.fromarray((arr * 255).astype(np.uint8), mode="L").filter(
+            ImageFilter.GaussianBlur(radius=max(2.0, float(np.mean(radii)) * 0.5))),
+        dtype=np.float32) / 255.0
+
+    weight = np.zeros((h, w), dtype=np.float32)
+    for m, r in zip(marks, radii):
+        d = np.sqrt((xx - m["x"] * w) ** 2 + (yy - m["y"] * h) ** 2)
+        # 1 at the hand, easing to 0 by the edge of the disc
+        weight = np.maximum(weight, np.clip((r - d) / max(1e-6, r * feather), 0.0, 1.0))
+    return arr * (1.0 - weight) + blurred * weight
+
+
+def render_scene_depth(spec: dict, out: str | None = None, timeout: int = 300,
+                       mask_hands: bool = True) -> str:
     """Render `spec` to a grayscale depth PNG (near = white, far = black).
 
-    Figures may omit "vrm" to use the default base mesh. Returns the PNG path.
+    Figures may omit "vrm" to use the default base mesh. With mask_hands the
+    hands are faded out of the control map so FLUX draws them unconstrained —
+    see _mask_hands. Returns the PNG path.
     """
     if not os.path.isfile(BLENDER_EXE):
         raise VrmDepthError(
@@ -63,6 +109,7 @@ def render_scene_depth(spec: dict, out: str | None = None, timeout: int = 300) -
         raise VrmDepthError("scene spec has no 'figures'")
 
     spec = json.loads(json.dumps(spec))  # don't mutate the caller's dict
+    spec["mask_hands"] = bool(mask_hands)
     for fig in spec["figures"]:
         fig.setdefault("vrm", VRM_ASSET_PATH)
         if not os.path.isfile(fig["vrm"]):
@@ -95,9 +142,18 @@ def render_scene_depth(spec: dict, out: str | None = None, timeout: int = 300) -
     f = OpenEXR.InputFile(exr)
     dw = f.header()["dataWindow"]
     w, h = dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1
-    arr = np.frombuffer(
+    arr = np.clip(np.frombuffer(
         f.channel("depth.V", Imath.PixelType(Imath.PixelType.FLOAT)),
-        dtype=np.float32).reshape(h, w)
-    Image.fromarray((np.clip(arr, 0.0, 1.0) * 255).astype(np.uint8), mode="L").save(out)
+        dtype=np.float32).reshape(h, w), 0.0, 1.0)
+
+    hands_json = os.path.splitext(exr)[0] + "_hands.json"
+    if mask_hands and os.path.isfile(hands_json):
+        with open(hands_json) as fh:
+            marks = json.load(fh)
+        arr = _mask_hands(arr, marks)
+        print(f"masked {len(marks)} hand(s) out of the depth map")
+        os.remove(hands_json)
+
+    Image.fromarray((arr * 255).astype(np.uint8), mode="L").save(out)
     os.remove(exr)
     return out

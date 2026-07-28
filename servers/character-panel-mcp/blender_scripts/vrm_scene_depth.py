@@ -109,12 +109,21 @@ def import_figure(fig):
     return arm
 
 
-for fig in spec["figures"]:
-    import_figure(fig)
+armatures = [import_figure(fig) for fig in spec["figures"]]
 
 cam_data = bpy.data.cameras.new("Camera")
-cam_data.type = "ORTHO"
-cam_data.ortho_scale = ORTHO
+# Perspective by default, unlike vrm_pose_depth.py's ortho. Ortho is right for
+# turnaround sheets — front and back views must scale-match — but an ortho
+# projection has no foreshortening at all, so a limb thrust toward the viewer
+# renders the same size as one held back. That leaves FLUX with no perspective
+# cue and it improvises limb scale, which shows up as mismatched arms (live,
+# 2026-07-28). Action panels want foreshortening; it is what sells the kick.
+if str(cam_spec.get("type", "PERSP")).upper().startswith("ORTHO"):
+    cam_data.type = "ORTHO"
+    cam_data.ortho_scale = ORTHO
+else:
+    cam_data.type = "PERSP"
+    cam_data.lens = float(cam_spec.get("lens", 50.0))
 cam_obj = bpy.data.objects.new("Camera", cam_data)
 bpy.context.collection.objects.link(cam_obj)
 bpy.context.scene.camera = cam_obj
@@ -179,6 +188,43 @@ depth_out.directory = os.path.dirname(tmp_exr)
 depth_out.file_output_items.new(socket_type="FLOAT", name="depth")
 depth_out.file_name = os.path.splitext(os.path.basename(tmp_exr))[0]
 tree.links.new(map_range.outputs["Result"], depth_out.inputs["depth"])
+
+# Hand cut-outs. FLUX draws hands well unprompted — it is the reason this
+# project moved off SD1.5/SDXL — but Base_Male.vrm's hands are low-poly
+# mittens, so conditioning on them actively makes hands WORSE than leaving
+# them unconstrained. Rather than detect hands in the rendered image, project
+# the hand bones we already know the 3D position of, and let vrm_scene.py
+# paint those discs out of the depth map. Positions are emitted in normalized
+# image coordinates (origin top-left) alongside a radius in the same units.
+if spec.get("mask_hands", True):
+    import bpy_extras.object_utils as bou
+    cam_right = cam_obj.matrix_world.to_quaternion() @ mathutils.Vector((1.0, 0.0, 0.0))
+    marks = []
+    for arm in armatures:
+        pb = arm.pose.bones
+        for side in ("L", "R"):
+            bone = f"J_Bip_{side}_Hand"
+            if bone not in pb:
+                continue
+            wrist = arm.matrix_world @ pb[bone].head
+            # hand length from a fingertip when the rig has finger bones,
+            # otherwise a plausible constant — VRM rigs vary on this
+            tip = None
+            for cand in (f"J_Bip_{side}_Middle3", f"J_Bip_{side}_Middle2",
+                         f"J_Bip_{side}_Index3"):
+                if cand in pb:
+                    tip = arm.matrix_world @ pb[cand].tail
+                    break
+            size = (tip - wrist).length if tip else 0.09
+            centre = (wrist + tip) / 2.0 if tip else wrist
+            c = bou.world_to_camera_view(scene, cam_obj, centre)
+            e = bou.world_to_camera_view(scene, cam_obj, centre + cam_right * size)
+            r = ((e.x - c.x) ** 2 + (e.y - c.y) ** 2) ** 0.5
+            # world_to_camera_view's Y runs bottom-up; images run top-down
+            marks.append({"x": c.x, "y": 1.0 - c.y, "r": r})
+    with open(os.path.splitext(OUT_DEPTH)[0] + "_hands.json", "w") as f:
+        json.dump(marks, f)
+    print(f"HAND MARKS {len(marks)}")
 
 bpy.ops.render.render(write_still=True)
 

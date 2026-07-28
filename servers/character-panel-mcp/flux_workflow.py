@@ -117,6 +117,16 @@ FLUX_DETAIL_HAND_DENOISE = float(os.environ.get("WEBCOMIC_CHAR_FLUX_HAND_DENOISE
 # hands aren't in frame at all.
 FLUX_HAND_VISIBLE_SUFFIX = ", both hands visible, relaxed open hands"
 
+# detail_fix re-renders each detected hand crop at denoise 0.7, which is close
+# enough to a fresh generation that whatever prompt it sees is what gets drawn
+# in the crop. It must therefore describe A HAND — passing the scene prompt
+# through produced a miniature person inside a hand's bounding box (live,
+# 2026-07-28). Deliberately free of scene, character and style wording.
+FLUX_HAND_DETAIL_PROMPT = os.environ.get(
+    "WEBCOMIC_CHAR_FLUX_HAND_PROMPT",
+    "a single human hand, five separate fingers, correct hand anatomy, "
+    "clean simple lineart")
+
 # --- FLUX Kontext dev (Stage 4, validated 2026-07-22) ------------------------
 # Same T5/CLIP-L/VAE as the base model above — Kontext dev is a direct
 # conversion of the same base architecture, confirmed by not needing separate
@@ -256,6 +266,10 @@ def _build_base_graph(
     #     contact poses, which text prompting alone has repeatedly failed to
     #     place (see CHANGELOG, 2026-07-26). Controls composition only;
     #     character identity still comes from the prompt.
+    # detail_fix's hand crop gets its OWN conditioning, built below — neither
+    # the ControlNet-applied conditioning nor the scene prompt (see g["22"]).
+    detail_pos, detail_neg = None, neg_ref
+
     if pose_control_type not in CONTROL_TYPES:
         raise ComfyUIError(
             f"Unknown pose_control_type '{pose_control_type}'. "
@@ -296,6 +310,27 @@ def _build_base_graph(
                               "end_percent": pose_end_percent}}
         pos_ref, neg_ref = ["34", 0], ["34", 1]
 
+    # detail_fix's hand pass needs conditioning of its own. Two live failures
+    # (2026-07-28) pinned down why:
+    #
+    #  1. Inheriting the ControlNet-applied conditioning made the pass useless
+    #     — re-rendering a hand crop while still forced to match the control
+    #     map just reproduces whatever the map said the hand was. Against a VRM
+    #     depth map (low-poly, splayed fingers) it redrew the same claw it was
+    #     meant to repair, on 3 of 4 hands.
+    #  2. Dropping ControlNet but keeping the SCENE prompt was worse: at
+    #     denoise 0.7 the crop is effectively a fresh generation, so "two
+    #     people sparring in a martial arts class" rendered a tiny complete
+    #     person inside the hand's bounding box.
+    #
+    # So the crop gets a short, hand-only prompt. FluxGuidance is applied for
+    # parity with the main positive path.
+    g["22"] = {"class_type": "CLIPTextEncode",
+               "inputs": {"text": FLUX_HAND_DETAIL_PROMPT, "clip": base_clip}}
+    g["23"] = {"class_type": "FluxGuidance",
+               "inputs": {"conditioning": ["22", 0], "guidance": guidance}}
+    detail_pos = ["23", 0]
+
     g["8"] = {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}}
     g["9"] = {"class_type": "KSampler",
               "inputs": {"model": base_model, "seed": seed, "steps": steps, "cfg": 1.0,
@@ -313,7 +348,8 @@ def _build_base_graph(
                        "guide_size": 512, "guide_size_for": True, "max_size": 1024,
                        "seed": seed + 1, "steps": steps, "cfg": 1.0,
                        "sampler_name": "euler", "scheduler": "simple",
-                       "positive": pos_ref, "negative": neg_ref, "denoise": FLUX_DETAIL_HAND_DENOISE,
+                       "positive": detail_pos, "negative": detail_neg,
+                       "denoise": FLUX_DETAIL_HAND_DENOISE,
                        "feather": 5, "noise_mask": True, "force_inpaint": True,
                        "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0,
                        "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
