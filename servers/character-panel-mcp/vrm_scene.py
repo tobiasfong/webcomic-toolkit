@@ -1,0 +1,103 @@
+"""
+vrm_scene.py — render a multi-figure, arbitrarily-posed VRM scene to a
+ControlNet-ready depth map.
+
+The multi-character sibling of vrm_depth.py. That module renders one figure in
+one hardcoded standing pose at a chosen yaw, which is what reference-sheet
+turnarounds need. This one drives blender_scripts/vrm_scene_depth.py with a
+JSON scene spec, so two characters can be posed against each other and rendered
+as a single depth map with correct per-pixel ordering between them.
+
+Why depth rather than the author's line sketch: see vrm_scene_depth.py's
+docstring for the full evidence trail. Short version — a line map cannot say
+which outline is a leg and which is a sleeve, so FLUX welds crossing limbs
+together, and that failure reproduces with a single figure in frame, which
+rules out "the bodies overlap" as the cause. Depth encodes ordering per pixel,
+so it disambiguates limb identity natively.
+
+Shares vrm_depth.py's Blender setup (executable path, VRM add-on) and its
+costume-neutral constraint: the base mesh wears a plain t-shirt, so describe
+pose and framing in the prompt, not the character's actual outfit, then apply
+costume and identity in a later edit_image pass.
+
+Usage:
+    from vrm_scene import render_scene_depth
+    png = render_scene_depth({
+        "width": 1216, "height": 1088,
+        "camera": {"yaw": 0, "dist": 4.0, "ortho_scale": 3.0, "target_z": 1.0},
+        "figures": [
+            {"location": [-0.7, 0, 0], "yaw": 20,
+             "bones": {"J_Bip_R_UpperArm": {"X": -40, "Z": 25}}},
+            {"location": [0.7, 0, 0], "yaw": -110,
+             "bones": {"J_Bip_R_UpperLeg": {"X": -85}}},
+        ],
+    }, out="kick.png")
+"""
+
+import json
+import os
+import subprocess
+import tempfile
+
+import OpenEXR
+import Imath
+import numpy as np
+from PIL import Image
+
+from vrm_depth import BLENDER_EXE, VRM_ASSET_PATH, VrmDepthError
+
+_SCRIPT_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "blender_scripts", "vrm_scene_depth.py")
+
+
+def render_scene_depth(spec: dict, out: str | None = None, timeout: int = 300) -> str:
+    """Render `spec` to a grayscale depth PNG (near = white, far = black).
+
+    Figures may omit "vrm" to use the default base mesh. Returns the PNG path.
+    """
+    if not os.path.isfile(BLENDER_EXE):
+        raise VrmDepthError(
+            f"Blender not found at {BLENDER_EXE}. Set WEBCOMIC_CHAR_BLENDER — "
+            f"see vrm_depth.py's docstring for setup.")
+    if not spec.get("figures"):
+        raise VrmDepthError("scene spec has no 'figures'")
+
+    spec = json.loads(json.dumps(spec))  # don't mutate the caller's dict
+    for fig in spec["figures"]:
+        fig.setdefault("vrm", VRM_ASSET_PATH)
+        if not os.path.isfile(fig["vrm"]):
+            raise VrmDepthError(f"VRM asset not found: {fig['vrm']}")
+
+    if out is None:
+        out = os.path.join(os.getcwd(), "vrm_scene_depth.png")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    exr = os.path.splitext(out)[0] + "_depth.exr"
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(spec, f)
+        spec_path = f.name
+    try:
+        result = subprocess.run(
+            [BLENDER_EXE, "--background", "--python", _SCRIPT_PATH, "--", spec_path, exr],
+            capture_output=True, text=True, timeout=timeout)
+        if result.returncode != 0 or not os.path.isfile(exr):
+            raise VrmDepthError(
+                f"Blender render failed (exit {result.returncode}):\n"
+                f"{result.stdout[-2000:]}\n{result.stderr[-2000:]}")
+        # surface the measured depth window — a near-flat map is the known
+        # failure mode, and this is the number that reveals it
+        for line in result.stdout.splitlines():
+            if line.startswith("DEPTH WINDOW"):
+                print(line)
+    finally:
+        os.unlink(spec_path)
+
+    f = OpenEXR.InputFile(exr)
+    dw = f.header()["dataWindow"]
+    w, h = dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1
+    arr = np.frombuffer(
+        f.channel("depth.V", Imath.PixelType(Imath.PixelType.FLOAT)),
+        dtype=np.float32).reshape(h, w)
+    Image.fromarray((np.clip(arr, 0.0, 1.0) * 255).astype(np.uint8), mode="L").save(out)
+    os.remove(exr)
+    return out
