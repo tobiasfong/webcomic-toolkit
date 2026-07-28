@@ -13,6 +13,75 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Two-figure posed depth maps: multi-character contact panels (2026-07-28/29)
+
+### Added — `vrm_scene.py` + `blender_scripts/vrm_scene_depth.py`
+Any number of posed VRM figures from a JSON scene spec, rendered to one depth
+map. The multi-figure sibling of `vrm_depth.py` (one figure, one hardcoded
+standing pose, yaw only). Per figure: `vrm`, `location`, `yaw` or full
+`rotation: [x,y,z]`, and per-bone euler offsets. Plus `assets/Base_Female.vrm`
+from the same OpenGameArt CC0 pack as the male mesh.
+
+This is what finally placed a two-character action beat. Everything else had
+failed on the same panel: text-only prompting, FLUX Redux, FLUX IP-Adapter,
+Impact-Pack regional conditioning, lineart ControlNet at every strength from
+0.40 to 0.80, Kontext pose editing (0 for 7), and generating each character
+separately.
+
+### The finding — limb fusion is a DEPTH problem, not a model weakness
+Two surfaces meeting at near-identical depth get merged. This one fact explains
+every artifact chased across two sessions: a boot fusing into a shirt, a
+forearm into a chest, a forearm into its own upper arm, a kicking leg rendering
+as a sleeve ending in a boot. It also explains why flat lineart cannot work —
+a line map says "edge here", never "this outline is a leg and that one is a
+sleeve" — and that failure reproduces with a SINGLE figure in frame, which
+rules out limb overlap as the cause.
+
+Staging rules that follow, all verified live:
+
+- Pose limbs against background, never across the character's own torso.
+- Keep folded arms in an open V, so forearm and upper arm sit at different
+  depths rather than stacking.
+- Leave a gap at contact points and close it afterwards.
+
+### Fixed — perspective camera for scene renders
+`vrm_pose_depth.py` uses an orthographic camera, correct for turnaround sheets
+where front and back must scale-match. Inherited into scene rendering it was
+wrong: ortho has no foreshortening at all, so a limb thrust at the viewer
+renders the same size as one held back. With no perspective cue FLUX improvises
+limb scale — mismatched arms, and an enlarged, deformed foreshortened hand.
+Perspective at 65mm fixed both. 40mm was wide enough to distort on its own.
+
+### Fixed — `detail_fix` hand pass conditioning
+The hand detailer inherited the ControlNet-applied conditioning, so it redrew
+whatever the control map said the hand was — against a low-poly VRM mitten,
+the same claw it was meant to repair. Decoupled from ControlNet but still fed
+the SCENE prompt it was worse: at denoise 0.7 a hand crop is close to a fresh
+generation, so "two people sparring" rendered a tiny complete person inside a
+hand's bounding box. It now gets its own short hand-only prompt
+(`FLUX_HAND_DETAIL_PROMPT`).
+
+Important correction: `detail_fix` is NOT useless, which two separate tests
+suggested. It only works once the arm is staged clear of the torso — tested in
+isolation against a fused arm it looks like a no-op. The combination is what
+produces a correct hand.
+
+### Known — masking hands out of the control map does not work
+Three attempts, three artifacts, one cause. Fading the hand disc to background
+produced a bright-rim/dark-centre gradient, which is the depth signature of a
+sphere: the model drew a translucent bubble over every hand. Flattening to
+wrist depth produced haloed discs. Blurring glowed. Hands sit on the silhouette
+edge, so any local edit there is visible against the background. The code
+remains in `vrm_scene.py` behind `mask_hands`, DEFAULT OFF, with the failure
+modes documented. The working answer is the hand-only detailer prompt above,
+which leaves the map alone.
+
+### Known — silhouette cannot be prompted against a strong control map
+The base meshes are effectively bald, so asking for long hair at
+`pose_strength=0.75` does nothing — the head silhouette wins. Same applies to
+loose clothing or anything else that changes outline. Either add the geometry,
+lower `end_percent`, or handle it in a later edit pass.
+
 ## [Unreleased] — Sketch-driven ControlNet: found the real cause of the line bleed (2026-07-27)
 
 ### Fixed — the "white scratch lines" were Canny's doubled edges, not the ControlNet model
