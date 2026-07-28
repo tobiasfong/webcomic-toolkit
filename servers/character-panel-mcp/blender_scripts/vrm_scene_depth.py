@@ -41,6 +41,9 @@ Scene spec (JSON, passed as a file path):
       ]
     }
 
+A figure may use `"yaw": <deg>` (rotation about Z only) or, when it needs to
+be tipped over — lying down, falling — `"rotation": [x, y, z]` in degrees.
+
 `bones` maps VRM humanoid bone names (J_Bip_*) to per-axis degree offsets
 applied to the bind pose (a T-pose), matching vrm_pose_depth.py's convention —
 arms swing DOWN from T via the upper arm's local X. Axes are applied in XYZ
@@ -105,7 +108,14 @@ def import_figure(fig):
     # assigning rotation_euler on a quaternion-mode object is silently ignored
     # — location applies, facing does not. Switch modes before assigning.
     arm.rotation_mode = "XYZ"
-    arm.rotation_euler = (0, 0, math.radians(float(fig.get("yaw", 0.0))))
+    # "yaw" alone cannot lay a figure down, which any floor scene needs (a
+    # character on his back is a 90-degree rotation about X). Full euler is
+    # accepted as "rotation": [x, y, z] in degrees; "yaw" stays supported as
+    # the common case and as the spelling every existing scene spec uses.
+    rot = fig.get("rotation")
+    if rot is None:
+        rot = (0.0, 0.0, float(fig.get("yaw", 0.0)))
+    arm.rotation_euler = tuple(math.radians(float(a)) for a in rot)
     return arm
 
 
