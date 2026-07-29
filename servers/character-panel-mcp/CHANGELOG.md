@@ -13,6 +13,67 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Masked Kontext editing: repairs that cannot wreck the pose (2026-07-29)
+
+### Added — `mask_box` on `flux_workflow.edit_image()`
+`edit_image` ran Kontext at `denoise=1.0` over the entire canvas. There was no
+mask, so nothing in the frame was ever protected and "keep her pose exactly as
+it is" was a suggestion the sampler was free to ignore. It usually held, which
+is why this went unnoticed — until an edit asked for something that competed
+with the composition.
+
+Panel 4 was that case. Three separate costume passes, each asking for the canon
+hanfu robe, each destroying the kick: the wide sleeve was painted over the
+pixels the raised leg occupied and the leg fused into it, leaving a boot growing
+out of a cuff, then a detached boot lying on the path, then both feet back on
+the ground. Naming the leg in the prompt and fencing it off in words changed
+nothing, because words were never the mechanism.
+
+`mask_box=(x0, y0, x1, y1)` gates denoising through `SetLatentNoiseMask`, so
+pixels outside the box are carried through from the source instead of being
+re-decided. The mask is pushed through the same `FluxKontextImageScale` as the
+image — Kontext rescales its input to a supported bucket, and a mask that
+skipped that rescale would be offset from the latent it is meant to gate.
+Mutually exclusive with `canvas_width`/`canvas_height`.
+
+Every pass after this change preserved the pose exactly. The same skirt edit
+that had failed three times unmasked landed first try.
+
+### Added — `tools/region_composite.py`
+Feathered rectangular composite between two renders of the same base, for
+keeping the good part of one pass and the good part of another. Also the
+building block of the crop-enlarge repair below, and of the solo-generate +
+manual-composite route.
+
+### Finding — masking protects composition, enlargement fixes anatomy
+Masked in-place repair stalled on a hand: at 125x105 px it is ~15x13 latent
+cells, and two different seeds both returned the source essentially unchanged
+(mean abs diff 3.0 inside the box — VAE round-trip noise). The mask was working;
+there were not enough latent cells to redraw an anatomy from.
+
+Cropping the hand with context, upscaling 4x, editing at full Kontext
+resolution and compositing back produced a clean five-digit hand on both seeds,
+after every in-place attempt had failed. Small-region repairs need both: the
+mask to protect the composition, the enlargement to give the model something to
+reason about.
+
+### Finding — the fusion rule applies to Kontext, not just control maps
+Two surfaces meeting at near-identical depth fuse. Already recorded for depth
+and lineart conditioning; it governs edits too. Adding fabric next to a limb is
+enough to trigger it, which makes costume passes on action panels inherently
+risky and is the reason `mask_box` exists.
+
+Corollary that is a staging decision, not a repair: panel 4's sleeves stayed
+short-capped because her raised leg crosses directly under both arms, so a
+wrist-length hanfu sleeve has nowhere to hang that the leg is not already using.
+No prompt or mask fixes that — the leg has to be posed clear of the arm line
+back at the depth render.
+
+### Fixed — mask edges leave the old colour behind
+A recolour masked to the skirt left maroon fringes along the top and left edges,
+where the feather faded out before reaching them. Feathered masks need to extend
+past the region being changed, not stop at its boundary.
+
 ## [Unreleased] — Two-figure posed depth maps: multi-character contact panels (2026-07-28/29)
 
 ### Added — `vrm_scene.py` + `blender_scripts/vrm_scene_depth.py`

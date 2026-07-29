@@ -54,6 +54,7 @@ NOT work):
 import os
 import uuid
 import time
+import tempfile
 import requests
 
 from workflow import (
@@ -469,6 +470,34 @@ def generate_concepts(
     return paths
 
 
+def _write_mask(image_path: str, box: tuple[int, int, int, int],
+                feather: int) -> str:
+    """White inside `box`, black outside, at the source image's exact size.
+
+    Written next to a temp name and uploaded like any other image: ComfyUI's
+    LoadImage + ImageToMask path is used rather than LoadImageMask so the mask
+    can be pushed through the same FluxKontextImageScale as the image itself.
+    Kontext rescales its input to a supported bucket, and a mask that skipped
+    that rescale would be offset from the latent it is supposed to gate.
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+
+    src = Image.open(image_path)
+    m = Image.new("RGB", src.size, (0, 0, 0))
+    x0, y0, x1, y1 = box
+    # Inset then blur back out, so the opaque core still covers the requested
+    # box instead of the feather eating into it.
+    ImageDraw.Draw(m).rectangle(
+        (x0 + feather, y0 + feather, x1 - feather, y1 - feather),
+        fill=(255, 255, 255))
+    if feather:
+        m = m.filter(ImageFilter.GaussianBlur(feather / 2))
+    out = os.path.join(tempfile.gettempdir(),
+                       f"kontext_mask_{uuid.uuid4().hex[:8]}.png")
+    m.save(out)
+    return out
+
+
 def edit_image(
     image_path: str,
     instruction: str,
@@ -480,11 +509,24 @@ def edit_image(
     lora_strength: float = 0.8,
     canvas_width: int | None = None,
     canvas_height: int | None = None,
+    mask_box: tuple[int, int, int, int] | None = None,
+    mask_feather: int = 32,
     timeout: int = 300,
 ) -> str:
     """FLUX Kontext dev as a pure image editor — see module docstring for what
     this is and is not validated for (local fixes: yes; full viewpoint
     rotation in one edit: no, produces a chimera).
+
+    mask_box: (x0, y0, x1, y1) in the SOURCE image's pixel coordinates. When
+    given, only that rectangle is denoised — everything outside it is carried
+    through from the source untouched. Without it this call re-renders the whole
+    canvas at denoise=1.0, and no wording in the instruction protects anything:
+    panel 4's costume passes repainted the raised kicking leg as a continuation
+    of the sleeve three separate times, because the model was free to redecide
+    every pixel. If an edit must leave a limb or a face alone, fence it off here
+    rather than asking for it in the prompt. Mutually exclusive with
+    canvas_width/canvas_height — a masked edit reuses the source's own canvas
+    so the untouched pixels line up.
 
     lora: optional LoRA filename (e.g. FLUX_LORA, the manwha/webtoon style
     LoRA) loaded onto the base model before editing — for a restyle pass
@@ -505,9 +547,15 @@ def edit_image(
     ensure_comfy_running()
     if bool(canvas_width) != bool(canvas_height):
         raise ComfyUIError("edit_image needs both canvas_width and canvas_height, or neither.")
+    if mask_box and (canvas_width or canvas_height):
+        raise ComfyUIError(
+            "edit_image cannot take mask_box together with an explicit canvas size: "
+            "a masked edit must keep the source canvas so the unmasked pixels align.")
     if seed is None:
         seed = uuid.uuid4().int % (2**31)
     uploaded = _upload_image(image_path)
+    uploaded_mask = _upload_image(_write_mask(image_path, mask_box, mask_feather)) \
+        if mask_box else None
     m = FLUX_KONTEXT_MODEL
 
     g = {
@@ -536,8 +584,19 @@ def edit_image(
         out_size = [canvas_width, canvas_height]
     else:
         out_size = [["42", 0], ["42", 1]]
-    g["8"] = {"class_type": "EmptySD3LatentImage",
-              "inputs": {"width": out_size[0], "height": out_size[1], "batch_size": 1}}
+    if uploaded_mask:
+        # Start from the SOURCE latent, not empty noise, and gate denoising to
+        # the masked region — that is what actually preserves the rest of the
+        # frame. The mask rides the same FluxKontextImageScale as the image so
+        # the two stay registered.
+        g["46"] = {"class_type": "LoadImage", "inputs": {"image": uploaded_mask}}
+        g["47"] = {"class_type": "FluxKontextImageScale", "inputs": {"image": ["46", 0]}}
+        g["48"] = {"class_type": "ImageToMask", "inputs": {"image": ["47", 0], "channel": "red"}}
+        g["8"] = {"class_type": "SetLatentNoiseMask",
+                  "inputs": {"samples": ["43", 0], "mask": ["48", 0]}}
+    else:
+        g["8"] = {"class_type": "EmptySD3LatentImage",
+                  "inputs": {"width": out_size[0], "height": out_size[1], "batch_size": 1}}
     if lora:
         g["2"] = {"class_type": "LoraLoaderModelOnly",
                    "inputs": {"model": ["1", 0], "lora_name": lora, "strength_model": lora_strength}}
