@@ -13,6 +13,80 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — Panel 4 complete: what Kontext will and won't do (2026-07-29/30)
+
+Panel 4 (Ri Hwa's kick, Trevor's block) is done —
+`output/murim_test/_scene1/depth/p04_FINAL.png`. It took far more repair rounds
+than it should have, and the rounds sort cleanly into two kinds: the ones that
+found a genuine limit of the model, and the ones that were compositing bugs of
+my own making. Both are worth keeping straight for the next contact panel.
+
+### Finding — Kontext restyles, it does not restructure
+Across two hands and roughly ten attempts, direct instructions to add a thumb,
+fix handedness, or remove a digit never once succeeded — the topology stayed
+locked to the source silhouette no matter how the prompt was worded or how many
+seeds were tried. The one thing that worked was asking for a different
+GESTURE: "make this an open hand" (rather than "add a thumb" to the existing
+fist) succeeded first try, because a gesture change is local rendering, not a
+structural edit. The same distinction explains why "remove the rear skirt
+panel" failed twice — deleting an occluding layer means inventing what was
+behind it, which is structural reasoning — while finishing a shape already
+blocked in crudely in PIL succeeded immediately. Practical rule: if an edit
+requires the model to decide *what exists*, do that part deterministically
+(prefill in PIL, or force the layer order via compositing) and only ask
+Kontext to render the result.
+
+### Finding — small regions don't have enough latent cells to fix anatomy
+A masked in-place hand repair at ~125x105px returned the source essentially
+unchanged across two different seeds (mean abs diff 3.0 — VAE round-trip
+noise, not a redraw). Cropping with context, upscaling 4x, editing, and
+shrinking back gave the model real resolution to work with and produced clean
+results on the first attempt. Bigger crops (~300x280) worked better still.
+Small-region repairs need both the mask (to protect the composition) and the
+enlargement (to give the model something to reason about).
+
+### Bugs — all mine, all in the compositing, not the model
+Restoring her bare skin from an earlier base render — needed so her raised leg
+could occlude the new skirt rather than the reverse — went through four bad
+iterations before it was right:
+- a brightness threshold that silently excluded the brightest highlight skin,
+  leaving lavender-tinted streaks behind on her thigh;
+- a hand-drawn polygon that covered only her STANDING leg, so the KICKING leg
+  got no protection at all and picked up stray fabric and discoloration;
+- the sunlit dirt path passing the same skin colour test and becoming the
+  single largest "skin" region in the frame, punching holes in the skirt hem;
+- the mask including her face, so an earlier version of her head got pasted
+  back a few pixels offset from the current one (Kontext rescales its own
+  output), double-exposing her eye, ear and jaw.
+
+None of these were the model failing — they were an under-specified region
+mask being asked to do a job only careful measurement can do. The fix each
+time was to measure the actual pixel values in play (`sample points, don't
+guess`) rather than tune a threshold blind.
+
+Also: stacking a new fix onto a file whose hem a PREVIOUS bug had already
+broken kept the hole alive through two more rounds — rebuilding from the last
+known-good file instead of the most recent one fixed it instantly. And "looks
+clean" needs checking end-to-end, not at one corner: a hem gap on the far side
+of the skirt survived a review that only checked the near side.
+
+Two straight pixel-paint attempts to clean up a stray shading strip both
+failed for the same reason: painting can move existing pixels around but
+cannot invent texture (grass, embroidery) that was never behind the removed
+object. Handing that same edit to Kontext as a local re-render — not a
+structural change, just "clean up this outline and continue the background
+texture" — succeeded on the first attempt. Compositing and generation solve
+different problems; this session mixed them up in both directions before
+sorting out which one belongs where.
+
+### Final assembly
+The very last mile — hand pose readability and fine proportions — was finished
+by hand in image-editing software rather than through further Kontext rounds,
+once the pipeline had produced a version where every remaining issue was that
+small. That is exactly the fallback this server was always meant to support:
+AI generation gets a panel most of the way there, a human finishes it, nobody
+is stuck re-drawing from scratch.
+
 ## [Unreleased] — Masked Kontext editing: repairs that cannot wreck the pose (2026-07-29)
 
 ### Added — `mask_box` on `flux_workflow.edit_image()`
