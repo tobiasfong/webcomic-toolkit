@@ -148,6 +148,58 @@ def register_character(
 
 
 @mcp.tool()
+def get_character(character: str, project: str = characters.DEFAULT_PROJECT) -> str:
+    """Fetch one character's canon: description, reference image paths and the
+    finished panels that establish each detail.
+
+    CALL THIS BEFORE WRITING ANY PROMPT THAT INVOLVES THIS CHARACTER, and paste
+    the returned description verbatim rather than describing them from memory or
+    from looking at a panel. Until this tool existed there was no way to obtain a
+    character's reference path through the MCP interface, so prompts got
+    hand-written and drifted — a panel shipped with the wrong hair colour and the
+    wrong eye colour, both of which the bible had recorded correctly all along.
+
+    `primary_ref` is the image to condition on (`edit_image`). Note that
+    `flux_workflow.generate()` has no identity input at all, so a reference
+    cannot be applied there.
+    """
+    entry = characters.get_character(character, project)
+    if not entry:
+        return (f"No character '{character}' in project '{project}'. "
+                f"Use list_characters(project='{project}') to see what exists.")
+
+    refs = entry.get("refs", [])
+    sources = entry.get("ref_sources", {})
+    out = [f"# {entry.get('name', character)}  (id: {character}, project: {project})",
+           "", "## Description — use this text verbatim in prompts",
+           entry.get("description", "(EMPTY — do not invent one; ask first)"), ""]
+
+    if refs:
+        out.append("## Reference images")
+        for i, rel in enumerate(refs):
+            path = characters.primary_ref_path(character, project) if i == 0 else \
+                os.path.join(characters.CHAR_ROOT, rel.replace("/", os.sep))
+            src = sources.get(os.path.basename(rel), "UNRECORDED ORIGIN")
+            label = "primary — condition on this" if i == 0 else "alternate"
+            out.append(f"- [{label}] {path}\n    from: {src}")
+        out.append("")
+
+    canon = entry.get("canon_panels", {})
+    if canon:
+        out.append("## Approved panels — canon, consult before redrawing a detail")
+        for panel, what in canon.items():
+            out.append(f"- {panel}\n    establishes: {what}")
+        out.append("")
+
+    for field in ("profile", "abilities", "notes"):
+        if entry.get(field):
+            out.append(f"## {field.title()}\n{entry[field]}\n")
+    if entry.get("palette"):
+        out.append("## Palette\n" + ", ".join(entry["palette"]))
+    return "\n".join(out)
+
+
+@mcp.tool()
 def list_characters(project: str = characters.DEFAULT_PROJECT) -> str:
     """List the characters registered in a project's Character Bible."""
     chars = characters.list_characters(project)

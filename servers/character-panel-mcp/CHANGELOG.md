@@ -13,6 +13,179 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 > the numbered stages are development history, kept for the honest record of what was
 > tried, what broke, and what the fix actually was, not a chain of prior public releases.
 
+## [Unreleased] — The character bible was never being used (2026-07-30/31)
+
+### Fixed — both characters were registered to the wrong reference images
+One character's primary reference was a stray render: hair styled differently,
+cropped above the ankles so a whole costume element was **not visible at all**,
+while the approved sheet had a full turnaround showing it front and back. The
+other character's entry listed one ref while two sat in the folder, so the
+registry and the disk disagreed about what was canon.
+
+Both now point at crops from their approved `*_sheet_FINAL.png`, with the back
+view, an expression crop and an action pose registered alongside.
+
+This is the root of a whole session's worth of "why is this detail wrong".
+
+### Fixed — descriptions were missing canon that thirteen panels already showed
+One character's description omitted her eye colour, an accessory and her
+footwear, despite all three being consistent across every locked panel. Added,
+with full specs.
+
+### Added — `get_character` MCP tool
+There was **no way through the MCP interface to obtain a character's reference
+image path**. `list_characters` returns prose. So hand-writing appearance into
+prompts was not laziness, it was the only available route — and it is how a
+panel shipped with the wrong hair and eye colour for a character whose bible
+had carried both correctly the whole time.
+
+Returns the description marked *use verbatim*, the primary ref flagged as the
+one to condition on, each ref's recorded origin, and the approved panels that
+establish each detail.
+
+### Added — provenance, canon panels, and `tools/check_bible.py`
+Each ref now records which approved sheet it came from (`ref_sources`), and each
+character lists which finished panels establish which detail (`canon_panels`).
+The validator checks that refs resolve, that no unlisted image lurks in a
+character folder, that the primary ref traces to an approved sheet, and that
+descriptions are non-empty. Non-zero exit, so it can gate a run. It immediately
+found a third case nobody was looking at -- another character's primary ref has
+no provenance either.
+
+### Added — repo-root `CLAUDE.md`
+Nothing loaded project rules into context automatically, so every session
+rediscovered the conventions and compaction erased them. The rules now live
+where they are always read, each stated with the failure that produced it.
+
+### Finding — plain FLUX has NO identity conditioning, and it shows
+`flux_workflow.generate()` takes `pose_ref_path` for ControlNet but no identity
+reference; identity comes from prompt text alone. Four text-only attempts at a two-character
+contact panel failed with **attribute bleed** — one character's accessories
+landed on the other, and their hairstyles swapped — because nothing binds an
+attribute to a body. Every identity
+mechanism in the codebase binds ONE reference to ONE generation, so two
+characters cannot be locked in a single image. Hence solo-generate + composite.
+
+Reference-conditioned solo passes held identity on every single attempt.
+
+### Changed — panel 4 was REBUILT through the solo-generate route, and shipped
+This started as a control test: regenerate a known-good panel through the new
+route to see whether it held up. It held up well enough that the composite
+replaced the depth-map version as final p04.
+
+So there are now two different panel 4s in this project's history, made two
+different ways, and it matters which one the notes describe:
+
+- **The depth-map p04 (superseded).** Both figures generated in ONE image off a
+  VRM depth map. Real contact between the figures, and ground shadows drawn
+  natively by FLUX. Reached final only after heavy hand repair: six-finger and
+  missing-thumb fixes, a costume pass, a hair recolour, and footwear that had to
+  be composited in from a separate render.
+- **The composite p04 (shipped).** Each figure generated solo from its own sheet,
+  keyed with `tools/cutout.py`, placed on a FLUX background plate
+  (`_scene1/plates/flux_3312.png`) sharing one ground line and an upper-left key
+  light. Identity was correct from the first pass on both figures, down to the
+  small costume details, with no repair pass at all.
+
+### Finding — solo-generate solves identity, not interaction
+The rebuild produced two on-model figures on one ground line with matched
+lighting and no fusion — and **no contact between them**. The composite route
+cannot make characters touch. It shipped because the beat survives the change:
+the near miss reads as intentional rather than as a failed contact.
+That was a story call, not a technical fix, and it will not be available for
+panels whose beat REQUIRES contact.
+
+Two costs come with it. Composited figures have no shadows, so they must be
+given them (squashed silhouette, sheared away from the key light) — the depth-map
+route never needed this because FLUX drew them. And mirroring a figure flips
+asymmetric costume detail: a lapel pin had to be erased from the mirrored side
+and repainted on the correct one, at coordinates measured off the mirrored figure
+rather than assumed.
+
+For p13/p15, where two bodies must interleave, expect depth staging or hand work.
+
+### Finding — a finished panel works as a TWO-character identity reference
+Two-character identity locking was written off as impossible because every
+mechanism binds one reference to one generation. That constraint is about the
+number of reference SLOTS, not the number of characters inside the reference.
+Conditioning on the one approved panel containing both characters carried both
+identities correctly in a single generation across both seeds, with zero
+attribute bleed, where four text-only attempts had swapped their accessories and
+hairstyles between them.
+
+Boundary: it holds identity, it does not restructure. Both seeds kept the
+source panel's standing-over-prone relationship instead of adopting the
+requested one. So this is the cheap route for a panel whose staging is
+CLOSE to an existing locked panel — a reaction shot, a new camera on the same
+beat — and no help at all when the pose must change fundamentally.
+
+### Finding — the model will not put a character's back on the ground
+Six seeds across three prompts, all conditioned on a standing sheet, all
+refused "lying flat on his back": two reclining on one hip, two prone and
+propped on their hands, one lounging pin-up. Identity was flawless every time,
+so this is purely pose.
+
+What every failure shares is the chest facing camera — the model rotates the
+figure around that rather than turning his back to the ground, which is exactly
+what a true supine side view requires. Camera-led wording ("the camera is down
+at ground level beside him") did not beat it, and explicit negations did not
+either: the seed that followed "not propped, not on his side" landed on prone,
+the one position not excluded.
+
+**The workaround is to sidestep it.** Generate him STANDING in rigid side
+profile — a near-zero change from a standing sheet, which Kontext does happily —
+then rotate the image 90°. Facing viewer's-right maps to face-up, and top of
+frame maps to left, giving supine with the head at the left.
+
+Two things this needs. Light rotates with the image, so generate with the key
+light on the side that lands correctly after the turn (upper-RIGHT becomes
+upper-LEFT under a counter-clockwise rotation). And ask for no ground line and
+no cast shadow, or the shadow rotates into a vertical smear beside him.
+
+### Finding — "whole body in frame" does not prevent cropping
+It failed three times (braced stance, then twice on the upright profile, always
+cutting at the knees). What worked was naming the terminal feature and demanding
+space past it: "clear empty space below his BLACK SHOES, which are fully visible
+at the bottom of his legs." Both seeds framed correctly on the first try after
+that. Canvas aspect has to suit the figure's axis too — a lying figure needs
+landscape, a standing one portrait.
+
+Facing direction, by contrast, never responded to instruction at all: every solo
+render faced the same way regardless, holding its reference sheet's orientation. Do not
+spend seeds on it — mirror at composite time, and if the figure is also being
+rotated, flip the rotation direction so the mirror and the turn cancel out on
+lighting.
+
+### Rewrote — `tools/cutout.py` for whole characters
+The original hue rules were built for a brown boot on a forest wash and failed
+completely on a character: "blue leads red" ate black hair and navy trousers,
+a neutral-grey rule ate the white shirt, a distance rule ate the skin. It now
+keys what is **connected to the image border**, so black, white and skin survive
+inside the figure at any value.
+
+Thresholds measured, not guessed: backdrop white (255,255,255); its cast shadow
+(190,196,203) — distance ~101, COOL, blue leading red by 13; skin (253,236,218)
+— distance ~42 but WARM, red leading blue by 35. So tolerance must exceed 100 to
+take the shadow, and what protects skin at that distance is the SIGN of
+red-minus-blue. Tolerance is per-image: a figure with a hard cast shadow needs
+~120, while a figure in pale cool clothing may need ~14, because that costume can
+sit only 20 from the backdrop.
+
+### Added — `tools/place_cutout.py`
+Two landmark pairs solve scale, rotation and position as one affine. Mirroring
+is a separate flag because two points cannot distinguish a flipped figure from
+a rotated one. Note that mirroring also flips asymmetric costume detail — a
+lapel pin changes sides — which must be corrected against canon afterwards.
+
+### Finding — extra limbs are stochastic, not caused by the pose
+A third arm appeared on one seed and not on another **from the identical
+prompt**. An earlier theory that describing a limb repeatedly invites another
+one did not survive that test. Removing a spare limb by hand took six PIL passes
+and never came clean; re-rolling the seed cost eight minutes and worked. The
+CHANGELOG already said why the surgery fails: painting flat colour cannot
+replace deleted linework, because it has no texture to stand in for what the
+lines were drawn on.
+
 ## [Unreleased] — Panel 4 complete: what Kontext will and won't do (2026-07-29/30)
 
 Panel 4 (Ri Hwa's kick, Trevor's block) is done —
