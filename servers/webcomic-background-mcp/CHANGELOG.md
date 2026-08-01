@@ -62,16 +62,20 @@ FLUX.1-dev as an optional second base model, and a real sketch-input bug fix.
   silently ignoring the argument.
 - Speed: ~100–150 s per FLUX plate vs ~20–40 s on SD 1.5, on a 6 GB RTX 3060
   Laptop. Fine for finished plates, noticeable when iterating.
-- **FLUX trades manhwa styling for geometry, and that is not tunable away.**
-  Sketch-conditioned FLUX renders read as semi-realistic 3-D architectural
-  work rather than webtoon; the most manhwa-looking output came from FLUX with
-  *no* ControlNet at all. Raising the style LoRA does not fix it — 2.0 is
-  measurably worse than 1.5 in both directions (muddy under ControlNet, more
-  photorealistic in txt2img). Root cause is structural: `manwha_style` is a
-  character-trained LoRA on a generalist base, a far weaker lever than SD 1.5's
-  purpose-trained Solstice checkpoint. **SD 1.5 therefore remains the default
-  and the right choice when you need webtoon styling *and* exact staging**; a
-  model-selection guide is documented at the top of `flux_workflow.py`.
+- **ControlNet flattens FLUX's tone — and that, not "FLUX can't do manhwa", is
+  the real limit.** Measured with luminance std (mean/std of the 0.299/0.587/
+  0.114 luminance): FLUX txt2img lands at ~0.26–0.29, rich and webtoon-looking;
+  the same prompt with an edge-map sketch collapses to ~0.03–0.08, which is
+  3–4× flatter than this server's own *approved* SD 1.5 plate (0.123). Cause is
+  luminance bleed from the control map itself — our edge maps are ~99% black
+  (mean luminance 0.008) and drag the whole frame dark. Inverting the sketch to
+  ~99% white raised std 0.041 → 0.156, confirming the mechanism, but is **not a
+  fix**: it merely flips which side is painted literally, rendering objects as
+  glowing white ghosts. A no-ControlNet hires repaint does not recover it either
+  (0.041 → 0.044). Style LoRA strength is not the cause — 1.5 is correct and
+  2.0 is worse. Still open: holding composition without flattening tone.
+  Model-selection guide and the full measurement log live at the top of
+  `flux_workflow.py`.
 
 ## [1.8.0] — 2026-07-18
 

@@ -115,22 +115,53 @@ FLUX_LORA = os.environ.get("WEBCOMIC_BG_FLUX_LORA", "manwha_style.safetensors")
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_BG_FLUX_LORA_STRENGTH", "1.5"))
 
 # --- Which model should you actually use? (measured 2026-07-28) --------------
-# The manhwa look and exact composition pull against each other on FLUX, and
-# this is NOT tunable away — manwha_style is a character-trained LoRA on a
-# generalist base, a much weaker lever than SD1.5's purpose-trained Solstice
-# checkpoint. The strongest webtoon styling came from FLUX with NO ControlNet
-# at all; every sketch-conditioned render read more like a semi-realistic 3D
-# architectural render. So:
+# CORRECTED: an earlier version of this note claimed FLUX simply can't do
+# manhwa and that SD1.5 was required for styling. That was wrong. The
+# character-panel server ships a genuinely manhwa-looking plate
+# (plates/topdown/flux_3141.png) from straight FLUX txt2img at manwha_style
+# @ 1.5 — nothing hand-painted. Our own best-looking renders were likewise
+# txt2img. FLUX's styling is fine.
 #
-#   Need exact staging AND webtoon styling  -> SD 1.5 (solstice + ManhwaUltimate).
-#                                              Still the best answer, and why
-#                                              it remains the default.
+# The real boundary is narrower and it is CONTROLNET, not the model:
+#
+#   FLUX txt2img            luminance std ~0.26-0.29 — rich tonal range, reads
+#                           manhwa. This is FLUX working properly.
+#   FLUX + edge-map sketch  luminance std ~0.03-0.08 — 3-4x flatter than our own
+#                           APPROVED SD1.5 plate (0.123). Reads semi-realistic
+#                           and murky.
+#
+# Cause: the control map's own luminance bleeds into the render. Our edge maps
+# are ~99% black (mean luminance 0.008), which drags the whole frame dark and
+# flat. Confirmed by inverting the sketch to ~99% white: std jumped 0.041 ->
+# 0.156. But inversion is NOT a fix — it flips which side gets painted
+# literally, and the objects render as glowing white ghosts. Both polarities
+# leak; only the artifact changes.
+#
+# Also ruled out: a no-ControlNet hires repaint does not recover the tone
+# (0.041 -> 0.044 at denoise 0.35, -> 0.049 at 0.55). The flatness is baked in
+# at generation time.
+#
+#   Need exact staging AND rich tone        -> SD 1.5 (solstice + ManhwaUltimate).
+#                                              Still the default; its ControlNet
+#                                              does not flatten the render.
 #   Need correct object geometry            -> FLUX + sketch. Bicycles/props come
-#     (props, vehicles, machinery)             out right where SD1.5 deformed them.
-#   Need a beautiful one-off plate, and      -> FLUX txt2img, no sketch. Best
-#     composition can be whatever it likes      styling FLUX produces.
+#     (props, vehicles, machinery)             out right where SD1.5 deformed them
+#                                              — at the cost of flatter tone.
+#   Need the best-looking FLUX plate        -> FLUX txt2img, no sketch. Composition
+#                                              is whatever the seed gives you.
 #   Need cross-panel location consistency   -> SD 1.5 + World Builder, or FLUX
 #                                              + props/citygen geometry.
+#
+# STILL OPEN: making ControlNet hold composition without flattening tone. Not
+# yet tried — Kontext editing an already-approved plate (the mechanism that
+# solved consistency on the character side), and re-aiming/reusing one good
+# txt2img plate across panels rather than regenerating per panel.
+#
+# Measure, don't eyeball (character server's trick, and it works):
+#   L = (np.asarray(img,float)/255 * [0.299,0.587,0.114]).sum(2)
+#   L.mean(), L.std()
+# Our approved SD1.5 bike plate sits at mean 0.138 / std 0.123. But check the
+# IMAGE too — an inverted control map scored 0.156 while looking terrible.
 FLUX_GUIDANCE = float(os.environ.get("WEBCOMIC_BG_FLUX_GUIDANCE", "3.5"))
 FLUX_STEPS = int(os.environ.get("WEBCOMIC_BG_FLUX_STEPS", "20"))
 
