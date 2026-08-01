@@ -74,11 +74,103 @@ attribute bleed — in a live test, her glasses landed on him and his long hair 
 her. For multi-character panels: generate each figure solo from its own sheet,
 then composite with `tools/cutout.py` + `tools/place_cutout.py`.
 
+## The multi-character panel workflow
+
+Run this in order for any panel with two or more characters. Every step exists
+because skipping it cost a re-render.
+
+1. **Validate the bible**, resolve descriptions in code (see above).
+2. **Try both characters in ONE generation first.** `edit_image()` conditioned
+   on an approved panel that already contains both of them carries both
+   identities with no attribute bleed. One job settles it; solos cost a manual
+   composite every time, so this is the cheaper thing to rule out first.
+   - It **will** change the camera ANGLE on the same beat.
+   - It will **not** change the camera DISTANCE, and will **not** change where
+     the figures are relative to each other. If either must change, stop and go
+     to step 3 rather than spending more seeds.
+   - Where bodies touch, expect them to fuse. That is the signal to go solo.
+3. **Generate each figure solo** from its own sheet with `edit_image()`.
+   - Flat white backdrop, no ground line, no cast shadow — a generated shadow
+     fights the one added at placement.
+   - Same light direction in every figure ("lit from the upper left").
+   - Match the canvas to the figure's axis: portrait for a standing figure,
+     landscape for a lying one.
+   - Name the terminal feature to avoid cropping: "clear empty space below his
+     black shoes", not "full body in frame".
+   - Specify EXPRESSION here. It cannot be reliably edited in afterwards.
+4. **Key and trim** with `tools/cutout.py`, then crop to the alpha bbox.
+   Tolerance is per-image and must be MEASURED, not guessed — a pale costume
+   sits ~20 RGB from a white backdrop while a cast shadow sits ~100.
+5. **The author composites the figures by hand.** Overlap, interleaving and
+   contact are trivial manually and unsolved automatically.
+6. **Build the background plate** and match its projection to the figures
+   (see below). Measure its saturation against the locked panels; the
+   correction factor is per-plate and never transfers.
+7. **Generate shadows as a drop-in layer** — build them around the composite's
+   own alpha on transparency, pad the canvas, and report the offset. Never try
+   to re-derive the author's placement inside a finished file; doing so once
+   pasted the figures twice.
+8. **The author paints the final shadows**, then locks the panel as
+   `FINAL_p<NN>_<slug>.png`.
+
+### Projection: the background must match the figures
+
+The single most expensive mistake in this pipeline. If the figures are drawn
+flat and the plate is a corridor converging on a vanishing point, the panel
+reads as pasted no matter how well the colour and placement are matched — the
+error is geometric, not tonal. A supine figure on a converging ground even reads
+as lying on his *side*.
+
+- Figures drawn flat need a ground plane PARALLEL to the picture plane: camera
+  perpendicular, floor as a horizontal band or a full top-down surface.
+- The ground's DIRECTION matters too, not just its projection. Measure the
+  figures' principal axis (PCA over the composite's alpha) and rotate the plate
+  to match. A top-down plate has no correct "up", so rotating it is free.
+- Rotating needs headroom: upscale ~2.3x first, or the crop reaches past the
+  rotated corners and leaves black wedges.
+
+### Shadows depend on the camera
+
+- **Eye-level** — a soft sheared pool running away from the light, plus a tight
+  contact core. `lift` (the fraction of the shadow above the ground line) must
+  be SMALL (~0.15) for standing figures; the larger values that suit a lying
+  figure float the pool up to shin height and read as fog. Build the core from
+  the FEET band only, not the whole silhouette.
+- **Overhead** — no shear at all. The shadow sits almost under the body with a
+  small offset toward the light's opposite corner. A sheared pool would read as
+  a side view.
+- Either way the offset must EXCEED any erosion of the silhouette, or the
+  shadow never emerges from behind the figure.
+- A shadow is only visible where the ground is PALE. Position figures for the
+  shadow, not just the composition.
+
 ## Prompting rules that came from failures
 
 - **Kontext restyles, it does not restructure.** Ask yourself: does this edit
   change the SILHOUETTE against skin or background? If yes, Kontext will fail
-  however you word it — decide the shape deterministically instead.
+  however you word it — decide the shape deterministically instead. The sharper
+  test is whether the model must invent what lies UNDERNEATH: raising a
+  character's arms into open air worked, while spreading her knees beneath a
+  skirt did not.
+- **`edit_image()` inherits its FRAMING from the reference**, and no wording
+  overrides it. Asking for a close-up off a full-length reference returns
+  full-length. The fix is to crop the reference to the framing you want,
+  enlarge it, and condition on that.
+- **The reference carries POSE bias too.** Check what it actually shows before
+  blaming the prompt — a "back turnaround" whose head is turned to
+  three-quarter will keep producing a visible face.
+- **Expression must be set at generation time.** It is not a safe edit: two
+  masked passes at 780px of face failed to turn a grin into alarm. Avoid
+  "mouth open, eyes wide" — that describes laughing as well as shock. Say
+  what the features DO ("corners pulled down, brows raised and pinched") and
+  negate the wrong read explicitly.
+- **Facing direction and body angle never respond to instruction.** Every solo
+  came out facing the sheet's direction, and a requested 35° turn produced a
+  square-on figure twice. Mirror at composite time instead — and remember a
+  mirror flips asymmetric costume detail, which must be repainted.
+- A "failed" render often contains USABLE ART. An object rendered correctly but
+  detached from the body can be harvested and composited; a duplicated limb on
+  an otherwise good frame is a cleanup, not a dead end.
 - **State limb totals once.** "Exactly two legs and two boots altogether."
   Enumerating limbs individually reads as a request for more of them; a
   per-limb pose description produced a three-legged figure.
