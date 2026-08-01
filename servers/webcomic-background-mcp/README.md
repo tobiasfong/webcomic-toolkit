@@ -25,6 +25,15 @@ One MCP tool, `generate_background`, takes:
 and returns a finished PNG. A second tool, `check_status`, reports whether the
 generation backend is up.
 
+> **v1.9.0 — FLUX.1-dev as an optional base model.** Pass
+> `model="flux_manwha"` to any generation tool to render with FLUX instead of
+> SD 1.5 (which stays the default and is untouched). FLUX is markedly better at
+> *object geometry* — the deformed-bicycle problem that drove v1.8.0 — at the
+> cost of ~100–150 s per plate vs ~20–40 s, and composition hold against a
+> sketch that is close but not exact. Needs the GGUF/T5/CLIP-L/Union-Pro-2.0
+> model set (see `setup_models.py`). Note FLUX.1-dev's licence covers the
+> *model* (non-commercial) but permits commercial use of generated *outputs*.
+>
 > **v1.8.0 — 3D props (`generate_prop_scene`).** Diffusion fuses, crops, or
 > mutates rows of repeated objects (a bike rack, market stalls) when asked to
 > invent their structure. This tool gives objects the same treatment buildings

@@ -675,9 +675,16 @@ that and attack it in tiers:
    is actually for; the removal there is not an argument against it here.
 3. **Tier 3 — per-character LoRA baking** (strongest, the killer feature):
    `bake_character_lora(character)` — train a small SD 1.5 LoRA on the character's
-   reference set (kohya-ss backend or ComfyUI trainer nodes). SD 1.5 LoRA training is
-   feasible on a 3060 12GB (~30–60 min per character); it's a one-time cost per character
-   that buys the best consistency available locally. Needs ~10–20 usable reference images
+   reference set (kohya-ss backend or ComfyUI trainer nodes). It's a one-time cost per
+   character that buys the best consistency available locally.
+   ⚠️ **Hardware correction (2026-07-28):** this tier was originally scoped against
+   "a 3060 12GB, ~30–60 min per character." That was wrong — `nvidia-smi` confirms the
+   actual machine is an **RTX 3060 *Laptop* GPU with 6 GB VRAM** (the desktop 3060 is
+   12 GB; the laptop part is half that, same marketing name). SD 1.5 LoRA training on
+   6 GB is possible but genuinely tight — expect to lower `resolution`/`network_dim`,
+   and treat the 30–60 min figure as unverified. Note also that Tier 3 was only ever
+   exercised against a *stub* trainer, never a real kohya-ss run on this GPU, so both
+   feasibility and timing on the real hardware remain open. Needs ~10–20 usable reference images
    (augmentable by generating Tier-2 renders, human-curating the good ones, and feeding
    them back as training data — a bootstrap loop the tool should support explicitly).
 
@@ -741,7 +748,8 @@ hardware, with Codex** (not Claude Code) — two facts that must be verified/han
 this goes further:
 
 - **His GPU is unconfirmed.** Every tier in §8b.2 assumes local ComfyUI on an NVIDIA GPU;
-  Tier 3 (LoRA baking) specifically assumed 3060-class 12GB VRAM. Check his hardware before
+  Tier 3 (LoRA baking) originally assumed 3060-class 12GB VRAM — corrected 2026-07-28 to
+  the real baseline, an **RTX 3060 Laptop GPU / 6 GB** (see §8b.2). Check his hardware before
   building — if he lacks a comparable GPU, "runs on your own GPU, no cloud" (the ecosystem's
   core cost model) doesn't hold for him, and this needs a real conversation, not a silent
   scope-down. Do not assume a fallback (cloud GPU, quantized model, CPU inference) without
@@ -1663,6 +1671,52 @@ failures that drove the character server to FLUX (§8b.9). Same reasoning as the
 SDXL prototype's scope note — don't migrate a working server to fix a problem it
 doesn't have. The forcing function would be *quality*, not breakage.
 
+**Sharpened rationale (2026-07-28) — the forcing function has now appeared, and it is
+the props/OBJ path.** The "no demonstrated problem" stance above predates two things:
+v1.8.0's `props.py`, and a full session of real evidence about *why* it was needed.
+
+The evidence: a bicycle-parking panel took an entire session on SD1.5 and failed four
+distinct ways — a photo-edge sketch fused nine bikes into a tangle; img2img from the
+photo produced **wheelchairs**; hand-drawn 2D circle sketches produced one-wheeled
+half-bikes; sprite-cloning a good bike produced a "bicycle train." `props.py` fixed it
+by removing geometry from the model's job entirely.
+
+But two different failures were hiding under one label, and it matters which is which:
+
+- **"Is this a coherent bicycle?"** — base-model quality. SD1.5 is genuinely bad at it;
+  the wheelchairs and the half-bikes are this failure. FLUX is markedly better here, and
+  the proof is first-party: §8b.9's hand-anatomy crisis survived SD1.5 → SDXL → three
+  stacked correction LoRAs, and FLUX fixed it. FLUX would very likely have won those
+  rounds outright.
+- **"Four bikes, 2.2 units apart, that one occluded by the post, identical in panel 40."**
+  — count, placement, occlusion, cross-panel reproducibility. **No base model solves this,
+  FLUX included.** The fused row and the bicycle train are this failure. Only geometry
+  solves it.
+
+**So the port is not FLUX *instead of* `props.py` — it is FLUX *painting* `props.py`.**
+The character server already proves the two compose rather than compete: on adopting
+FLUX it kept `mannequin.render_pose_map()` completely unchanged (§8b.9 Stage 3) and then
+added *more* 3D conditioning on top (§8b.10's VRM depth maps), not less. Even on FLUX,
+geometry was still doing the steering.
+
+**The concrete payoff, and the real reason to prioritize this: rough-mesh tolerance.**
+`props.py`'s bicycle needed an explicitly modeled diamond frame, crank, saddle and T-bar
+handlebar, because SD1.5 could not infer "bicycle" from anything cruder — every
+simplification produced a new deformity. A model with FLUX's priors should paint a much
+rougher proxy correctly. That lands directly on the OBJ-import work in §1: TripoSR output
+is already flagged as likely rougher than Meshy's and possibly needing retopology/hole
+filling. **If FLUX is the painter, mesh roughness matters much less** — which lowers the
+cost of every future prop, and specifically de-risks the mecha/kaiju path that motivated
+OBJ import in the first place. This is a stronger argument for the port than anything in
+the "why it hasn't been done" paragraph above.
+
+**The one thing that could actually sink it:** `props.py` depends on ControlNet holding
+composition *hard*, and FLUX's ControlNet ecosystem is the least mature part of that
+stack. Test this first, before porting anything else — it is the load-bearing assumption.
+Two mitigations already exist: this server feeds clean synthetic edge maps rather than
+preprocessed pencil strokes (see question 2 below), and Union Pro 2.0 is downloaded and
+rated better than the alpha.
+
 **What's already been learned, from §8b.9 Step 7.** Background plates have
 already been generated with `flux_workflow.generate()` (no character in the
 prompt) during the character server's work — a library interior and a
@@ -1690,9 +1744,29 @@ here: an additive `flux_workflow.py` alongside the existing SD1.5 path, with
 1. Does World Builder's location consistency survive the model change? Its
    consistency mechanism is prompt/recipe-based, not reference-conditioned, so it
    may transfer cleanly — unverified.
-2. Does the scribble ControlNet path have a FLUX equivalent worth using? The
-   character server's `flux_controlnet_union_*` covers canny/lineart; scribble is
-   not a listed union type (see `CONTROL_TYPES` in `flux_workflow.py`).
+2. ~~Does the scribble ControlNet path have a FLUX equivalent worth using?~~
+   **Largely answered (2026-07-28), by the character server's 2026-07-27 sketch-ControlNet
+   work.** Two findings resolve it:
+   - **Union Pro 2.0 has no per-type embedding at all** (`pose_control_type="canny_auto"`),
+     so "scribble isn't a listed union type" stops mattering — you feed the edge map
+     directly. Validated settings from `tools/sketch_to_lineart.py`: `pose_preprocess=False`,
+     `pose_strength=0.65`, `pose_end_percent=0.80` (0.80 strength reproduces composition
+     faithfully but smears/desaturates; 0.40–0.50 renders cleanly but ignores the guide).
+   - **This server is structurally immune to the bug that cost the character server six
+     tests.** That bug was `CannyEdgePreprocessor` run over a *pencil sketch*: a drawn
+     stroke has two sides, so Canny returns two parallel control edges and the model paints
+     the doubled hairlines literally. Every sketch source here — `make_sketch.py` (Canny on
+     a photo), `citygen.city_sketch()` and `props.prop_sketch()` (Canny on flat-shaded 3D
+     renders) — produces *region-boundary* edges, one line per boundary, fed straight into
+     `ControlNetApplyAdvanced` with no preprocessor node. Already the "fixed" format.
+   ⚠️ **But there is a real latent gap to close, regardless of the FLUX port:**
+   `make_sketch.py` accepts *any* image, and `generate_background`'s docs invite "a rough
+   perspective sketch." A user who hand-draws a sketch on paper and runs it through
+   `make_sketch.py` hits the exact doubling bug — dark strokes on white, two edges each.
+   This is on the critical path for the hand-drawn mecha work (§1), so port the character
+   server's binarize approach in (a `--binarize` mode on `make_sketch.py`, or a sibling
+   script modeled on `tools/sketch_to_lineart.py`, default threshold 215 — hand sketches
+   are faint and a conventional 128 drops most of the drawing).
 3. Is ~8 min/plate acceptable versus SD1.5's ~20-40 s? For backgrounds — generated
    once per location and reused — probably yes, but that's a real change in feel.
 

@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import workflow
+import flux_workflow
 import world
 import citygen
 import props
@@ -37,6 +38,36 @@ RECIPE_PROMPT_SUFFIX = ("painterly soft lighting, atmospheric perspective, "
 RECIPE_NEGATIVE = ("comic book, thick outlines, heavy linework, flat colors, "
                    "western cartoon, cel border")
 RECIPE_CONTROLNET = 0.6                            # 0.85+ causes the cel-outline look
+
+
+# --- SD1.5 / FLUX routing ----------------------------------------------------
+def _is_flux(model: str) -> bool:
+    return model in flux_workflow.FLUX_MODELS
+
+
+def _generate(model: str, sketch_is_synthetic: bool = True,
+              character_path: str | None = None, **kw) -> str:
+    """Dispatch a render to the SD1.5 or the FLUX pipeline.
+
+    IMPORTANT — `controlnet_strength` is deliberately NOT forwarded to FLUX.
+    The SD1.5 recipe's values (0.6 for city scenes, 0.75 for props) were tuned
+    against a different base model and produce washed-out, ghostly output on
+    FLUX, which needs a much harder hold released much earlier (0.95 strength /
+    0.30 end_percent — see flux_workflow.py's measured sweep). FLUX therefore
+    uses its own provenance-aware defaults; tune them with the
+    WEBCOMIC_BG_FLUX_CN_* env vars rather than by passing SD1.5 numbers in."""
+    if not _is_flux(model):
+        return workflow.generate(model=model, character_path=character_path, **kw)
+
+    if character_path:
+        raise workflow.ComfyUIError(
+            "character_path is not supported with FLUX. That mode is a two-pass "
+            "SD1.5 inpaint (workflow.py) and has never been ported or tested on "
+            "FLUX — use an SD1.5 model (solstice/counterfeit/dreamshaper) for "
+            "character-guided plates.")
+    kw.pop("controlnet_strength", None)     # see docstring
+    return flux_workflow.generate(model=model,
+                                  sketch_is_synthetic=sketch_is_synthetic, **kw)
 
 
 @mcp.tool()
@@ -136,7 +167,7 @@ def generate_background(
 
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
-        out_path = workflow.generate(
+        out_path = _generate(
             prompt=prompt,
             out_dir=out_dir,
             negative=negative,
@@ -146,6 +177,7 @@ def generate_background(
             sketch_path=sketch_path,
             character_path=character_path,
             model=model,
+            sketch_is_synthetic=False,   # user-supplied sketch may be hand-drawn
             controlnet_strength=controlnet_strength,
             location_ref_path=location_ref_path,
             location_denoise=location_denoise,
@@ -274,7 +306,7 @@ def generate_city_scene(
         negative = f"{negative}, {extra_negative}"
 
     try:
-        out_path = workflow.generate(
+        out_path = _generate(
             prompt=full_prompt,
             out_dir=out_dir,
             negative=negative,
@@ -367,7 +399,7 @@ def generate_prop_scene(
         negative = f"{negative}, {extra_negative}"
 
     try:
-        out_path = workflow.generate(
+        out_path = _generate(
             prompt=full_prompt,
             out_dir=out_dir,
             negative=negative,

@@ -384,8 +384,12 @@ def generate(
     return out_path
 
 
-def _submit_and_wait(graph: dict, timeout: int = 300) -> bytes:
-    """Submit a graph, poll history, return the saved image's bytes (node "9")."""
+def _submit_and_wait(graph: dict, timeout: int = 300, output_node: str = "9") -> bytes:
+    """Submit a graph, poll history, return the saved image's bytes.
+
+    `output_node` is the SaveImage node id — "9" for this module's SD1.5
+    graphs; flux_workflow.py passes its own, since FLUX's graph numbering
+    differs. Defaulted so every existing SD1.5 caller is unaffected."""
     r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": graph}, timeout=30)
     if r.status_code != 200:
         raise ComfyUIError(f"Prompt rejected ({r.status_code}): {r.text[:300]}")
@@ -397,9 +401,9 @@ def _submit_and_wait(graph: dict, timeout: int = 300) -> bytes:
         h = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=30).json()
         if prompt_id in h:
             outs = h[prompt_id]["outputs"]
-            if "9" not in outs:
+            if output_node not in outs:
                 raise ComfyUIError("Generation produced no image (check ComfyUI log).")
-            img = outs["9"]["images"][0]
+            img = outs[output_node]["images"][0]
             params = {"filename": img["filename"], "subfolder": img["subfolder"], "type": img["type"]}
             return requests.get(f"{COMFY_URL}/view", params=params, timeout=60).content
     raise ComfyUIError(f"Timed out after {timeout}s")

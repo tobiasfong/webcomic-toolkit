@@ -9,6 +9,60 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [1.9.0] — 2026-07-28
+
+FLUX.1-dev as an optional second base model, and a real sketch-input bug fix.
+
+### Added
+- **`flux_workflow.py` + `model="flux_manwha"`** — FLUX.1-dev (GGUF Q3_K_S, to
+  fit 6 GB VRAM) available anywhere a model name is accepted, across
+  `generate_background`, `generate_city_scene` and `generate_prop_scene`.
+  Purely additive: SD 1.5 is untouched and remains the default. FLUX's graph
+  shares almost no node types with SD 1.5 (GGUF unet, dual CLIP encoders,
+  flux sampling/guidance, `cfg=1.0`), so it is a separate module rather than
+  more branches in `build_graph()` — same call the sibling character-panel
+  server made. Uses Union Pro 2.0 ControlNet (`type="auto"` — Pro 2.0 dropped
+  the alpha's per-type embedding, which also retires the old "scribble has no
+  FLUX equivalent" problem).
+- **Measured ControlNet window for FLUX** (8-render sweep, fixed seed, against
+  a `props.py` bike-row sketch). The dominant variable is **`end_percent`, not
+  strength** — FLUX keeps injecting the edge map's luminance through the
+  colour phase, so releasing it early is what yields solid painted objects
+  instead of glowing white outlines on near-black. Ships 0.95 strength /
+  0.40 end for synthetic geometry. SD 1.5's tuned values (0.6 / 0.75) are
+  deliberately **not** forwarded to FLUX — they produce ghosts.
+- LoRA note: `ManhwaUltimate` is SD 1.5 and cannot load on FLUX at all; the
+  FLUX path uses `manwha_style` at strength **1.5** (1.0 loses the fight
+  against ControlNet conditioning and renders washed out).
+
+### Fixed
+- **`tools/make_sketch.py` doubled every stroke of a hand-drawn sketch.** Canny
+  detects *both* sides of a pencil line, so one drawn stroke became two
+  parallel control edges and the model painted the doubled hairlines literally
+  (plus a desaturated frame). Photos and 3-D renders were never affected —
+  their edges are single region boundaries — but hand-drawn input is squarely
+  on the roadmap (mecha/kaiju), so this mattered. `make_sketch.py` now
+  auto-detects line art and **binarizes** it instead (threshold 215, not a
+  conventional 128 — hand sketches are faint), with `--mode photo|drawing` to
+  override. Verified: Canny yields 2 control lines across one drawn stroke,
+  binarize yields 1. Credit to the character-panel server, which diagnosed
+  this first (`tools/sketch_to_lineart.py`).
+
+### Notes / honest limits
+- **FLUX composition hold is approximate, not exact.** SD 1.5 at 0.95 reproduces
+  a `props.py` sketch near-exactly; FLUX lands close but drifts — a live
+  `generate_prop_scene(n_bikes=4)` run painted one bicycle. Expect rerolls when
+  exact count/placement matters. Same alpha-ecosystem limitation the character
+  server measured for direction lock.
+- **What FLUX clearly wins:** object geometry. Bicycles come out with correct
+  frames, two wheels, spokes, saddles and baskets — the failure that consumed a
+  whole session on SD 1.5 in v1.8.0.
+- **`character_path` is SD 1.5 only** — that mode is a two-pass inpaint that has
+  never been ported to FLUX; requesting it with a FLUX model raises rather than
+  silently ignoring the argument.
+- Speed: ~100–150 s per FLUX plate vs ~20–40 s on SD 1.5, on a 6 GB RTX 3060
+  Laptop. Fine for finished plates, noticeable when iterating.
+
 ## [1.8.0] — 2026-07-18
 
 Props: the citygen treatment, extended from buildings to objects.
@@ -244,6 +298,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.9.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.9.0
 [1.8.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.8.0
 [1.7.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.7.0
 [1.6.0]: https://github.com/tobiasfong/webcomic-background-mcp/releases/tag/v1.6.0

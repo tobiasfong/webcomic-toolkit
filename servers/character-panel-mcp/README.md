@@ -744,8 +744,10 @@ is front-only) with a second, precise edit.
   time** — the first few minutes are usually the base model loading into VRAM; if
   it's been 10+ minutes with zero progress, check the full log
   (`check_lora_training`'s response includes the path) for an out-of-memory error —
-  a 3060 12GB is the assumed baseline; lower `resolution` or `network_dim` on a
-  smaller GPU.
+  the development baseline is an **RTX 3060 Laptop GPU (6 GB VRAM)**, which is tight
+  for training — lower `resolution` and/or `network_dim` if you hit OOM. (An earlier
+  revision of this file said "3060 12GB"; that was a mix-up between the desktop 3060
+  and the 6 GB laptop part, corrected 2026-07-28.)
 - **`pose_ref_path` fails with "Generation produced no image" and the ComfyUI log
   shows an `OpenposePreprocessor` download error** — the preprocessor tries to
   fetch its three annotator models (`body_pose_model.pth`, `hand_pose_model.pth`,
