@@ -114,15 +114,47 @@ FLUX_LORA = os.environ.get("WEBCOMIC_BG_FLUX_LORA", "manwha_style.safetensors")
 # different aesthetic worth reaching for deliberately, not a failed setting.
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_BG_FLUX_LORA_STRENGTH", "1.5"))
 
-# --- Which model should you actually use? (measured 2026-07-28) --------------
-# CORRECTED: an earlier version of this note claimed FLUX simply can't do
-# manhwa and that SD1.5 was required for styling. That was wrong. The
-# character-panel server ships a genuinely manhwa-looking plate
-# (plates/topdown/flux_3141.png) from straight FLUX txt2img at manwha_style
-# @ 1.5 — nothing hand-painted. Our own best-looking renders were likewise
-# txt2img. FLUX's styling is fine.
+# --- HOW TO GET THE MANHWA LOOK (the actual recipe) --------------------------
+# Two rounds of wrong diagnosis preceded this; both are recorded below so they
+# don't get re-derived. The single most important rule:
 #
-# The real boundary is narrower and it is CONTROLNET, not the model:
+#   *** DO NOT PUT MOOD, LIGHTING OR PALETTE LANGUAGE IN A FLUX PROMPT. ***
+#
+# "grimdark", "dim lighting", "deep shadow", "muted cool palette", "near-black
+# stone" — this wording is what made every early plate read semi-realistic and
+# murky. It was NOT the model, NOT the LoRA, and only partly ControlNet.
+# Removing it, changing nothing else, took the same sketch+seed from
+# mean 0.133 -> 0.335 luminance, and produced clean cel-shaded anime.
+# FLUX renders manhwa BY DEFAULT when you just name the subject. Describe WHAT
+# IS THERE; let the model light it.
+#
+# Two validated paths, both genuinely manhwa:
+#
+#   1. txt2img + neutral prompt      mean ~0.40 std ~0.27. Clean cel shading,
+#      (no sketch, no reference)     crisp lineart, correct object geometry.
+#                                    Composition is whatever the seed gives.
+#
+#   2. img2img from an anime         mean 0.545 std 0.310 — almost exactly the
+#      REFERENCE image               reference's own 0.546/0.316. Inherits the
+#      (location_ref_path,           reference's style, palette AND composition.
+#       denoise ~0.65)               Best result of the whole session.
+#
+# Path 2 is the strongest and is the principle the character-panel server
+# arrived at independently: DERIVE FROM APPROVED ART RATHER THAN DESCRIBING IT
+# BACK INTO EXISTENCE. The reference IS anime art, so img2img inherits the
+# style directly instead of trying to summon it from a LoRA + adjectives. This
+# also means references/ is a STYLING mechanism, not just a structure library —
+# it had been used only for ControlNet edge maps until now.
+#
+# --- The ControlNet caveat (still true, but narrower than first claimed) -----
+# An earlier version of this note claimed FLUX simply can't do manhwa and that
+# SD1.5 was required for styling. That was wrong — the character-panel server
+# ships a genuinely manhwa plate (plates/topdown/flux_3141.png) from straight
+# txt2img at manwha_style @ 1.5, and so do paths 1 and 2 above.
+#
+# What survives is narrower: ControlNet FLATTENS TONE (not darkens — that was
+# the prompt). Even with a neutral prompt, a sketch-conditioned render sits at
+# std ~0.06 against txt2img's ~0.27, and reads hazy/photographic. So:
 #
 #   FLUX txt2img            luminance std ~0.26-0.29 — rich tonal range, reads
 #                           manhwa. This is FLUX working properly.
@@ -217,9 +249,11 @@ CN_DRAWN_END = 0.45
 
 # FLUX's own webtoon-ish styling. Deliberately NOT a copy of workflow.py's
 # SD1.5 RECIPE_* strings — those were tuned against a different base model.
-FLUX_PROMPT_SUFFIX = ("painterly soft lighting, atmospheric perspective, "
-                      "korean webtoon background art, soft gradients, cinematic, "
-                      "highly detailed background illustration")
+# Deliberately free of mood/lighting/palette words — see the recipe above.
+# "painterly soft lighting, atmospheric perspective, cinematic" was the earlier
+# suffix and it pulled toward semi-realism; naming only the medium keeps FLUX
+# in cel-shaded manhwa territory and lets it light the scene itself.
+FLUX_PROMPT_SUFFIX = "painted manhwa background art, soft cel shading"
 # Kept short on purpose: at cfg=1.0 this does little. Steer positively instead.
 FLUX_NEGATIVE = "people, person, figure, text, watermark, blurry, low quality"
 

@@ -62,8 +62,24 @@ FLUX.1-dev as an optional second base model, and a real sketch-input bug fix.
   silently ignoring the argument.
 - Speed: ~100–150 s per FLUX plate vs ~20–40 s on SD 1.5, on a 6 GB RTX 3060
   Laptop. Fine for finished plates, noticeable when iterating.
-- **ControlNet flattens FLUX's tone — and that, not "FLUX can't do manhwa", is
-  the real limit.** Measured with luminance std (mean/std of the 0.299/0.587/
+- **The manhwa look comes from NOT describing mood.** The single biggest factor
+  in FLUX plates reading "semi-realistic" was prompt wording — "grimdark", "dim
+  lighting", "deep shadow", "muted cool palette", "near-black stone". Deleting
+  that language, changing nothing else, moved the same sketch+seed from mean
+  luminance 0.133 → 0.335 and produced clean cel-shaded anime. FLUX renders
+  manhwa by default when you name only the subject and the medium. The default
+  prompt suffix was accordingly cut back to `painted manhwa background art,
+  soft cel shading` (the previous "painterly soft lighting, atmospheric
+  perspective, cinematic" was itself pulling toward semi-realism).
+- **`references/` is a styling mechanism, not just a structure library.**
+  img2img seeded from an anime reference (`location_ref_path`, denoise ~0.65)
+  produced the best plate of the session — luminance mean 0.545 / std 0.310
+  against the reference's own 0.546 / 0.316, inheriting its style, palette and
+  composition. Until now references had only ever been used to make ControlNet
+  edge maps. This is the same principle the character-panel server reached
+  independently: derive from approved art rather than describing it back into
+  existence.
+- **ControlNet flattens FLUX's tone — real, but narrower than first claimed.** Measured with luminance std (mean/std of the 0.299/0.587/
   0.114 luminance): FLUX txt2img lands at ~0.26–0.29, rich and webtoon-looking;
   the same prompt with an edge-map sketch collapses to ~0.03–0.08, which is
   3–4× flatter than this server's own *approved* SD 1.5 plate (0.123). Cause is
