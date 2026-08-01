@@ -8,3 +8,9 @@ WORKFLOW.local.md
 .venv/
 __pycache__/
 *.pyc
+
+# Private requirements log from the original translation project — cited
+# throughout this repo for rationale, but never shipped in it (the README and
+# lint.py both already describe it as private). Contains the author's cast,
+# per-character register rules and plot beats.
+TRANSLATION-LESSONS.md
