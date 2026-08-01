@@ -1650,6 +1650,59 @@ sheets; plain color gradients are back IN scope, proven to work.
 
 ---
 
+## 8c. Background server FLUX port — 📋 SCOPED, NOT STARTED (task #52)
+
+`webcomic-background-mcp` is still entirely SD1.5 — three checkpoints
+(`solstice_manhwa_v10`, `Counterfeit_V3`, `DreamShaper_8`), the scribble
+ControlNet, `ManhwaUltimate` and `NijiV5Style`. It has no FLUX code and no FLUX
+mention anywhere in its README or CHANGELOG. This section exists so the port
+starts from what's already known rather than from the task title.
+
+**Why it hasn't been done:** the server works, ships, and isn't exhibiting the
+failures that drove the character server to FLUX (§8b.9). Same reasoning as the
+SDXL prototype's scope note — don't migrate a working server to fix a problem it
+doesn't have. The forcing function would be *quality*, not breakage.
+
+**What's already been learned, from §8b.9 Step 7.** Background plates have
+already been generated with `flux_workflow.generate()` (no character in the
+prompt) during the character server's work — a library interior and a
+snow-covered courtyard garden. So feasibility is not the open question. Two
+findings transfer directly:
+
+- **FLUX's negative conditioning is weak at `cfg=1.0`.** A prompt saying "no
+  people" still put a person in the library scene; the fix was rewriting the
+  POSITIVE prompt (dropping dramatic "gazing into the light"-type phrasing that
+  implies a subject), with the negative addition mattering less. Any port must
+  re-tune prompts positively rather than porting SD1.5's negative prompts across.
+- **Plate quality was usable.** The abandonment in §8b.9 Step 7 was of *character
+  compositing into generated scenes* for that specific panel, not of FLUX
+  background generation as such.
+
+**What the port would actually cost.** FLUX's ComfyUI graph shares almost no node
+types with SD1.5 (GGUF unet loading, dual CLIP encoders, flux-specific sampling,
+`cfg=1.0`), which is why the character server put it in a separate
+`flux_workflow.py` rather than branching `build_graph()`. Expect the same shape
+here: an additive `flux_workflow.py` alongside the existing SD1.5 path, with
+`model="flux_manwha"` as a new option, not a replacement.
+
+**Open questions to settle before starting:**
+
+1. Does World Builder's location consistency survive the model change? Its
+   consistency mechanism is prompt/recipe-based, not reference-conditioned, so it
+   may transfer cleanly — unverified.
+2. Does the scribble ControlNet path have a FLUX equivalent worth using? The
+   character server's `flux_controlnet_union_*` covers canny/lineart; scribble is
+   not a listed union type (see `CONTROL_TYPES` in `flux_workflow.py`).
+3. Is ~8 min/plate acceptable versus SD1.5's ~20-40 s? For backgrounds — generated
+   once per location and reused — probably yes, but that's a real change in feel.
+
+**Downstream consequence worth noting:** if this port lands and SD1.5 is retired
+from the background server, roughly 11 GB of SD1.5 checkpoints/LoRAs/ControlNets
+become genuinely dead weight and can be deleted. Until then they cannot — the
+background server is the only remaining consumer.
+
+---
+
 ## 9. Build phases (STRICT order — do not start the interface early)
 
 - **Phase 0 — prerequisites (separate projects, separate chats):**
