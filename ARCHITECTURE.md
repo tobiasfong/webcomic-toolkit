@@ -1658,18 +1658,59 @@ sheets; plain color gradients are back IN scope, proven to work.
 
 ---
 
-## 8c. Background server FLUX port — 📋 SCOPED, NOT STARTED (task #52)
+## 8c. Background server FLUX port — ✅ SHIPPED v1.9.0 (2026-08-01)
 
-`webcomic-background-mcp` is still entirely SD1.5 — three checkpoints
-(`solstice_manhwa_v10`, `Counterfeit_V3`, `DreamShaper_8`), the scribble
-ControlNet, `ManhwaUltimate` and `NijiV5Style`. It has no FLUX code and no FLUX
-mention anywhere in its README or CHANGELOG. This section exists so the port
-starts from what's already known rather than from the task title.
+**Status note (2026-08-01).** This section was written earlier the same day as a
+scoping doc, while the port was still pending — it opened "still entirely SD1.5 …
+no FLUX code", which was true at the time of writing and false by the end of the
+day. v1.9.0 shipped `flux_workflow.py` + `model="flux_manwha"` across
+`generate_background`, `generate_city_scene` and `generate_prop_scene`. Purely
+additive: **SD1.5 is untouched and remains the default.** The scoping material
+below is kept because most of it was borne out — but read it as the rationale
+that justified the port, not as pending work. Task #52 is closed.
 
-**Why it hasn't been done:** the server works, ships, and isn't exhibiting the
-failures that drove the character server to FLUX (§8b.9). Same reasoning as the
-SDXL prototype's scope note — don't migrate a working server to fix a problem it
-doesn't have. The forcing function would be *quality*, not breakage.
+**What the port settled, beyond shipping:**
+
+- **The "semi-realistic FLUX" problem was prompt wording, not the model.** Mood
+  language — grimdark, dim lighting, deep shadow, muted cool palette — drags FLUX
+  off the manhwa aesthetic. Removing it and changing nothing else took the same
+  sketch+seed from mean luminance 0.133 to 0.335 and produced clean cel-shaded
+  anime. `FLUX_PROMPT_SUFFIX` now names only the medium; the old suffix
+  ("painterly soft lighting, atmospheric perspective, cinematic") was itself
+  pulling toward semi-realism. **Generate clean and bright, grade for mood
+  afterwards** — which is what `grade_plate` is for.
+- **ControlNet's dominant variable on FLUX is `end_percent`, not strength.** FLUX
+  keeps injecting the edge map's luminance through the colour phase, so releasing
+  it early yields solid painted objects instead of glowing outlines on near-black.
+  Ships 0.95 strength / 0.40 end for synthetic geometry; SD1.5's 0.6 / 0.75 are
+  deliberately not forwarded, as they produce ghosts.
+- **`manwha_style` at 1.5, not 1.0** — independently the same number the character
+  server landed on (§8b.9). `ManhwaUltimate` is SD1.5 and cannot load on FLUX.
+- **`references/` is a styling mechanism**, not just a source of edge maps: img2img
+  from an anime reference matched that reference's luminance signature almost
+  exactly (0.545/0.310 vs 0.546/0.316), inheriting style, palette and composition
+  together.
+- Union Pro 2.0 (`type="auto"`) retires the "scribble has no FLUX equivalent"
+  question raised further down.
+- Post-generation tooling followed from the port: `grade_plate`, `extract_palette`,
+  `edit_background` (Kontext editing of an approved plate — the §8b.9 mechanism,
+  now available for plates).
+
+**Disk consequence, unchanged:** SD1.5 is still the default here, so the ~11 GB of
+SD1.5 weights remains live and NOT deletable. The port made FLUX available, not
+mandatory.
+
+**Lesson for this document:** two chats write here concurrently. Check the target
+server's own CHANGELOG and `git log -- <path>` before recording its status, and
+grep case-insensitively — a case-sensitive search for `FLUX` is what produced the
+"no FLUX mention anywhere" claim above.
+
+**Why it had not been done (the original rationale, preserved):** the server
+worked, shipped, and wasn't exhibiting the failures that drove the character
+server to FLUX (§8b.9). Same reasoning as the SDXL prototype's scope note — don't
+migrate a working server to fix a problem it doesn't have. The forcing function
+would be *quality*, not breakage — and below is the forcing function that
+appeared.
 
 **Sharpened rationale (2026-07-28) — the forcing function has now appeared, and it is
 the props/OBJ path.** The "no demonstrated problem" stance above predates two things:
@@ -1739,7 +1780,8 @@ types with SD1.5 (GGUF unet loading, dual CLIP encoders, flux-specific sampling,
 here: an additive `flux_workflow.py` alongside the existing SD1.5 path, with
 `model="flux_manwha"` as a new option, not a replacement.
 
-**Open questions to settle before starting:**
+**Open questions raised at scoping time** (the port has since shipped; these are
+kept with their answers where they've been settled):
 
 1. Does World Builder's location consistency survive the model change? Its
    consistency mechanism is prompt/recipe-based, not reference-conditioned, so it
