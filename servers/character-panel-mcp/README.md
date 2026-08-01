@@ -16,9 +16,62 @@ references are the ground truth for who a character is), same skeleton, same REA
 standard. No code dependency between the two servers; they just point at the same
 local ComfyUI by default.
 
+## Which path should I use?
+
+Read this before the tier table below, because the tier table describes **one** of
+two paths and it is not the one most of this project's finished art came from.
+
+| | **FLUX Kontext** (Step 9) | **Stable Diffusion tiers** (Steps 1-8) |
+|---|---|---|
+| Identity comes from | the reference **image**, via latent conditioning | prompt text, then IP-Adapter, then a baked LoRA |
+| Best at | new poses/edits of a character you already have art for | building a character up from little or nothing |
+| Pose/camera control | inherited from the reference; change it by cropping | ControlNet, incl. 3D pose maps |
+| Cost | ~8 min/edit on a 6 GB card | ~20-40 s (Tier 1-2); 30-90 min once to bake (Tier 3) |
+
+**If you already have approved reference art, use FLUX Kontext.**
+`edit_character_image` / `flux_workflow.edit_image()` conditions on that image
+directly, so the character arrives on-model rather than being described back into
+existence. This is the path that produced this project's finished panels.
+
+**If you're starting from nothing**, the SD path's Concept Genesis and the
+consistency tiers are how you *get* the reference art. Then switch.
+
+### The trade-off worth knowing before you pick
+
+The two paths' strongest features are mutually exclusive **in a single pass**:
+
+- `flux_workflow.edit_image()` takes an image and conditions on it — **no
+  structural pose control.** Framing and body angle are inherited from the
+  reference and do not respond to instruction.
+- `flux_workflow.generate()` takes `pose_ref_path` for ControlNet — **no image
+  identity input at all.** Identity comes from prompt text, so it will drift.
+
+So you choose per generation: *this character's actual art*, or *this exact
+camera angle*. Not both. In practice, for finished panels the reference-driven
+path wins, and direction is handled by generating a proper turnaround sheet
+first (`generate_turnaround_sheet`) and then conditioning on whichever view you
+need out of it.
+
+The 3D pose maps below remain the right tool when direction matters more than
+identity — early exploration, or a character whose look isn't locked yet.
+
+### Other things that surprise people
+
+- **One reference binds to one generation.** There is no way to lock two
+  characters' identities in a single image; attempting it produces attribute
+  bleed. Multi-character panels are generated as solo figures and composited
+  (`tools/cutout.py` + `tools/place_cutout.py`).
+- **Kontext restyles, it does not restructure.** The reliable test: must the
+  model invent what lies *underneath*? Raising arms into open air works;
+  changing a pose beneath clothing does not.
+- **Expression must be set at generation time.** It is not a safe edit.
+
+See `../../CLAUDE.md` for the full set of rules this pipeline accumulated in
+production.
+
 ## What it does
 
-Eighteen tools:
+Twenty-two tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
@@ -49,10 +102,12 @@ Eighteen tools:
 - **`check_status`** — is the ComfyUI backend up? (Only tools that generate pixels
   need it — the bible, `crop_reference`, and `compose_panel` are GPU-free.)
 
-## Consistency tiers
+## Consistency tiers (the Stable Diffusion path)
 
-Character consistency is *the* unsolved-in-general problem of AI comics. This server
-is designed around three tiers, shipped in order of cost/complexity, and they
+Character consistency is *the* unsolved-in-general problem of AI comics. On the
+**SD1.5/SDXL path**, this server answers it with three tiers. (FLUX does not use
+these — it has no IP-Adapter support; see "Which path should I use?" above.) They
+are shipped in order of cost/complexity, and they
 **stack** — Tier 1 is always on, Tier 2 is opt-in per call, Tier 3 (once baked) is
 used automatically:
 
