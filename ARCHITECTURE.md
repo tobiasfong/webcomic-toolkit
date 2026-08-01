@@ -549,7 +549,7 @@ prose in `novel-translation-mcp`, get panel breakdowns out. That bridge doesn't 
 today the only path from a manuscript chapter to a panel is a human manually deciding panel
 count, camera/composition, and beat pacing, same as writing a storyboard from scratch.
 
-**Decision for the first real scene (Namgoong Ri Hwa, 2026-07-26): go panel-by-panel by
+**Decision for the first real scene (the crossover scene's lead, 2026-07-26): go panel-by-panel by
 hand, not prose-first**, specifically to validate the character-consistency pipeline
 (reference-sheet lock → Kontext-edit-from-approved-reference, per §8b) across a real
 multi-panel sequence before adding an adaptation layer on top that could introduce its own
@@ -787,12 +787,12 @@ extracted into a shared `_render_pose()` helper so `generate_reference_sheet`
 reuses it rather than duplicating Tier 1/2/3 logic — regression-tested against
 the exact pre-refactor output strings to confirm zero behavior change.
 
-**The real test (not the God/Speed one — Tobias's own RxR characters instead):**
-registered Trevor and Lumiere from Tobias's Reincarnator x Regressor Volume 1
+**The real test (not the God/Speed one — the author's own project characters instead):**
+registered two characters from the author's own project's Volume 1
 art and ran `generate_reference_sheet` on both. First pass was a genuine
 failure, not a rough draft: every "view" came back as a near-identical re-roll
 of the source illustration's own busy composition (magic-circle/ice-crystal VFX
-for Trevor, fire for Lumiere), completely ignoring the requested angle and the
+for one, fire for the other), completely ignoring the requested angle and the
 clean-backdrop prompt — because `ref_denoise=0.7` still anchored heavily on the
 source latent, and `ip_adapter_weight=0.8` conditioned IP-Adapter on the
 reference's whole scene, not just the character (the two characters had also
@@ -1062,7 +1062,7 @@ ControlNet branch via `workflow.py`'s new `pose_preprocess=False` bypass
 (skips `OpenposePreprocessor`, since running human-detection on an
 already-synthesized stick figure fails).
 
-**Live verification (2026-07-19, real Trevor reference, SDXL):** at
+**Live verification (2026-07-19, a real registered reference, SDXL):** at
 `pose_strength=1.0` the pose direction still relaxed back toward front-facing
 in some trials; escalating to `pose_strength=1.4-1.5` produced the project's
 first genuine clean single-figure back view — back of head, jacket back-seam
@@ -1090,7 +1090,7 @@ expressions *sequence* rather than N independent rolls. All three shipped
 field, `server.py`'s sequential loop in `generate_reference_sheet`) — but the
 sequencing's scope was corrected mid-flight by live testing: the first cut chained
 EVERY later view's identity conditioning off the freshly-generated front view, and a
-real end-to-end test against Trevor caught it immediately — the "smiling close-up"
+real end-to-end test against a registered character caught it immediately — the "smiling close-up"
 view came back as a repeat of the front view's full-body action pose, because
 IP-Adapter conditions on the whole reference image, not just "this person's face."
 Narrowed to: only the back view chains off the front view (both full-body, so the
@@ -1376,7 +1376,7 @@ won cleanly; `type="normal"` was dropped.
 the first:** even with the depth window fixed, one seed produced a ragged,
 incoherent texture patch on the back of the shirt. Diagnosis, confirmed by a
 pose-only regeneration test: the VRM mesh wears a plain t-shirt (no blazer
-modeled), so describing Trevor's actual "rust-brown blazer with yellow-gold
+modeled), so describing a character's actual "blazer with contrast
 trim" in the text prompt fights the depth geometry, which has no room for a
 jacket — the model tries to paint a garment the silhouette doesn't support.
 Dropping all costume text from the prompt (pose/anatomy identity only) and
@@ -1389,7 +1389,7 @@ this mesh regardless of prompt).
 
 **Costume then applied as a separate `edit_character_image` pass, validated
 end-to-end including a real bug and its fix:** dressed a clean structural
-result in Trevor's actual costume via one Kontext edit — direction, hands,
+result in the character's actual costume via one Kontext edit — direction, hands,
 and proportions all held, and the colors landed correctly (white shirt, red
 tie, rust-brown/gold trim), though the model applied the rust-brown/gold to
 the *pants* rather than rendering a distinct blazer layer (a different kind
@@ -1436,12 +1436,12 @@ following README.md's setup would need to do once, on top of everything else.
 
 ---
 
-### 8b.11 Real Stage-6 run on Trevor — the full concept→sheet workflow, validated end to end (2026-07-23/24)
+### 8b.11 Real Stage-6 run on the first character — the full concept→sheet workflow, validated end to end (2026-07-23/24)
 
 Task #64: the first real (not synthetic-test) run of the whole pipeline on an
 actual character, from a plain-English description all the way to a finished,
 Avery-style reference sheet with action poses. Everything below is the
-**replicable recipe for the next character** (Lumiere) — steps, the bugs that
+**replicable recipe for the next character** — steps, the bugs that
 actually bit, and their fixes, in the order they happened.
 
 **Step 1 — concept image.** `generate_character_concept(description=...,
@@ -1636,15 +1636,15 @@ gradients. `compose_full_reference_sheet` was rebuilt with front=dusk
 gradient, back=night gradient, expressions=dusk/night/winter, action
 poses=sunset/winter (both light-toned, matching their pale-blue glow VFX).
 
-**Net result:** a complete, finished reference sheet for Trevor exists
-(`servers/character-panel-mcp/output/rxr/trevor/_concepts/sheet/full_sheet.png`,
+**Net result:** a complete, finished reference sheet exists
+(`servers/character-panel-mcp/output/<project>/<character>/_concepts/sheet/full_sheet.png`,
 gradient backgrounds, final) and the whole pipeline above — concept →
 register → turnaround (tall canvas + proportion/glasses baked into the
 prompt + reroll-before-patch discipline) → crop (check both edges
 independently) → full reference sheet (bordered boxes, front+back combined,
 action row, prop, diagram) → action poses (edit off the approved reference,
 re-check proportions) → gradient backgrounds (light-toned for any glow-VFX
-pose) — is the complete, validated, repeatable recipe for Lumiere.
+pose) — is the complete, validated, repeatable recipe for the next character.
 Illustrated/generated-scene backgrounds remain OUT of scope for reference
 sheets; plain color gradients are back IN scope, proven to work.
 
