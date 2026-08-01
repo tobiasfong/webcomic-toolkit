@@ -575,5 +575,149 @@ def check_status() -> str:
         return f"ComfyUI not reachable at {workflow.COMFY_URL}: {e}"
 
 
+@mcp.tool()
+def grade_plate(
+    image_path: str,
+    preset: str = "grimdark",
+    exposure: float | None = None,
+    contrast: float | None = None,
+    temp: float | None = None,
+    saturation: float | None = None,
+    vignette: float | None = None,
+    out_path: str | None = None,
+) -> str:
+    """Colour-grade a finished plate for mood, without touching the original.
+
+    Use this INSTEAD of asking for mood in a prompt. Mood words ("grimdark",
+    "dim lighting", "deep shadow", "muted palette") drag FLUX off the manhwa
+    aesthetic into semi-realistic murk — measured, v1.9.0. Generate a clean,
+    bright, correctly-styled plate, then darken it here: deterministic, instant,
+    CPU-only, and reversible because the master is never modified.
+
+    Args:
+        image_path: The plate to grade.
+        preset: "grimdark" (Starry Knight hive interiors), "night", "dusk",
+            "overcast", "warm_lamp", or "none" (measure without changing).
+        exposure / contrast / temp / saturation / vignette: Override individual
+            preset values. exposure <1 darkens; contrast >1 expands range; temp
+            <0 cools toward blue and >0 warms; saturation <1 mutes; vignette
+            0-1 adds corner falloff.
+        out_path: Where to write. Defaults to `<name>_<preset>.png` alongside
+            the source.
+
+    Returns:
+        The graded file's path plus before/after luminance, so you can check
+        tone against a number. This server's approved SD1.5 plate sits at
+        mean 0.138 / std 0.123.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+    import grade as grade_mod
+    try:
+        before = grade_mod.luminance_stats(image_path)
+        out, params = grade_mod.grade_file(
+            image_path, out_path, preset, exposure=exposure, contrast=contrast,
+            temp=temp, saturation=saturation, vignette=vignette)
+        after = grade_mod.luminance_stats(out)
+    except SystemExit as e:
+        return f"Grade failed: {e}"
+    return (f"Graded: {out}\n"
+            f"  preset: {preset}  params: {params}\n"
+            f"  luminance mean/std: {before[0]:.3f}/{before[1]:.3f} -> "
+            f"{after[0]:.3f}/{after[1]:.3f}  (approved SD1.5 plate: 0.138/0.123)\n"
+            f"  original untouched: {image_path}")
+
+
+@mcp.tool()
+def extract_palette(image_path: str, n: int = 5) -> str:
+    """Read a reference image's dominant colours as PROMPT LANGUAGE.
+
+    References drive colour only if their palette gets into the prompt, and
+    diffusion models can't consume hex — so this returns both the swatches and
+    the words. Point it at anything in `references/` (or any approved plate)
+    and paste the colour words straight into a generate_* prompt.
+
+    Note the stronger option if you want a reference's *whole* look rather than
+    just its colours: pass it as `location`/img2img instead, which inherits its
+    style, palette and composition together (v1.9.0's best result).
+
+    Args:
+        image_path: Reference image or finished plate.
+        n: How many dominant colours to extract.
+
+    Returns:
+        Hex swatches, colour words, and a ready-to-paste prompt fragment.
+    """
+    if not os.path.exists(image_path):
+        return f"Image not found: {image_path}"
+    hexes = world._extract_palette(image_path, n=n)
+    if not hexes:
+        return f"Could not extract a palette from {image_path} (is PIL installed?)"
+    words = world.describe_palette(hexes)
+    return (f"Palette of {os.path.basename(image_path)}:\n"
+            f"  hex:   {', '.join(hexes)}\n"
+            f"  words: {', '.join(words)}\n"
+            f"  prompt fragment: \"{', '.join(words)}\"\n"
+            f"NOTE: Add colour words only — do NOT add mood/lighting wording "
+            f"(\"grimdark\", \"deep shadow\"); that pushes FLUX toward "
+            f"semi-realism. Darken with grade_plate afterwards instead.")
+
+
+@mcp.tool()
+def edit_background(
+    image_path: str,
+    instruction: str,
+    project: str = world.DEFAULT_PROJECT,
+    seed: int | None = None,
+    mask_box: list[int] | None = None,
+    restyle: bool = False,
+) -> str:
+    """Edit an existing plate with a plain-English instruction (FLUX Kontext).
+
+    Start from a plate you already approved and change one thing, instead of
+    re-rolling a fresh generation and hoping the seed cooperates. Good for
+    local changes: "add a hanging lantern on the left pillar", "make the stone
+    wetter", "put rust on the ironwork".
+
+    WARNING - two real limits, both learned the hard way on the sibling server:
+      • Large structural change does NOT work as one edit. "Turn it around"
+        plus "keep everything else the same" are contradictory and produce a
+        chimera. Re-generate for big changes.
+      • Without `mask_box` this re-renders the WHOLE canvas — no wording in the
+        instruction protects anything. If part of the plate must survive
+        untouched, fence it off with a mask instead of asking in the prompt.
+
+    Args:
+        image_path: The plate to edit.
+        instruction: Plain English, describing the change.
+        project: Which comic's output folder to write to.
+        seed: Fixed seed for reproducibility.
+        mask_box: [x0, y0, x1, y1] in the source's pixels — only this rectangle
+            is edited. Strongly recommended when composition must be preserved.
+        restyle: Load the manhwa style LoRA for a restyle pass rather than a
+            structural edit.
+
+    Returns:
+        Path to the edited copy (the source is never modified).
+    """
+    out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
+    if not os.path.exists(image_path):
+        return f"Image not found: {image_path}"
+    box = tuple(mask_box) if mask_box else None
+    if box and len(box) != 4:
+        return "mask_box must be exactly [x0, y0, x1, y1]."
+    try:
+        out = flux_workflow.edit_image(
+            image_path=image_path, instruction=instruction, out_dir=out_dir,
+            seed=seed, mask_box=box,
+            lora=flux_workflow.FLUX_LORA if restyle else None,
+        )
+    except workflow.ComfyUIError as e:
+        return (f"Edit failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?")
+    return (f"Edited: {out}\n"
+            f"  instruction: {instruction}\n"
+            f"  {'masked region only' if box else 'WHOLE canvas re-rendered (no mask_box)'}\n"
+            f"  source untouched: {image_path}")
+
+
 if __name__ == "__main__":
     mcp.run()

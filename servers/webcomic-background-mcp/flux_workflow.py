@@ -61,6 +61,7 @@ import os
 import uuid
 
 import cv2
+import numpy as np
 
 from workflow import (
     COMFY_URL, ComfyUIError, ensure_comfy_running, _upload_image,
@@ -471,4 +472,135 @@ def hires_pass(image_path: str, prompt: str, negative: str,
         os.remove(up_path)
     except OSError:
         pass
+    return out_path
+
+
+# =============================================================================
+# FLUX Kontext dev — image EDITING, not generation
+# =============================================================================
+# A different model from the one above: it takes an existing image plus a
+# plain-English instruction and edits it, instead of making something new from
+# a prompt. The point for backgrounds is that you start from a plate you
+# already approved rather than re-rolling and hoping the seed cooperates.
+#
+# Validated on the character-panel side for LOCAL edits. NOT validated for
+# large structural change — asking it to rotate a whole figure produced a
+# chimera (head turned, torso didn't), because "change this" and "keep
+# everything else" are contradictory instructions for a big edit.
+#
+# ⚠️ Without `mask_box` this re-renders the WHOLE canvas at denoise 1.0, and no
+# wording in the instruction protects anything — the model is free to redecide
+# every pixel. If part of the plate must survive untouched, fence it off with a
+# mask rather than asking nicely in the prompt.
+
+FLUX_KONTEXT_MODEL = {
+    "unet": "flux1-kontext-dev-Q3_K_S.gguf",
+    "clip1": "t5xxl_fp8_e4m3fn.safetensors",
+    "clip2": "clip_l.safetensors",
+    "vae": "ae.safetensors",
+}
+FLUX_KONTEXT_GUIDANCE = float(os.environ.get("WEBCOMIC_BG_FLUX_KONTEXT_GUIDANCE", "2.5"))
+FLUX_KONTEXT_STEPS = int(os.environ.get("WEBCOMIC_BG_FLUX_KONTEXT_STEPS", "20"))
+
+
+def _write_mask(image_path: str, box, feather: int = 32) -> str:
+    """White rectangle on black, matching the source's size — the region the
+    edit is allowed to touch."""
+    import tempfile
+    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ComfyUIError(f"could not read image: {image_path}")
+    h, w = img.shape[:2]
+    m = np.zeros((h, w), np.uint8)
+    x0, y0, x1, y1 = (max(0, box[0]), max(0, box[1]), min(w, box[2]), min(h, box[3]))
+    m[y0:y1, x0:x1] = 255
+    if feather > 0:
+        k = feather | 1
+        m = cv2.GaussianBlur(m, (k, k), 0)
+    path = os.path.join(tempfile.mkdtemp(prefix="bgmask_"), "mask.png")
+    cv2.imwrite(path, m)
+    return path
+
+
+def edit_image(
+    image_path: str,
+    instruction: str,
+    out_dir: str,
+    seed: int | None = None,
+    guidance: float = FLUX_KONTEXT_GUIDANCE,
+    steps: int = FLUX_KONTEXT_STEPS,
+    lora: str | None = None,
+    lora_strength: float = 0.8,
+    mask_box: tuple[int, int, int, int] | None = None,
+    mask_feather: int = 32,
+    timeout: int = 900,
+) -> str:
+    """Edit an existing plate with a plain-English instruction.
+
+    mask_box: (x0, y0, x1, y1) in the SOURCE image's pixels — only that
+        rectangle is denoised; everything outside is carried through untouched.
+        Strongly recommended for anything that must preserve composition.
+    lora: optional style LoRA (e.g. FLUX_LORA) for a restyle pass rather than a
+        structural edit. None runs plain Kontext.
+    """
+    ensure_comfy_running()
+    if seed is None:
+        seed = uuid.uuid4().int % (2**31)
+    uploaded = _upload_image(image_path)
+    uploaded_mask = (_upload_image(_write_mask(image_path, mask_box, mask_feather))
+                     if mask_box else None)
+    m = FLUX_KONTEXT_MODEL
+
+    g = {
+        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": m["unet"]}},
+        "4": {"class_type": "DualCLIPLoader",
+              "inputs": {"clip_name1": m["clip1"], "clip_name2": m["clip2"], "type": "flux"}},
+        "10": {"class_type": "VAELoader", "inputs": {"vae_name": m["vae"]}},
+        "40": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
+        "41": {"class_type": "FluxKontextImageScale", "inputs": {"image": ["40", 0]}},
+        "42": {"class_type": "GetImageSize", "inputs": {"image": ["41", 0]}},
+        "43": {"class_type": "VAEEncode", "inputs": {"pixels": ["41", 0], "vae": ["10", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": instruction, "clip": ["4", 0]}},
+        "44": {"class_type": "ReferenceLatent",
+               "inputs": {"conditioning": ["5", 0], "latent": ["43", 0]}},
+        "6": {"class_type": "FluxGuidance",
+              "inputs": {"conditioning": ["44", 0], "guidance": guidance}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},
+        "45": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+        "9": {"class_type": "KSampler",
+              "inputs": {"model": ["3", 0], "seed": seed, "steps": steps, "cfg": 1.0,
+                         "sampler_name": "euler", "scheduler": "simple",
+                         "positive": ["6", 0], "negative": ["45", 0],
+                         "latent_image": ["8", 0], "denoise": 1.0}},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["10", 0]}},
+        "12": {"class_type": "SaveImage",
+               "inputs": {"images": ["11", 0], "filename_prefix": "flux_bg_edit"}},
+    }
+    if uploaded_mask:
+        # Start from the SOURCE latent and gate denoising to the masked region —
+        # that is what actually preserves the rest of the frame.
+        g["46"] = {"class_type": "LoadImage", "inputs": {"image": uploaded_mask}}
+        g["47"] = {"class_type": "FluxKontextImageScale", "inputs": {"image": ["46", 0]}}
+        g["48"] = {"class_type": "ImageToMask", "inputs": {"image": ["47", 0], "channel": "red"}}
+        g["8"] = {"class_type": "SetLatentNoiseMask",
+                  "inputs": {"samples": ["43", 0], "mask": ["48", 0]}}
+    else:
+        g["8"] = {"class_type": "EmptySD3LatentImage",
+                  "inputs": {"width": ["42", 0], "height": ["42", 1], "batch_size": 1}}
+
+    model_ref = ["1", 0]
+    if lora:
+        g["2"] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": ["1", 0], "lora_name": lora,
+                             "strength_model": lora_strength}}
+        model_ref = ["2", 0]
+    g["3"] = {"class_type": "ModelSamplingFlux",
+              "inputs": {"model": model_ref, "max_shift": 1.15, "base_shift": 0.5,
+                         "width": ["42", 0], "height": ["42", 1]}}
+
+    data = _submit_and_wait(g, timeout, _SAVE_NODE)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = _unique_out_path(out_dir, f"edit_{seed}")
+    with open(out_path, "wb") as f:
+        f.write(data)
     return out_path

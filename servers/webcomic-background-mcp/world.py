@@ -99,6 +99,54 @@ def _extract_palette(image_path: str, n: int = 5) -> list[str]:
     return ["#%02x%02x%02x" % rgb for _, rgb in counts[:n]]
 
 
+def describe_color(hex_code: str) -> str:
+    """Turn '#9b2b1f' into 'deep rust-red' — prompt language, not a hex code.
+
+    Diffusion prompts can't consume hex. Translating the palette into words is
+    what actually lets a reference image drive a render's colour, and doing it
+    by eye is exactly the step that kept getting skipped."""
+    import colorsys
+    h = hex_code.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    hue, light, sat = colorsys.rgb_to_hls(r, g, b)
+    hue *= 360
+
+    if light < 0.09:
+        return "near-black"
+    if light > 0.93 and sat < 0.15:
+        return "off-white"
+    if sat < 0.10:
+        return ("charcoal grey" if light < 0.3 else
+                "ash grey" if light < 0.6 else "pale grey")
+
+    for lo, hi, base in ((0, 15, "red"), (15, 40, "rust-orange"), (40, 65, "amber"),
+                         (65, 95, "olive-yellow"), (95, 150, "green"),
+                         (150, 195, "teal"), (195, 240, "steel-blue"),
+                         (240, 280, "indigo"), (280, 330, "violet"),
+                         (330, 361, "crimson")):
+        if lo <= hue < hi:
+            name = base
+            break
+    else:
+        name = "grey"
+
+    tone = ("deep " if light < 0.28 else
+            "pale " if light > 0.72 else
+            "muted " if sat < 0.35 else "")
+    return f"{tone}{name}".strip()
+
+
+def describe_palette(hex_codes: list[str]) -> list[str]:
+    """De-duplicated colour words for a palette, in dominance order."""
+    seen, out = set(), []
+    for c in hex_codes:
+        word = describe_color(c)
+        if word not in seen:
+            seen.add(word)
+            out.append(word)
+    return out
+
+
 def register_location(
     image_path: str,
     location_id: str | None = None,

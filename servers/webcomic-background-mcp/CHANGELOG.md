@@ -9,6 +9,35 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [1.10.0] — 2026-07-28
+
+Three tools that fall out of v1.9.0's central finding: generate clean, adjust after.
+
+### Added
+- **`grade_plate`** (+ `tools/grade.py`) — colour-grade a finished plate for mood
+  without touching the original. This is the replacement for asking a prompt for
+  mood, which v1.9.0 proved actively breaks the manhwa look. Presets `grimdark`,
+  `night`, `dusk`, `overcast`, `warm_lamp`, plus individual exposure / contrast /
+  temperature / saturation / vignette knobs. Deterministic, CPU-only, instant,
+  and the master is never modified. Reports before/after luminance so tone can be
+  checked against a number. Validated: the session's best anime plate
+  (0.545/0.310) graded to `grimdark` lands at 0.162/0.142 — essentially this
+  server's approved SD 1.5 plate (0.138/0.123) — with the cel-shaded style fully
+  intact.
+- **`extract_palette`** — read a reference's dominant colours as *prompt
+  language*, not hex. New `world.describe_color()` / `describe_palette()` turn
+  `#9b2b1f` into "deep red", so `references/` can actually drive colour instead
+  of being eyeballed. Returns a ready-to-paste prompt fragment, and warns against
+  adding mood wording alongside it.
+- **`edit_background`** (+ FLUX Kontext support in `flux_workflow.py`) — edit an
+  approved plate with a plain-English instruction rather than re-rolling a fresh
+  generation. Validated live: "make it snowing, with snow settled on the bicycle
+  seats and the ground" applied correctly while preserving composition, bikes and
+  style. Carries both hard-won limits from the sibling server: large structural
+  change does NOT work as a single edit (produces chimeras), and without
+  `mask_box` the whole canvas is re-rendered — no prompt wording protects
+  anything, so fence off what must survive.
+
 ## [1.9.0] — 2026-07-28
 
 FLUX.1-dev as an optional second base model, and a real sketch-input bug fix.
@@ -328,6 +357,7 @@ Initial release.
 - Character-conditioned generation to plan a background around a drawn character.
 - `check_status` tool and a full setup guide in the README.
 
+[1.10.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.10.0
 [1.9.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.9.0
 [1.8.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.8.0
 [1.7.0]: https://github.com/tobiasfong/webcomic-toolkit/releases/tag/webcomic-background-mcp%40v1.7.0
