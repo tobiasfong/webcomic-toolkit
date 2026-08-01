@@ -101,11 +101,17 @@ DEFAULT_FLUX_MODEL = "flux_manwha"
 # with the character-panel server. Expect a different palette from the SD1.5
 # recipe as a result; that is the LoRA, not a bug.
 FLUX_LORA = os.environ.get("WEBCOMIC_BG_FLUX_LORA", "manwha_style.safetensors")
-# 1.5 is the measured ceiling, not just a default. 1.0 renders washed out (the
-# style loses the fight against ControlNet conditioning — character server's
-# finding, reproduced here). But 2.0 is WORSE, not better, in both directions:
-# with ControlNet it goes muddy/grainy, and in plain txt2img it drifts toward
-# photorealism — measurably LESS stylized than 1.5. Do not raise it.
+# 1.5 is the best setting FOR MANHWA STYLING specifically. 1.0 renders washed
+# out (style loses the fight against ControlNet conditioning — character
+# server's finding, reproduced here). 2.0 goes muddy/grainy under ControlNet,
+# so don't raise it for sketch-conditioned work.
+#
+# But 2.0 in plain txt2img is not simply "worse" — it drifts toward
+# photorealistic/cinematic, which is LESS webtoon yet produced the single
+# best-lit frame of the whole sweep (strong raking light, cool-vs-warm colour
+# separation, real depth). For a grimdark 40K panel that painterly-realistic
+# register may be more on-genre than webtoon flatness. Treat 2.0 as a
+# different aesthetic worth reaching for deliberately, not a failed setting.
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_BG_FLUX_LORA_STRENGTH", "1.5"))
 
 # --- Which model should you actually use? (measured 2026-07-28) --------------
