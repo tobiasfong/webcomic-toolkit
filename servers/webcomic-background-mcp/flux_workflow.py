@@ -101,10 +101,30 @@ DEFAULT_FLUX_MODEL = "flux_manwha"
 # with the character-panel server. Expect a different palette from the SD1.5
 # recipe as a result; that is the LoRA, not a bug.
 FLUX_LORA = os.environ.get("WEBCOMIC_BG_FLUX_LORA", "manwha_style.safetensors")
-# 1.5, not 1.0: below ~1.5 the style loses the fight against ControlNet
-# conditioning once a sketch is in the graph (character server's finding,
-# reproduced here — 1.0 rendered noticeably washed-out).
+# 1.5 is the measured ceiling, not just a default. 1.0 renders washed out (the
+# style loses the fight against ControlNet conditioning — character server's
+# finding, reproduced here). But 2.0 is WORSE, not better, in both directions:
+# with ControlNet it goes muddy/grainy, and in plain txt2img it drifts toward
+# photorealism — measurably LESS stylized than 1.5. Do not raise it.
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_BG_FLUX_LORA_STRENGTH", "1.5"))
+
+# --- Which model should you actually use? (measured 2026-07-28) --------------
+# The manhwa look and exact composition pull against each other on FLUX, and
+# this is NOT tunable away — manwha_style is a character-trained LoRA on a
+# generalist base, a much weaker lever than SD1.5's purpose-trained Solstice
+# checkpoint. The strongest webtoon styling came from FLUX with NO ControlNet
+# at all; every sketch-conditioned render read more like a semi-realistic 3D
+# architectural render. So:
+#
+#   Need exact staging AND webtoon styling  -> SD 1.5 (solstice + ManhwaUltimate).
+#                                              Still the best answer, and why
+#                                              it remains the default.
+#   Need correct object geometry            -> FLUX + sketch. Bicycles/props come
+#     (props, vehicles, machinery)             out right where SD1.5 deformed them.
+#   Need a beautiful one-off plate, and      -> FLUX txt2img, no sketch. Best
+#     composition can be whatever it likes      styling FLUX produces.
+#   Need cross-panel location consistency   -> SD 1.5 + World Builder, or FLUX
+#                                              + props/citygen geometry.
 FLUX_GUIDANCE = float(os.environ.get("WEBCOMIC_BG_FLUX_GUIDANCE", "3.5"))
 FLUX_STEPS = int(os.environ.get("WEBCOMIC_BG_FLUX_STEPS", "20"))
 

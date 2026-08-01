@@ -62,6 +62,16 @@ FLUX.1-dev as an optional second base model, and a real sketch-input bug fix.
   silently ignoring the argument.
 - Speed: ~100–150 s per FLUX plate vs ~20–40 s on SD 1.5, on a 6 GB RTX 3060
   Laptop. Fine for finished plates, noticeable when iterating.
+- **FLUX trades manhwa styling for geometry, and that is not tunable away.**
+  Sketch-conditioned FLUX renders read as semi-realistic 3-D architectural
+  work rather than webtoon; the most manhwa-looking output came from FLUX with
+  *no* ControlNet at all. Raising the style LoRA does not fix it — 2.0 is
+  measurably worse than 1.5 in both directions (muddy under ControlNet, more
+  photorealistic in txt2img). Root cause is structural: `manwha_style` is a
+  character-trained LoRA on a generalist base, a far weaker lever than SD 1.5's
+  purpose-trained Solstice checkpoint. **SD 1.5 therefore remains the default
+  and the right choice when you need webtoon styling *and* exact staging**; a
+  model-selection guide is documented at the top of `flux_workflow.py`.
 
 ## [1.8.0] — 2026-07-18
 
