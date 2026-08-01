@@ -152,7 +152,7 @@ FLUX_TURNAROUND_LORA_STRENGTH = float(
 # identical settings minus that one word produced a genuine, whole-figure-
 # verified back view. Do not reintroduce "exact" here without retesting.
 #
-# Second validated fix (2026-07-23/24, real Trevor run, ARCHITECTURE.md
+# Second validated fix (2026-07-23/24, a real character run, ARCHITECTURE.md
 # §8b.11): a short/wide canvas (the old 1536x768 default) biases Kontext
 # toward a squat figure regardless of what the reference image actually
 # shows — Kontext appears to infer body proportions partly from absolute
@@ -631,7 +631,7 @@ def generate_turnaround_sheet(
 
     extra_prompt: appended to FLUX_TURNAROUND_PROMPT — use this for a
     character-specific accessory that needs reinforcing across all 5 panels
-    (found live on Trevor: glasses were missing/faint in 2 of 5 panels until
+    (found live: a character's glasses were missing/faint in 2 of 5 panels until
     "bold, clearly visible black rectangular glasses in EVERY panel" was
     baked into the prompt directly — patching a bad sheet after the fact
     reliably failed, rerolling with the requirement stated upfront worked).

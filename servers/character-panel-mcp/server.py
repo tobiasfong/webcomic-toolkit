@@ -980,7 +980,7 @@ def generate_turnaround_sheet(
             from a short canvas.
         extra_prompt: Reinforce ONE character-specific accessory across all
             panels if it's prone to going missing/faint in some (found live:
-            Trevor's glasses) — e.g. "she wears a black choker with a round
+            a character's glasses) — e.g. "she wears a black choker with a round
             jade pendant in every panel." Leave blank if nothing needs that.
             If the sheet comes back wrong some other way (proportions, a
             duplicate pose), try a plain reroll with a new seed first — that
