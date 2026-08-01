@@ -747,7 +747,7 @@ is front-only) with a second, precise edit.
   the development baseline is an **RTX 3060 Laptop GPU (6 GB VRAM)**, which is tight
   for training — lower `resolution` and/or `network_dim` if you hit OOM. (An earlier
   revision of this file said "3060 12GB"; that was a mix-up between the desktop 3060
-  and the 6 GB laptop part, corrected 2026-07-28.)
+  and the 6 GB laptop part, corrected 2026-08-01.)
 - **`pose_ref_path` fails with "Generation produced no image" and the ComfyUI log
   shows an `OpenposePreprocessor` download error** — the preprocessor tries to
   fetch its three annotator models (`body_pose_model.pth`, `hand_pose_model.pth`,

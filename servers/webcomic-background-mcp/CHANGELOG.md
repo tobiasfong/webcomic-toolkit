@@ -9,7 +9,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
-## [1.9.0] — 2026-07-28
+## [1.9.0] — 2026-08-01
 
 FLUX.1-dev as an optional second base model, a hand-sketch input fix, and
 the post-generation tooling that follows from what the port taught us.

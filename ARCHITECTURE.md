@@ -677,7 +677,7 @@ that and attack it in tiers:
    `bake_character_lora(character)` — train a small SD 1.5 LoRA on the character's
    reference set (kohya-ss backend or ComfyUI trainer nodes). It's a one-time cost per
    character that buys the best consistency available locally.
-   ⚠️ **Hardware correction (2026-07-28):** this tier was originally scoped against
+   ⚠️ **Hardware correction (2026-08-01):** this tier was originally scoped against
    "a 3060 12GB, ~30–60 min per character." That was wrong — `nvidia-smi` confirms the
    actual machine is an **RTX 3060 *Laptop* GPU with 6 GB VRAM** (the desktop 3060 is
    12 GB; the laptop part is half that, same marketing name). SD 1.5 LoRA training on
@@ -748,7 +748,7 @@ hardware, with Codex** (not Claude Code) — two facts that must be verified/han
 this goes further:
 
 - **His GPU is unconfirmed.** Every tier in §8b.2 assumes local ComfyUI on an NVIDIA GPU;
-  Tier 3 (LoRA baking) originally assumed 3060-class 12GB VRAM — corrected 2026-07-28 to
+  Tier 3 (LoRA baking) originally assumed 3060-class 12GB VRAM — corrected 2026-08-01 to
   the real baseline, an **RTX 3060 Laptop GPU / 6 GB** (see §8b.2). Check his hardware before
   building — if he lacks a comparable GPU, "runs on your own GPU, no cloud" (the ecosystem's
   core cost model) doesn't hold for him, and this needs a real conversation, not a silent
@@ -1712,7 +1712,7 @@ migrate a working server to fix a problem it doesn't have. The forcing function
 would be *quality*, not breakage — and below is the forcing function that
 appeared.
 
-**Sharpened rationale (2026-07-28) — the forcing function has now appeared, and it is
+**Sharpened rationale (2026-08-01) — the forcing function has now appeared, and it is
 the props/OBJ path.** The "no demonstrated problem" stance above predates two things:
 v1.8.0's `props.py`, and a full session of real evidence about *why* it was needed.
 
@@ -1787,7 +1787,7 @@ kept with their answers where they've been settled):
    consistency mechanism is prompt/recipe-based, not reference-conditioned, so it
    may transfer cleanly — unverified.
 2. ~~Does the scribble ControlNet path have a FLUX equivalent worth using?~~
-   **Largely answered (2026-07-28), by the character server's 2026-07-27 sketch-ControlNet
+   **Largely answered (2026-08-01), by the character server's 2026-07-27 sketch-ControlNet
    work.** Two findings resolve it:
    - **Union Pro 2.0 has no per-type embedding at all** (`pose_control_type="canny_auto"`),
      so "scribble isn't a listed union type" stops mattering — you feed the edge map

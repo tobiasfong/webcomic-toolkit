@@ -206,7 +206,7 @@ FLUX_CONTROLNET = os.environ.get(
     "WEBCOMIC_BG_FLUX_CONTROLNET", "flux_controlnet_union_pro2.safetensors")
 FLUX_CONTROLNET_UNION_TYPE = "auto"
 
-# --- ControlNet window, MEASURED on this server 2026-07-28 -------------------
+# --- ControlNet window, MEASURED on this server 2026-08-01 -------------------
 # An 8-render sweep against a props.py bike-row sketch (seed fixed at 4242).
 # The dominant variable turned out to be END_PERCENT, not strength — FLUX keeps
 # injecting the edge map's luminance through the detail/colour phase, so
