@@ -188,8 +188,8 @@ lines were drawn on.
 
 ## [Unreleased] — Panel 4 complete: what Kontext will and won't do (2026-07-29/30)
 
-Panel 4 (Ri Hwa's kick, Trevor's block) is done —
-`output/murim_test/_scene1/depth/p04_FINAL.png`. It took far more repair rounds
+Panel 4 (a two-figure contact beat) is done —
+`output/<project>/_scene1/depth/p04_FINAL.png`. It took far more repair rounds
 than it should have, and the rounds sort cleanly into two kinds: the ones that
 found a genuine limit of the model, and the ones that were compositing bugs of
 my own making. Both are worth keeping straight for the next contact panel.
@@ -446,16 +446,16 @@ images the pair overflowed the center box, and because the paste offset is
 `cx0 + (CENTER_W - fb_w) // 2`, an oversized `fb_w` made that offset **negative**
 — silently pasting the figures on top of the left-hand PROFILE/APPEARANCE text
 column, truncating the last characters of every wrapped line. Found on a real
-Trevor sheet rebuild (591x1248 front + 532x1248 back overflowed to 756px against
+A sheet rebuild (591x1248 front + 532x1248 back overflowed to 756px against
 a 580px inner width). Now constrained by both height and inner width, whichever
 binds first; figures coming out shorter than `HERO_MAX_H` is the correct outcome
-when width binds. Ri Hwa's earlier sheet happened to fit under the old code, so
+when width binds. An earlier sheet happened to fit under the old code, so
 this was latent rather than previously visible.
 
 ## [Unreleased] — Investigated and reverted — FLUX Redux for multi-character panels (2026-07-26)
 
 ### The problem this was chasing
-A real two-character crossover test (Namgoong Ri Hwa x Trevor, `murim_test`/`rxr`
+A real two-character crossover test (two characters across two projects,
 projects) surfaced that `edit_image()` only accepts one reference image —
 in a contact/action panel with both characters, the unanchored one drifts
 (observed: eye-color drift on the anchored character, costume drift on the
@@ -522,7 +522,7 @@ inline code comments, and non-`@mcp.tool()` private helpers (e.g.
 trimming them wouldn't have saved anything. `webcomic-background-mcp` and
 `novel-translation-mcp` were not touched in this pass.
 
-## [Unreleased] — Real Stage-6 run on Trevor + full-template reference sheet (2026-07-23/24)
+## [Unreleased] — Real Stage-6 run + full-template reference sheet (2026-07-23/24)
 
 ### Added — `compose_full_reference_sheet()` (`tools/compose_sheet.py`)
 A denser, bordered-box poster layout modeled on a real hand-composed Avery
@@ -568,14 +568,14 @@ white fade and whatever's behind it. Shipped as `tools/bg_composite.py`
 background path was deliberately NOT carried over, see its module
 docstring) plus two new MCP tools: `compose_full_reference_sheet` (wraps
 `compose_sheet.py`'s new bordered-box poster layout, §8b.11) and
-`apply_gradient_background`. Trevor's sheet ships with gradient backgrounds
+`apply_gradient_background`. The sheet ships with gradient backgrounds
 (front=dusk, back=night, expressions=dusk/night/winter, action
 poses=sunset/winter). The illustrated-scene-compositing problem is
 real and left for whenever panel generation (character composited into an
 actual scene) is built properly, where it can be solved by generating the
 effect within the conditioned scene directly rather than cutting it from a
 white-background render. See ARCHITECTURE.md §8b.11 for the full
-step-by-step recipe, meant to be repeated for Lumiere.
+step-by-step recipe, meant to be repeated for the next character.
 
 ## [Unreleased] — VRM depth-map ControlNet: a more reliable direction fix (2026-07-22/23)
 
@@ -926,7 +926,7 @@ Unit-tested: `build_graph`/dataset-prep/command-building/async-job-lifecycle
 (Tier 1/2/3), `crop_reference`, `compose_sheet`, `generate_concepts`'
 seed-stepping, `generate_reference_sheet`'s view-iteration/defaults/
 unregistered-character guard, and the `_render_pose` refactor. **Live-tested
-end-to-end** against real art (Trevor and Lumiere from Tobias's own
+end-to-end** against real art (two characters from the author's own
 Reincarnator x Regressor project, not synthetic images) — this is what
 surfaced the `ref_denoise`/`ip_adapter_weight` bug, the `rembg` dependency
 bug, and drove the entire back-view campaign through to the mannequin's live

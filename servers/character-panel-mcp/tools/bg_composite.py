@@ -45,7 +45,7 @@ def _background_mask(arr, bg_thresh=245, dark_ring_thresh=180, min_hole_size=30,
        pick up a slice of nearby light-toned fill (e.g. a soft drop shadow
        or a white sock right at the gap's edge), pulling the mean up past a
        tight threshold even though real linework dominates the immediate
-       border. Measured on Park Ri Hwa's flowing-robe pose: a true gap
+       border. Measured on a flowing-robe pose: a true gap
        between white-socked legs, walled off from the canvas border by her
        shadow, rang in at 157 (real holes elsewhere in the same image ran
        83-135); real kept content (a highlight with no enclosing outline at
@@ -94,7 +94,7 @@ def _darken_drop_shadow(arr, bg_mask, strength=0.6, sat_max=12, bright_range=(15
     than every matching pixel: the same low-saturation mid-brightness band
     also shows up as ordinary fabric-fold shading scattered in small
     patches all over a costume — darkening every match indiscriminately
-    speckles the whole figure. Measured on Park Ri Hwa's flowing-robe pose:
+    speckles the whole figure. Measured on a flowing-robe pose:
     fold shading forms hundreds of small (tens-to-low-hundreds-px) patches
     at this band, while her drop shadow is one contiguous ~29k-px blob —
     picking only the largest match separates the two cleanly.
