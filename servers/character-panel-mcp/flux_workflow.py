@@ -76,6 +76,17 @@ DEFAULT_FLUX_MODEL = "flux_manwha"
 # manwha_style @ 1.5 is the validated setting — 1.0 was the initial pick, but
 # needed bumping once ControlNet entered the graph (it was losing the fight
 # for style/costume against the pose conditioning at 1.0). See CHANGELOG.
+# Names the MEDIUM and nothing else. The sibling background server measured the
+# same failure from the other direction: mood/lighting words ("dim", "deep
+# shadow", "cinematic") drag FLUX into semi-realistic murk, and removing them
+# moved mean luminance 0.133 -> 0.335. So: no lighting, no mood, no camera
+# words here. txt2img only — edit_image() and the turnaround sheet inherit
+# style from their reference image and must NOT have this appended.
+FLUX_STYLE_SUFFIX = os.environ.get(
+    "WEBCOMIC_CHAR_FLUX_STYLE_SUFFIX",
+    ", Korean manhwa webtoon illustration, anime art style, clean crisp lineart, "
+    "flat cel shading, drawn artwork")
+
 FLUX_LORA = os.environ.get("WEBCOMIC_CHAR_FLUX_LORA", "manwha_style.safetensors")
 FLUX_LORA_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_FLUX_LORA_STRENGTH", "1.5"))
 FLUX_GUIDANCE = float(os.environ.get("WEBCOMIC_CHAR_FLUX_GUIDANCE", "3.5"))
@@ -427,6 +438,7 @@ def generate(
     # for scene panels.
     full_prompt = (f"{prompt}{CLEAN_BACKDROP_SUFFIX}{FLUX_HAND_VISIBLE_SUFFIX}"
                    if clean_backdrop else prompt)
+    full_prompt += FLUX_STYLE_SUFFIX
 
     pose_ref_name = _upload_image(pose_ref_path) if pose_ref_path else None
 
