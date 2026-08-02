@@ -63,7 +63,7 @@ import uuid
 import cv2
 import numpy as np
 
-from workflow import (
+from comfy import (
     COMFY_URL, ComfyUIError, ensure_comfy_running, _upload_image,
     _submit_and_wait,
 )

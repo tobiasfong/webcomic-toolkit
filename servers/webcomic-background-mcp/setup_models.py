@@ -4,36 +4,51 @@ setup_models.py — download the models this server needs into a ComfyUI install
 Usage:
     python setup_models.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI"
 
-Downloads (skips anything already present):
-  - Solstice checkpoint   -> models/checkpoints   (default render model: Korean manhwa)
-  - SD1.5 VAE             -> models/vae           (Solstice ships no VAE)
-  - ControlNet scribble   -> models/controlnet    (composition / sketch control)
-  - Manhwa LoRA (optional)-> models/loras         (extra manhwa push)
+**FLUX is required.** As of v2.0.0 this server has no Stable Diffusion path —
+the SD1.5 pipeline was removed so that plates match the FLUX-generated figures
+from the sibling character-panel server. There is no lower-quality fallback;
+without these models the server cannot render.
 
-No API token needed. Civitai allows unauthenticated downloads via its API.
-The IP-Adapter is NOT used by this server, so its models are not required.
+Downloads (skips anything already present):
+  - FLUX.1-dev unet (GGUF) -> models/unet        the renderer
+  - FLUX Kontext dev (GGUF)-> models/unet        image editing (edit_background)
+  - T5-XXL + CLIP-L        -> models/clip        FLUX's dual text encoders
+  - FLUX VAE               -> models/vae
+  - ControlNet Union Pro 2 -> models/controlnet  composition / sketch control
+  - manwha_style LoRA      -> models/loras       the manhwa aesthetic
+
+VRAM: these are the Q3_K_S quantisations (~5 GB each), chosen so FLUX fits a
+6 GB card. On 8 GB+ you can substitute Q4_K_S for better quality; below 6 GB,
+smaller quants (Q2) exist on the same repo. You need ONE of the dev unets to
+generate; Kontext is only needed for edit_background.
+
+Requires a ComfyUI-GGUF custom node install (city96/ComfyUI-GGUF) — the stock
+loader cannot read .gguf.
+
+No API token needed for Civitai; Hugging Face links are public.
 """
 import argparse
 import os
 import urllib.request
 
 # (subfolder, dest_filename, url) — dest_filename must match the entries in
-# workflow.py's MODELS registry, so downloads land under the names the tool expects.
+# flux_workflow.py's FLUX_MODELS registry, so downloads land under the names
+# the tool expects.
 MODELS = [
-    ("checkpoints", "solstice_manhwa_v10.safetensors",
-     "https://civitai.com/api/download/models/66975"),          # default render model
-    ("checkpoints", "Counterfeit_V3.safetensors",
-     "https://huggingface.co/gsdf/Counterfeit-V3.0/resolve/main/Counterfeit-V3.0_fp16.safetensors"),
-    ("checkpoints", "DreamShaper_8.safetensors",
-     "https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors"),
-    ("vae", "vae-ft-mse-840000-ema-pruned.safetensors",
-     "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors"),
-    ("controlnet", "control_v11p_sd15_scribble_fp16.safetensors",
-     "https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_scribble_fp16.safetensors"),
-    ("loras", "ManhwaUltimate.safetensors",
-     "https://civitai.com/api/download/models/14973"),
-    ("loras", "NijiV5Style.safetensors",
-     "https://civitai.com/api/download/models/144716"),          # optional: East-Asian architectural style
+    ("unet", "flux1-dev-Q3_K_S.gguf",
+     "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q3_K_S.gguf"),
+    ("unet", "flux1-kontext-dev-Q3_K_S.gguf",                    # for edit_background
+     "https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF/resolve/main/flux1-kontext-dev-Q3_K_S.gguf"),
+    ("clip", "t5xxl_fp8_e4m3fn.safetensors",
+     "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"),
+    ("clip", "clip_l.safetensors",
+     "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"),
+    ("vae", "ae.safetensors",
+     "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors"),
+    ("controlnet", "flux_controlnet_union_pro2.safetensors",
+     "https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0/resolve/main/diffusion_pytorch_model.safetensors"),
+    ("loras", "manwha_style.safetensors",
+     "https://civitai.com/api/download/models/793264"),
 ]
 
 
@@ -45,11 +60,15 @@ def _download(url, dest):
             if not chunk:
                 break
             f.write(chunk)
-    # sanity: safetensors begin with an 8-byte header length then '{'
+    # sanity: catch an HTML login/error page saved under a model filename
     with open(dest, "rb") as f:
-        f.seek(8)
-        if f.read(1) != b"{":
-            raise RuntimeError("downloaded file is not a valid safetensors (login page?)")
+        if dest.endswith(".gguf"):
+            if f.read(4) != b"GGUF":
+                raise RuntimeError("downloaded file is not a valid GGUF (login page?)")
+        else:
+            f.seek(8)
+            if f.read(1) != b"{":
+                raise RuntimeError("downloaded file is not a valid safetensors (login page?)")
 
 
 def main():

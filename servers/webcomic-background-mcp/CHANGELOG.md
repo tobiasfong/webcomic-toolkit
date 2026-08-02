@@ -9,6 +9,52 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [2.0.0] — 2026-08-01
+
+**BREAKING: Stable Diffusion 1.5 has been removed. FLUX.1-dev is required.**
+
+### Why
+The sibling `character-panel-mcp` generates every finished figure with FLUX,
+and it retired its own SD1.5/SDXL stack entirely in the same period. FLUX
+characters composited onto SD1.5 plates read as a *composite* — the two models
+render light, edge and colour differently enough that the join shows. Keeping
+SD1.5 as a "fallback" would mean shipping a path whose main effect is producing
+mismatched art, so it is gone rather than deprecated. The honest trade is
+stated up front: **you need FLUX; use a smaller GGUF quantisation if VRAM is
+tight, but there is no lower-quality fallback.**
+
+### Removed
+- **The entire SD1.5 pipeline.** `workflow.py` is deleted. The `solstice`,
+  `counterfeit` and `dreamshaper` checkpoints, the SD1.5 ControlNets, and the
+  `ManhwaUltimate` / `fantasy-style` recipe are no longer used or downloaded.
+- **`character_path`** on `generate_background` — the "build a plate *around*
+  my drawn character" mode. It was a two-pass SD1.5 inpaint that was never
+  ported to FLUX, so it could not survive the removal. Its job is now better
+  served by `character-panel-mcp` (which generates the figure) plus that
+  server's `compose_panel` (which composites it) — generate the plate here,
+  composite there.
+- The SD1.5 "manhwa recipe" constants. FLUX's terse equivalent lives in
+  `flux_workflow.FLUX_PROMPT_SUFFIX`; the old suffix's "painterly soft
+  lighting, atmospheric perspective, cinematic" wording actively harmed FLUX.
+
+### Added
+- **`comfy.py`** — the ComfyUI plumbing (URL/launcher config, auto-launch,
+  image upload, graph submit/poll) extracted out of `workflow.py` before it was
+  deleted. Model-agnostic by design; `flux_workflow.py` imports from it. Mirrors
+  the `comfy.py` the character-panel server created for the same reason.
+
+### Changed
+- `setup_models.py` now installs the FLUX stack (dev + Kontext GGUF unets,
+  T5-XXL + CLIP-L, FLUX VAE, ControlNet Union Pro 2.0, manwha_style LoRA), with
+  VRAM guidance and a note that ComfyUI-GGUF is required. Its integrity check
+  now understands GGUF's magic bytes as well as safetensors headers.
+- `model=` is kept on the tools for forward compatibility but `flux_manwha` is
+  the only pipeline.
+
+### Verified
+Server imports and renders end-to-end with `workflow.py` deleted and all SD1.5
+model files removed from disk (~10 GB reclaimed: 39 GB → 29 GB).
+
 ## [1.9.0] — 2026-08-01
 
 FLUX.1-dev as an optional second base model, a hand-sketch input fix, and

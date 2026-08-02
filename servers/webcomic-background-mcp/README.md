@@ -2,7 +2,7 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server that generates
 **background art for comic panels** in any aesthetic you reference — grimdark sci-fi,
-medieval fantasy, cyberpunk, you name it — wrapping a local ComfyUI + Stable Diffusion
+medieval fantasy, cyberpunk, you name it — wrapping a local ComfyUI + FLUX.1-dev
 pipeline.
 
 It exists to solve one concrete problem in making an illustrated webcomic:
@@ -16,23 +16,25 @@ story, and composition while offloading the repetitive scenery work.
 One MCP tool, `generate_background`, takes:
 
 - a **prompt** (the scene + palette/mood),
-- a **model** (`solstice` Korean-manhwa default, `counterfeit`, or `dreamshaper`) —
-  the *aesthetic comes from the model itself*,
 - an optional **perspective sketch** — ControlNet forces the output to match the
   drawn angle/composition (feed an edge map of a reference photo to lock structure),
-- an optional **character** (`character_path`) — see below.
+- an optional **reference image** (`location`) — img2img from approved art, which
+  inherits its style, palette *and* composition. The strongest way to get a
+  consistent look.
 
 and returns a finished PNG. A second tool, `check_status`, reports whether the
 generation backend is up.
 
-> **v1.9.0 — FLUX.1-dev as an optional base model.** Pass
-> `model="flux_manwha"` to any generation tool to render with FLUX instead of
-> SD 1.5 (which stays the default and is untouched). FLUX is markedly better at
-> *object geometry* — the deformed-bicycle problem that drove v1.8.0 — at the
-> cost of ~100–150 s per plate vs ~20–40 s, and composition hold against a
-> sketch that is close but not exact. Needs the GGUF/T5/CLIP-L/Union-Pro-2.0
-> model set (see `setup_models.py`). Note FLUX.1-dev's licence covers the
-> *model* (non-commercial) but permits commercial use of generated *outputs*.
+> **v2.0.0 — FLUX.1-dev only. Stable Diffusion 1.5 has been removed.**
+> This server now renders exclusively with FLUX.1-dev (GGUF-quantised, so it
+> fits a 6 GB card). The SD1.5 pipeline, its checkpoints, and the
+> `character_path` mode are gone — see CHANGELOG for the reasoning, but in
+> short: the sibling character-panel server generates figures with FLUX, and
+> SD1.5 plates under FLUX figures look pasted together. **You will need FLUX**;
+> `setup_models.py` fetches it. If VRAM is tight use a smaller GGUF quantisation
+> (Q3_K_S is the default, Q2 exists) — there is deliberately no lower-quality
+> fallback path. Note FLUX.1-dev's licence covers the *model* (non-commercial)
+> but permits commercial use of generated *outputs*.
 >
 > **v1.8.0 — 3D props (`generate_prop_scene`).** Diffusion fuses, crops, or
 > mutates rows of repeated objects (a bike rack, market stalls) when asked to
@@ -43,32 +45,26 @@ generation backend is up.
 > `objects=[{type,x,z,yaw,scale}]`, or just `n_bikes=4` for a realistic parked
 > row under a carport (`setting="shelter"`).
 
-> **Design note — no IP-Adapter.** Earlier versions used an IP-Adapter style
-> reference to push a palette. In practice a model trained on the target look
-> (e.g. the Solstice manhwa checkpoint) renders the aesthetic natively and more
-> cleanly, so the IP-Adapter was removed. Steer palette/mood through the **prompt**
-> and structure through the **sketch**.
+> **Design note — where the look comes from.** There is no IP-Adapter style path.
+> Steer structure with the **sketch**, and the look either through the **prompt**
+> or — better — by pointing `location` at approved art and letting img2img inherit
+> it. One hard-won rule: **keep mood and lighting words out of FLUX prompts**
+> ("grimdark", "dim lighting", "deep shadow"). They drag it toward semi-realistic
+> murk. Name the subject, let FLUX light it, then darken with `grade_plate`.
 
-### Generate a background *around your character* (`character_path`)
+### Drawing a character into the plate
 
-Instead of describing the camera angle, you can just **draw the character first**
-and hand it over. The tool uses the character only as a *spatial guide* — for
-scale, perspective, horizon and camera angle — and returns a **background plate
-with the character absent**, so you import it as its own layer under your art and
-keep painting (snow at the feet, etc.).
+Earlier versions had a `character_path` mode that built a plate *around* a drawn
+character. It was an SD1.5 two-pass inpaint and was removed with the SD1.5
+pipeline in v2.0.0.
 
-- Export the character as a **PNG with a transparent background** for the cleanest
-  mask. A character on **plain white** also works (the backdrop is segmented out;
-  white *inside* the character is preserved).
-- It runs a **two-pass inpaint**: pass 1 generates the scene around the locked
-  character (fixing scale/horizon to it); pass 2 fills the character's silhouette
-  with matching background so there are no holes behind it.
-- The character is **never in the output** — only the background plate is, sized
-  to your canvas (capped to an SD-friendly resolution; upscale the soft result in
-  your editor if you drew large).
-- Style reference, sketch and prompt all still apply on top of this.
-
-> Needs `pillow` and `numpy` in the server venv (they're in `requirements.txt`).
+That job now splits across two tools, which does it better anyway:
+generate the plate here, then use the sibling
+**[`character-panel-mcp`](../character-panel-mcp/README.md)** to generate the
+figure and composite it (`compose_panel`) at a measured feet position and
+height. `generate_city_scene`'s `anchor_x`/`anchor_z` still reports the exact
+on-screen character height and feet line for a spot in a 3D city, which is what
+you feed that compositing step.
 
 ## Architecture
 
@@ -76,19 +72,20 @@ keep painting (snow at the feet, etc.).
  MCP client (Claude)
         │  stdio
         ▼
-   server.py  ──►  workflow.py  ──HTTP──►  ComfyUI (:8188)  ──►  GPU
- (FastMCP tool)   (builds graph)          (SD1.5 + ControlNet
-                                            + IP-Adapter)
+   server.py  ──► flux_workflow.py ──HTTP──► ComfyUI (:8188) ──► GPU
+ (FastMCP tool)   (builds graph)   comfy.py   (FLUX.1-dev GGUF
+                                   (plumbing)  + ControlNet Union
+                                                + Kontext editing)
 ```
 
-The generation graph is assembled conditionally: a LoRA, a ControlNet
-(composition) branch, a standalone VAE, and the character-plate inpaint passes are
-added only when relevant, so the tool degrades gracefully from "full control" down
-to a plain text-to-image background.
+The generation graph is assembled conditionally: a style LoRA, a ControlNet
+(composition) branch, and an img2img seed for World Builder locations are added
+only when relevant, so the tool degrades gracefully from "full control" down to
+a plain text-to-image background.
 
 ### Why it's a *local* server
 
-Each call runs Stable Diffusion on a local GPU. That makes a hosted, multi-user
+Each call runs FLUX.1-dev on a local GPU. That makes a hosted, multi-user
 deployment fundamentally different from a typical data-wrapping MCP server: every
 request burns GPU compute that somebody has to pay for. Running locally keeps it
 free and private, at the cost of single-machine availability — the right trade
@@ -154,24 +151,26 @@ That fetches the stack below. Or place them manually under `ComfyUI/models/`:
 
 | Role | File | → Folder | Source |
 |------|------|----------|--------|
-| **Checkpoint** (default — Korean manhwa) | `solstice_manhwa_v10.safetensors` | `checkpoints/` | [Solstice (Civitai)](https://civitai.com/models/48797) |
-| **VAE** (Solstice is "NoEMA" — ships no VAE) | `vae-ft-mse-840000-ema-pruned.safetensors` | `vae/` | [stabilityai/sd-vae-ft-mse-original](https://huggingface.co/stabilityai/sd-vae-ft-mse-original) |
-| ControlNet (scribble) | `control_v11p_sd15_scribble_fp16.safetensors` | `controlnet/` | [comfyanonymous/ControlNet-v1-1_fp16](https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors) |
-| Manhwa LoRA (optional) | `ManhwaUltimate.safetensors` | `loras/` | [Manhwa 4-in-1 (Civitai)](https://civitai.com/models/5086) |
-| Niji V5 style LoRA (optional) | `NijiV5Style.safetensors` | `loras/` | [Niji V5 Style (Civitai)](https://civitai.com/models/131644/nijiyuanniji-v5-style-lora) |
-| Alt checkpoints (optional) | `Counterfeit_V3.safetensors`, `DreamShaper_8.safetensors` | `checkpoints/` | [Counterfeit-V3.0](https://huggingface.co/gsdf/Counterfeit-V3.0), [DreamShaper](https://huggingface.co/Lykon/DreamShaper) |
+| **FLUX.1-dev unet** (the renderer) | `flux1-dev-Q3_K_S.gguf` | `unet/` | [city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf) |
+| **Text encoders** (FLUX uses two) | `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors` | `clip/` | [comfyanonymous/flux_text_encoders](https://huggingface.co/comfyanonymous/flux_text_encoders) |
+| **VAE** | `ae.safetensors` | `vae/` | [black-forest-labs/FLUX.1-schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell) |
+| **ControlNet** (composition / sketch) | `flux_controlnet_union_pro2.safetensors` | `controlnet/` | [Shakker-Labs Union Pro 2.0](https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0) |
+| **Style LoRA** (the manhwa look) | `manwha_style.safetensors` | `loras/` | [Civitai](https://civitai.com/models/793264) |
+| FLUX Kontext (for `edit_background`) | `flux1-kontext-dev-Q3_K_S.gguf` | `unet/` | [QuantStack/FLUX.1-Kontext-dev-GGUF](https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF) |
 
-> **Style LoRAs are per-call, not fixed at install.** Pass `lora="ManhwaUltimate.safetensors"`
-> (trigger word `fantasy-style`) for the gothic/western manhwa look, or
-> `lora="NijiV5Style.safetensors"` (trigger word `midjourney`) for a strong East-Asian
-> architectural bias (pagodas, lanterns) — great for stories with that setting, but it
-> will fight a gothic/western ControlNet sketch, so it's not the default. Remember to
-> include the trigger word in your prompt when you pick a LoRA.
+> **You need the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom
+> node** — ComfyUI's stock loader cannot read `.gguf`. Install it before running
+> `setup_models.py`.
 
-> SD 1.5 only — don't mix in SDXL models. Pick the render model per call with the
-> `model` arg (`solstice`/`counterfeit`/`dreamshaper`) or set `WEBCOMIC_BG_MODEL`.
-> The **IP-Adapter and CLIP-vision models are no longer needed** — the aesthetic
-> comes from the checkpoint.
+> **VRAM.** `Q3_K_S` (~5 GB) is chosen so FLUX fits a 6 GB card, and is what this
+> project is developed on. On 8 GB+ substitute `Q4_K_S` from the same repo for
+> better quality; below 6 GB, smaller quants (Q2) exist. **There is no SD1.5
+> fallback** — see v2.0.0 in the CHANGELOG for why.
+
+> **Style LoRA strength matters.** `manwha_style` is applied at **1.5**, not the
+> usual 1.0 — below that it loses the fight against ControlNet conditioning and
+> renders washed out. 2.0 goes muddy under a sketch, but in plain txt2img gives a
+> more cinematic, painterly register if you want it.
 
 ## Step 3 — Install the custom nodes
 
@@ -234,18 +233,21 @@ just closing the window often isn't enough).
 1. ComfyUI auto-launches on the first call (or start it yourself and leave it running).
 2. In your MCP client, ask it to generate a background — e.g. *"Generate a hive
    city corridor at night, deep blue moonlight."* Options:
-   - **`model`** — `solstice` (default), `counterfeit`, or `dreamshaper`.
    - **`sketch_path`** — an edge map (e.g. of a Warhammer 40K hive photo, via
-     `tools/make_sketch.py`) to force that composition/structure.
-   - **`character_path`** — a drawn character PNG to build the background *around*
-     (returns a plate with the character absent, sized to your canvas).
+     `tools/make_sketch.py`) to force that composition/structure. Hand-drawn
+     sketches are auto-detected and binarised rather than Canny-ed.
+   - **`location`** — img2img from a registered reference, inheriting its style,
+     palette and composition. The most reliable way to stay on-model.
+   - **`hires`** — 1.5x upscale + light re-detail pass for dense panels.
 
 ### Helper scripts (`tools/`)
 
 - **`make_sketch.py`** — turn a reference photo into a ControlNet sketch (white
   lines on black) for `sketch_path`. Tune `--low/--high/--blur` for line density.
+- **`grade.py`** — colour-grade a finished plate for mood (`--preset grimdark`,
+  `night`, `dusk`…). This is how you get a dark panel; don't ask the prompt for it.
 - **`inpaint_region.py`** — paint a rectangular region back into scenery, e.g. to
-  remove a stray figure a character-trained model (Solstice) dropped in:
+  remove a stray figure the model dropped in:
   `python tools/inpaint_region.py <image> x0 y0 x1 y1`. Keeps your background layer
   figure-free. (Character-plate mode already returns a figure-free plate — this is
   for cleaning unexpected extras.)
@@ -266,15 +268,16 @@ supply the *style*; your library supplies the *structure*.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `COMFY_URL` | `http://127.0.0.1:8188` | ComfyUI backend address |
-| `WEBCOMIC_BG_MODEL` | `solstice` | Default render model (`solstice` / `counterfeit` / `dreamshaper`) |
-| `WEBCOMIC_BG_LORA` | *(empty)* | Optional style LoRA filename in `models/loras` (e.g. `ManhwaUltimate.safetensors`) |
-| `WEBCOMIC_BG_LORA_STRENGTH` | `0.8` | LoRA strength when one is set |
+| `WEBCOMIC_BG_MODEL` | `flux_manwha` | Render model (FLUX only as of v2.0.0) |
+| `WEBCOMIC_BG_FLUX_LORA` | `manwha_style.safetensors` | Style LoRA in `models/loras`; `""` disables |
+| `WEBCOMIC_BG_FLUX_LORA_STRENGTH` | `1.5` | LoRA strength — see the note above; 1.0 renders washed out |
+| `WEBCOMIC_BG_FLUX_CN_SYNTHETIC` / `_DRAWN` | `0.95` / `0.70` | ControlNet strength for generated vs hand-drawn sketches |
 | `WEBCOMIC_BG_OUTPUT` | `./output` | Where finished PNGs are written |
 | `WEBCOMIC_BG_COMFY_DIR` / `WEBCOMIC_BG_COMFY_LAUNCH` | `C:\AI\ComfyUI_windows_portable` / `run_nvidia_gpu.bat` | Auto-launch location/script for ComfyUI |
 | `WEBCOMIC_BG_AUTOLAUNCH` | `1` | Set `0` to require a manually-started ComfyUI |
 
-> Model→checkpoint/VAE pairings live in `MODELS` in `workflow.py` (Solstice maps to
-> its standalone VAE automatically). Add your own entries there to register more models.
+> Model definitions live in `FLUX_MODELS` in `flux_workflow.py`. Add entries there
+> to register another FLUX quantisation (e.g. a Q4_K_S unet on a larger card).
 
 ## Troubleshooting
 
@@ -282,11 +285,17 @@ These are the real snags hit while building it:
 
 - **`check_status` says ComfyUI isn't reachable** — ComfyUI isn't running, or
   it's on a different port. Start it; set `COMFY_URL` if needed.
-- **`"VAE is invalid: None"`** — a "NoEMA" checkpoint (e.g. Solstice) has no built-in
-  VAE. Make sure the standalone VAE is installed and the model's `MODELS` entry in
-  `workflow.py` points at it (the `solstice` entry already does).
-- **Stray people/figures in open scenes** — manhwa checkpoints are character-trained.
-  The default negative suppresses this; add more via `extra_negative` if needed.
+- **`UnetLoaderGGUF` not found** — the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)
+  custom node isn't installed. FLUX's `.gguf` files can't be read without it.
+- **Out of memory** — drop to a smaller quantisation (Q2) or lower `width`/`height`.
+  Q3_K_S at 896x672 is about the ceiling on a 6 GB card.
+- **Stray people/figures in open scenes** — FLUX barely honours negative prompts at
+  `cfg=1.0`, so `extra_negative` helps less than you'd expect. Describe the scene so
+  completely there's no room for a figure (e.g. fill the floor with pews) — that
+  works where negation doesn't.
+- **Renders look murky / semi-realistic instead of manhwa** — check your prompt for
+  mood words ("grimdark", "dim lighting", "deep shadow"). Remove them, then darken
+  with `grade_plate` afterwards.
 - **CUDA "not available" / `cudaErrorNotSupported` (NVIDIA)** — your GPU driver is
   older than the CUDA version PyTorch was built for. **Update your GPU driver**
   (GeForce Experience / NVIDIA app) and reboot.
@@ -297,8 +306,9 @@ These are the real snags hit while building it:
 
 ## Status
 
-Working prototype. The pipeline — model-native manhwa/anime rendering (Solstice /
-Counterfeit / DreamShaper, with optional LoRA), ControlNet composition control, and
-the character-plate inpaint mode — is validated, and the server is confirmed
-callable natively from an MCP client.
+Working. The pipeline — FLUX.1-dev rendering with the manhwa style LoRA, ControlNet
+composition control from generated or hand-drawn sketches, World Builder img2img for
+location consistency, 3D city and prop geometry, Kontext editing, and post-hoc mood
+grading — is validated, and the server is confirmed callable natively from an MCP
+client.
 Built with [Claude Code](https://claude.com/claude-code).

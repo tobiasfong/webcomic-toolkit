@@ -3,10 +3,11 @@ Webcomic Background Generator — MCP Server
 ==========================================
 A local Model Context Protocol server that generates stylised background
 art for comic panels in any aesthetic the user references, wrapping a local
-ComfyUI + Stable Diffusion pipeline (checkpoint + ControlNet + IP-Adapter).
+ComfyUI + FLUX.1-dev pipeline (GGUF unet + ControlNet + Kontext editing).
 
-Exposes one tool:
-  generate_background(prompt, sketch_path?, style_ref_path?, ...)
+FLUX ONLY as of v2.0.0 — the SD1.5 pipeline was removed. See CHANGELOG for
+why: the sibling character-panel server generates figures with FLUX, and
+SD1.5 plates under FLUX characters read as a composite.
 
 Requires a running ComfyUI instance (default http://127.0.0.1:8188).
 Runs locally over stdio; the GPU work happens on this machine.
@@ -17,7 +18,7 @@ import sys
 # Make imports work regardless of the working directory Claude Desktop launches us from
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
-import workflow
+import comfy
 import flux_workflow
 import world
 import citygen
@@ -28,54 +29,29 @@ mcp = FastMCP("webcomic-background-generator")
 # Where finished backgrounds are written
 OUTPUT_DIR = os.environ.get("WEBCOMIC_BG_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
 
-# --- The validated "manhwa background" recipe (tuned 2026-06-30) -------------
-# Used by generate_city_scene; fixes the flat comic-book/cel look that hard
-# synthetic edges otherwise produce. See CHANGELOG v1.3.0.
-RECIPE_LORA = "ManhwaUltimate.safetensors"        # trigger word: fantasy-style
-RECIPE_PROMPT_SUFFIX = ("painterly soft lighting, atmospheric perspective, "
-                        "korean webtoon background art, no outlines, soft gradients, "
-                        "cinematic, masterpiece")
-RECIPE_NEGATIVE = ("comic book, thick outlines, heavy linework, flat colors, "
-                   "western cartoon, cel border")
-RECIPE_CONTROLNET = 0.6                            # 0.85+ causes the cel-outline look
+# FLUX.1-dev is the only pipeline. The SD1.5 "manhwa recipe" (ManhwaUltimate
+# LoRA + "fantasy-style" trigger + painterly/cinematic suffix) was removed with
+# the SD1.5 path: the LoRA cannot load on FLUX at all, and that suffix's
+# mood/lighting wording is exactly what dragged FLUX toward semi-realism.
+# FLUX's own terse suffix lives in flux_workflow.FLUX_PROMPT_SUFFIX.
+DEFAULT_MODEL = os.environ.get("WEBCOMIC_BG_MODEL", "flux_manwha")
 
 
-# --- SD1.5 / FLUX routing ----------------------------------------------------
-def _is_flux(model: str) -> bool:
-    return model in flux_workflow.FLUX_MODELS
-
-
-def _generate(model: str, sketch_is_synthetic: bool = True,
-              character_path: str | None = None, **kw) -> str:
-    """Dispatch a render to the SD1.5 or the FLUX pipeline.
-
-    IMPORTANT — `controlnet_strength` is deliberately NOT forwarded to FLUX.
-    The SD1.5 recipe's values (0.6 for city scenes, 0.75 for props) were tuned
-    against a different base model and produce washed-out, ghostly output on
-    FLUX, which needs a much harder hold released much earlier (0.95 strength /
-    0.30 end_percent — see flux_workflow.py's measured sweep). FLUX therefore
-    uses its own provenance-aware defaults; tune them with the
-    WEBCOMIC_BG_FLUX_CN_* env vars rather than by passing SD1.5 numbers in."""
-    if not _is_flux(model):
-        return workflow.generate(model=model, character_path=character_path, **kw)
-
-    if character_path:
-        raise workflow.ComfyUIError(
-            "character_path is not supported with FLUX. That mode is a two-pass "
-            "SD1.5 inpaint (workflow.py) and has never been ported or tested on "
-            "FLUX — use an SD1.5 model (solstice/counterfeit/dreamshaper) for "
-            "character-guided plates.")
-    kw.pop("controlnet_strength", None)     # see docstring
-    return flux_workflow.generate(model=model,
-                                  sketch_is_synthetic=sketch_is_synthetic, **kw)
+def _recipe(prompt: str, extra_negative: str | None) -> str:
+    """Build the negative prompt. FLUX barely honours negatives at cfg=1.0 —
+    steer with the POSITIVE prompt instead, and keep mood/lighting words out
+    of it entirely (see flux_workflow.py's recipe notes)."""
+    negative = flux_workflow.FLUX_NEGATIVE
+    if extra_negative:
+        negative = f"{negative}, {extra_negative}"
+    return negative
 
 
 @mcp.tool()
 def generate_background(
     prompt: str,
     sketch_path: str | None = None,
-    character_path: str | None = None,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = DEFAULT_MODEL,
     width: int = 768,
     height: int = 512,
     seed: int | None = None,
@@ -121,16 +97,9 @@ def generate_background(
             ControlNet forces the output to match this composition/angle. Use an
             edge map of a reference (e.g. a Warhammer 40K hive photo via
             tools/make_sketch.py) to force a 40K structure instead of a generic one.
-        character_path: Optional drawn character PNG (transparent bg ideal; plain
-            white works). The tool builds a BACKGROUND PLATE around it (using it
-            only as a scale/perspective guide) with the character ABSENT, sized to
-            the character canvas, to import as its own layer.
-        model: Which checkpoint to render with — "solstice" (Korean manhwa,
-            atmospheric; default), "counterfeit" (clean anime — pairs well with the
-            manhwa LoRA), or "dreamshaper" (soft painterly). A LoRA, if set via
-            WEBCOMIC_BG_LORA, applies on top of whichever model.
-        width / height: Output size in px (ignored when character_path is given —
-            then it matches the character canvas).
+        model: Kept for forward compatibility; "flux_manwha" is the only
+            pipeline. SD1.5 was removed in v2.0.0.
+        width / height: Output size in px.
         seed: Fixed seed for reproducibility; omit for a random one.
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
@@ -151,9 +120,7 @@ def generate_background(
     Returns:
         The filesystem path to the generated PNG.
     """
-    negative = workflow.DEFAULT_NEGATIVE
-    if extra_negative:
-        negative = f"{negative}, {extra_negative}"
+    negative = _recipe(prompt, extra_negative)
 
     location_ref_path = None
     if location:
@@ -167,7 +134,7 @@ def generate_background(
 
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
-        out_path = _generate(
+        out_path = flux_workflow.generate(
             prompt=prompt,
             out_dir=out_dir,
             negative=negative,
@@ -175,10 +142,7 @@ def generate_background(
             height=height,
             seed=seed,
             sketch_path=sketch_path,
-            character_path=character_path,
-            model=model,
             sketch_is_synthetic=False,   # user-supplied sketch may be hand-drawn
-            controlnet_strength=controlnet_strength,
             location_ref_path=location_ref_path,
             location_denoise=location_denoise,
             lora=lora,
@@ -186,9 +150,9 @@ def generate_background(
             hires=hires,
         )
         return f"Background generated: {out_path}"
-    except workflow.ComfyUIError as e:
+    except comfy.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {workflow.COMFY_URL}?")
+                f"Is ComfyUI running at {comfy.COMFY_URL}?")
 
 
 @mcp.tool()
@@ -196,13 +160,13 @@ def generate_city_scene(
     prompt: str,
     camera: str = "vista",
     city_seed: int = 40001,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = DEFAULT_MODEL,
     width: int = 896,
     height: int = 488,
     seed: int | None = None,
     hires: bool = True,
-    lora: str | None = RECIPE_LORA,
-    controlnet_strength: float = RECIPE_CONTROLNET,
+    lora: str | None = None,
+
     extra_negative: str | None = None,
     project: str = world.DEFAULT_PROJECT,
     use_plan: bool = False,
@@ -241,8 +205,7 @@ def generate_city_scene(
         model / width / height / seed: As generate_background.
         hires: Finish with the 1.5x upscale + re-detail pass (default True —
             these dense panels need it).
-        lora: Defaults to the manhwa LoRA; pass "" to disable.
-        controlnet_strength: Default 0.6 (higher causes a comic-book look).
+        lora: FLUX style LoRA; defaults to manwha_style. Pass "" to disable.
         extra_negative: Extra negative terms.
         project: Which comic's plan/output to use.
         use_plan: Render the project's persistent city plan instead of a
@@ -300,22 +263,17 @@ def generate_city_scene(
     except (ValueError, world.WorldError) as e:
         return f"City render failed: {e}"
 
-    full_prompt = f"fantasy-style, {prompt}, {RECIPE_PROMPT_SUFFIX}"
-    negative = f"{workflow.DEFAULT_NEGATIVE}, {RECIPE_NEGATIVE}"
-    if extra_negative:
-        negative = f"{negative}, {extra_negative}"
+    negative = _recipe(prompt, extra_negative)
 
     try:
-        out_path = _generate(
-            prompt=full_prompt,
+        out_path = flux_workflow.generate(
+            prompt=prompt,
             out_dir=out_dir,
             negative=negative,
             width=width,
             height=height,
             seed=seed,
             sketch_path=sketch_path,
-            model=model,
-            controlnet_strength=controlnet_strength,
             lora=lora,
             hires=hires,
         )
@@ -326,9 +284,9 @@ def generate_city_scene(
                 f"  sketch (reusable): {sketch_path}\n"
                 f"Re-render the SAME city from another angle by keeping the source "
                 f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")
-    except workflow.ComfyUIError as e:
+    except comfy.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {workflow.COMFY_URL}?")
+                f"Is ComfyUI running at {comfy.COMFY_URL}?")
 
 
 @mcp.tool()
@@ -339,12 +297,12 @@ def generate_prop_scene(
     setting: str = "shelter",
     camera_angle: float = 30.0,
     camera_elev: float = 10.0,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = DEFAULT_MODEL,
     width: int = 896,
     height: int = 672,
     seed: int | None = None,
     hires: bool = True,
-    lora: str | None = RECIPE_LORA,
+    lora: str | None = None,
     controlnet_strength: float = 0.75,
     extra_negative: str | None = None,
     project: str = world.DEFAULT_PROJECT,
@@ -393,22 +351,17 @@ def generate_prop_scene(
     except ValueError as e:
         return f"Prop render failed: {e}"
 
-    full_prompt = f"fantasy-style, {prompt}, {RECIPE_PROMPT_SUFFIX}"
-    negative = f"{workflow.DEFAULT_NEGATIVE}, {RECIPE_NEGATIVE}"
-    if extra_negative:
-        negative = f"{negative}, {extra_negative}"
+    negative = _recipe(prompt, extra_negative)
 
     try:
-        out_path = _generate(
-            prompt=full_prompt,
+        out_path = flux_workflow.generate(
+            prompt=prompt,
             out_dir=out_dir,
             negative=negative,
             width=width,
             height=height,
             seed=seed,
             sketch_path=sketch_path,
-            model=model,
-            controlnet_strength=controlnet_strength,
             lora=lora,
             hires=hires,
         )
@@ -416,9 +369,9 @@ def generate_prop_scene(
                 f"  objects: {len(obs)}  setting: {setting}  "
                 f"camera: {camera_angle}°/{camera_elev}°\n"
                 f"  sketch (reusable): {sketch_path}")
-    except workflow.ComfyUIError as e:
+    except comfy.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {workflow.COMFY_URL}?")
+                f"Is ComfyUI running at {comfy.COMFY_URL}?")
 
 
 @mcp.tool()
@@ -567,12 +520,12 @@ def check_status() -> str:
     """Check whether the ComfyUI backend is reachable and ready."""
     import requests
     try:
-        r = requests.get(f"{workflow.COMFY_URL}/system_stats", timeout=10)
+        r = requests.get(f"{comfy.COMFY_URL}/system_stats", timeout=10)
         if r.status_code == 200:
-            return f"ComfyUI is up at {workflow.COMFY_URL}."
+            return f"ComfyUI is up at {comfy.COMFY_URL}."
         return f"ComfyUI responded with HTTP {r.status_code}."
     except Exception as e:
-        return f"ComfyUI not reachable at {workflow.COMFY_URL}: {e}"
+        return f"ComfyUI not reachable at {comfy.COMFY_URL}: {e}"
 
 
 @mcp.tool()
@@ -711,8 +664,8 @@ def edit_background(
             seed=seed, mask_box=box,
             lora=flux_workflow.FLUX_LORA if restyle else None,
         )
-    except workflow.ComfyUIError as e:
-        return (f"Edit failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?")
+    except comfy.ComfyUIError as e:
+        return (f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?")
     return (f"Edited: {out}\n"
             f"  instruction: {instruction}\n"
             f"  {'masked region only' if box else 'WHOLE canvas re-rendered (no mask_box)'}\n"
