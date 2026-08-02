@@ -111,7 +111,7 @@ export const grade: import("../effects/Grade").GradeConfig | null = {
   bloom: 0.3,
   grain: 0.1,
   vignette: 0.32,
-  flash: 0.16,
+  flash: 0.08,
   punch: 0.01,
   audioReactive: 0.55,
   saturation: 1.06,

@@ -19,7 +19,7 @@ export interface GradeConfig {
   grain?: number;
   /** 周辺減光 0–1。省略時 0.35 */
   vignette?: number;
-  /** ダウンビートの白フラッシュ 0–1。省略時 0.18（0で無効） */
+  /** ダウンビートの白フラッシュ 0–1。省略時 0.08（0で無効） */
   flash?: number;
   /** ダウンビートのズームパンチ（拡大率）。省略時 0.012（0で無効） */
   punch?: number;
@@ -70,7 +70,7 @@ export const Grade: React.FC<{
   const bloom = (config.bloom ?? 0.35) * k;
   const grain = (config.grain ?? 0.12) * (0.25 + 0.75 * k); // 粒子は少しだけ残す
   const vignette = (config.vignette ?? 0.35) * k;
-  const flash = (config.flash ?? 0.18) * k;
+  const flash = (config.flash ?? 0.08) * k;
   const punch = config.punch ?? 0.012;
   const reactive = config.audioReactive ?? 0.5;
   const saturation = config.saturation ?? 1.06;
