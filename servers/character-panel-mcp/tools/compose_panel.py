@@ -1,7 +1,12 @@
 """
 compose_panel.py — deterministic CPU compositing of a character cutout onto a
-background plate. No GPU, no tokens, instant to iterate — see ARCHITECTURE.md
-§8b.3: "panels are composites, not one-shot generations."
+background plate. No GPU, no per-image cost, instant to iterate — see
+ARCHITECTURE.md §8b.3: "panels are composites, not one-shot generations."
+
+On "free": run as the CLI below, this genuinely costs nothing. But unlike its
+CLI-only siblings (clean_crop, compose_strip), this one is ALSO exposed as an
+MCP tool in server.py, and reaching it through a harness spends tokens like any
+other tool call. The compositing is free; invoking it from a chat is not.
 
 Positioning is feet-anchored (feet_x, feet_y, height_px) rather than a raw
 top-left paste box because that is exactly the shape webcomic-background-mcp's
