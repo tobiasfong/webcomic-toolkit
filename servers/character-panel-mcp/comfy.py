@@ -98,9 +98,14 @@ def _upload_image(path: str) -> str:
 
 # Tier-1's actual mechanism: a plain/clean backdrop so the render mattes cleanly
 
+# NOTE the words that are deliberately absent: "studio", "even lighting" and
+# "sharp edges" all read as photography to FLUX and fought the manhwa LoRA hard
+# enough to return photoreal people (measured 2026-08-01, live). Say what the
+# BACKDROP is; say nothing about the medium here — flux_workflow's
+# FLUX_STYLE_SUFFIX owns that.
 CLEAN_BACKDROP_SUFFIX = (
-    ", solo, plain flat light-gray studio backdrop, solid color background, "
-    "full body, standing pose, simple even lighting, clean sharp edges"
+    ", solo, full body, standing pose, plain flat light-gray background, "
+    "solid colour background, no scenery"
 )
 CLEAN_BACKDROP_NEGATIVE = (
     "background clutter, scenery, room, outdoors, patterned background, "
