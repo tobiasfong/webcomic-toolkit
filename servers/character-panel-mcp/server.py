@@ -4,62 +4,61 @@ Character & Panel Generator — MCP Server
 A local Model Context Protocol server for writers who aren't artists (and artists
 who'd rather not redraw six angles by hand): register or generate a character's
 reference art, then generate consistent poses and composite them onto background
-plates into finished comic panels — all against a local ComfyUI + Stable
-Diffusion pipeline.
+plates into finished comic panels — all against a local ComfyUI + FLUX pipeline.
 
 The character-domain sibling of webcomic-background-mcp's World Builder: same
 philosophy (reference-driven, never generate-from-text-and-pray), same skeleton,
 no code dependency between the two servers.
 
-Ships all three tiers of the consistency design (see README.md's "Consistency
-tiers" section for the honest per-tier state): Tier 1 (img2img from a reference),
-Tier 2 (IP-Adapter identity + OpenPose, opt-in via generate_character_pose's
-identity_mode/pose_ref_path), and Tier 3 (per-character LoRA baking via
-bake_character_lora/check_lora_training/cancel_lora_training).
+**FLUX-only since the SD retirement** (see CHANGELOG). The SD1.5/SDXL path and
+its three-tier consistency design are gone: Tier 1's img2img and Tier 2's
+IP-Adapter identity are both superseded by FLUX Kontext's reference-latent
+conditioning, which is what produced this project's finished panels; Tier 3's
+per-character LoRA baking was never used and has no FLUX equivalent built.
+Consequences worth knowing:
 
-Also ships Concept Genesis (ARCHITECTURE.md §8b.6) — three on-ramps into the
-bible for users who don't already have a full reference set: no art at all
+  * Identity comes from conditioning on an IMAGE (edit_character_image /
+    generate_turnaround_sheet), not from a tier stack. One reference binds to
+    one generation — multi-character panels are generated as solos and
+    composited.
+  * generate_character_pose is now pure text-to-image plus optional ControlNet.
+    It has NO image identity input, so identity drifts; use it when direction
+    matters more than likeness, and edit_character_image when likeness matters.
+  * Generation is minutes, not the 20-40s the SD path ran at. Compositing stays
+    instant and GPU-free.
+
+Ships Concept Genesis (ARCHITECTURE.md §8b.6) — three on-ramps into the bible for
+users who don't already have a full reference set: no art at all
 (generate_character_concept), a composite concept sheet from a sheet generator
 (crop_reference), or one finished drawing that just needs turnaround views
 (generate_reference_sheet — also the tool for on-ramp 3, an artist's own art;
 that on-ramp needs no new tool, just register_character on the drawing itself).
 
-Also ships the 3D mannequin (ARCHITECTURE.md §8b.7) — generate_pose_map
-synthesizes an OpenPose control map from a posable 3D skeleton at any yaw
-angle, feeding generate_character_pose's pose_ref_path directly. This is the
-only reliable path to a genuine back view; 2D-photo pose extraction always
-relaxes back toward front-facing (see generate_pose_map's docstring for the
-validated recipe and its honest stochastic caveat).
+Ships the 3D mannequin (ARCHITECTURE.md §8b.7/§8b.9) — generate_pose_map
+synthesizes an OpenPose control map from a posable 3D skeleton at any yaw angle,
+and generate_pose_depth_map renders a depth map from a real posable VRM mesh,
+both feeding generate_character_pose's pose_ref_path. This is the structural
+path to a genuine back view; 2D-photo pose extraction always relaxes back toward
+front-facing. Reliability is honest and stochastic: ~2/3 seeds for the line
+skeleton ("openpose"), ~3/3 for the VRM depth map once calibrated ("depth").
 
-Also ships FLUX (ARCHITECTURE.md §8b.9, Stage 5): `model="flux_manwha"` is a new
-option on generate_character_concept/generate_character_pose/generate_reference_sheet,
-alongside the existing SD1.5/SDXL models — better hand anatomy once detail_fix
-is on, and pose_ref_path-driven back views via ControlNet, in two flavors
-(pose_control_type): the mannequin's line-skeleton ("openpose", ~2/3-seed
-reliable) or generate_pose_depth_map's real posable VRM mesh ("depth", ~3/3
-once calibrated — ARCHITECTURE.md §8b.9). Three FLUX-only tools round out the
-recommended staged workflow for avoiding hallucinations (see
-generate_turnaround_sheet's and generate_pose_depth_map's docstrings for the
-full sequences): generate_turnaround_sheet (FLUX Kontext dev + a turnaround-
-sheet LoRA — multi-pose sheet from one reference image), generate_pose_depth_map
-(VRM mesh depth map — pose/anatomy only, NOT costume; needs a separate Blender
-install, see vrm_depth.py), and edit_character_image (FLUX Kontext dev as a
-plain-English image editor — validated for local anatomy/costume fixes, NOT
-for full viewpoint rotation, see its docstring). compose_reference_sheet
-assembles the Avery-style poster from already-existing images (e.g. panels
-cropped from a turnaround sheet), as opposed to generate_reference_sheet's own
-fresh-generation-per-view path.
+The Kontext tools are the ones that carry identity: generate_turnaround_sheet
+(Kontext + a turnaround-sheet LoRA — a multi-pose sheet from one reference
+image) and edit_character_image (Kontext as a plain-English image editor —
+validated for local anatomy/costume fixes, NOT for full viewpoint rotation, see
+its docstring). compose_reference_sheet and compose_full_reference_sheet
+assemble Avery-style posters from already-existing images, as opposed to
+generate_reference_sheet's fresh-generation-per-view path.
 
-Exposes: register_character, list_characters, forget_character, list_projects,
-generate_character_concept, crop_reference, generate_pose_map,
+Exposes: register_character, get_character, list_characters, forget_character,
+list_projects, generate_character_concept, crop_reference, generate_pose_map,
 generate_pose_depth_map, generate_character_pose, generate_reference_sheet,
 generate_turnaround_sheet, edit_character_image, compose_reference_sheet,
-compose_panel, check_status, bake_character_lora, check_lora_training,
-cancel_lora_training.
+compose_full_reference_sheet, apply_gradient_background, apply_vfx_overlay,
+compose_panel, check_status.
 
 Requires a running ComfyUI instance (default http://127.0.0.1:8188) for anything
 that generates pixels — the bible, cropping, and compositing tools are GPU-free.
-bake_character_lora needs a separate kohya-ss/sd-scripts install (see README.md).
 Runs locally over stdio.
 """
 
@@ -68,10 +67,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import characters
-import workflow
+import comfy
 import flux_workflow
 import vrm_depth
-import training
 import mannequin
 from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
@@ -296,36 +294,22 @@ def generate_character_concept(
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_concepts", label_slug)
     full_prompt = f"{description}, {style_prompt}" if style_prompt else description
     try:
-        if model in flux_workflow.FLUX_MODELS:
-            if (width, height) == (640, 896):
-                width, height = 832, 1216
-            paths = flux_workflow.generate_concepts(
-                prompt=full_prompt,
-                out_dir=out_dir,
-                n=n,
-                negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
-                width=width,
-                height=height,
-                seed=seed,
-                model=model,
-                lora=lora,
-                lora_strength=lora_strength,
-            )
-        else:
-            paths = workflow.generate_concepts(
-                prompt=full_prompt,
-                out_dir=out_dir,
-                n=n,
-                negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
-                width=width,
-                height=height,
-                seed=seed,
-                model=model,
-                lora=lora,
-                lora_strength=lora_strength,
-            )
-    except workflow.ComfyUIError as e:
-        return f"Generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+        if (width, height) == (640, 896):
+            width, height = 832, 1216
+        paths = flux_workflow.generate_concepts(
+            prompt=full_prompt,
+            out_dir=out_dir,
+            n=n,
+            negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
+            width=width,
+            height=height,
+            seed=seed,
+            model=model,
+            lora=lora,
+            lora_strength=lora_strength,
+        )
+    except comfy.ComfyUIError as e:
+        return f"Generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     lines = "\n".join(f"  {i + 1}. {p}" for i, p in enumerate(paths))
     return (f"{len(paths)} concept candidate(s) generated:\n{lines}\n"
             f"Nothing is registered yet — look at these, pick the one that's your "
@@ -335,13 +319,13 @@ def generate_character_concept(
 
 def _render_pose(
     character, pose, prompt, negative, project, model, width, height, seed,
-    ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
+    pose_ref_path, pose_strength,
     lora, lora_strength, out_dir, pose_preprocess=True, ref_override=None,
     detail_fix=False, pose_control_type="openpose",
 ):
-    """Core Tier 1/2/3 pose rendering, shared by generate_character_pose and
+    """Core FLUX pose rendering, shared by generate_character_pose and
     generate_reference_sheet. Raises characters.CharacterError if the character
-    isn't registered, workflow.ComfyUIError on generation failure. Returns
+    isn't registered, comfy.ComfyUIError on generation failure. Returns
     (raw_path, tier_note) — matting is each caller's own responsibility (they
     want different messaging around a matting failure).
 
@@ -367,87 +351,47 @@ def _render_pose(
     if entry.get("description") and pose_control_type != "depth":
         full_prompt = f"{full_prompt}, {entry['description']}"
 
-    # Tier 3: auto-use the character's own baked LoRA unless the caller overrides.
+    # A character may carry its own style LoRA in the bible; caller can override.
     effective_lora = lora if lora is not None else entry.get("lora")
 
-    if model in flux_workflow.FLUX_MODELS:
-        # FLUX branch (Stage 5) — no img2img/identity_mode support (untested
-        # combination; IP-Adapter has never been tried against FLUX). Identity
-        # comes from the prompt/description text alone, same as this project's
-        # plain-text-only path. pose_ref_path routes to FLUX's own ControlNet
-        # (InstantX Union, ~2/3-seed reliable for back views — see
-        # flux_workflow.py's docstring), independent of workflow.py's SD1.5/
-        # SDXL OpenPose branch.
-        if identity_mode != "off":
-            raise workflow.ComfyUIError(
-                "identity_mode is not supported with FLUX models — IP-Adapter + "
-                "FLUX has never been tested. Drop identity_mode (or pass "
-                "identity_mode='off') and rely on the prompt/description text "
-                "for identity, same as this project's plain-text-only path."
-            )
-        if (width, height) == (640, 896):
-            width, height = 832, 1216
-        raw_path = flux_workflow.generate(
-            prompt=full_prompt,
-            out_dir=out_dir,
-            negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
-            width=width,
-            height=height,
-            seed=seed,
-            model=model,
-            lora=effective_lora,
-            lora_strength=lora_strength,
-            pose_ref_path=pose_ref_path,
-            pose_strength=pose_strength,
-            pose_preprocess=pose_preprocess,
-            pose_control_type=pose_control_type,
-            detail_fix=detail_fix,
-        )
-        tier_note = "FLUX base generation"
-        if effective_lora and effective_lora == entry.get("lora"):
-            tier_note = f"Tier 3 (baked LoRA '{effective_lora}') + " + tier_note
-        if pose_ref_path:
-            if pose_control_type == "depth":
-                tier_note += (" + ControlNet pose (VRM depth map, ~3/3-seed reliable "
-                              "for back views once calibrated — see vrm_depth.py)")
-            else:
-                tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
-                              "reliable for back views — reroll on a miss)" if not pose_preprocess
-                              else " + ControlNet pose (OpenPose)")
-        if detail_fix:
-            tier_note += " + hand detail fix (no face pass — untested for FLUX)"
-        return raw_path, tier_note
-
-    raw_path = workflow.generate(
+    # FLUX has no image identity input on this path (IP-Adapter was never
+    # supported and the SD tiers are retired). Identity
+    # comes from the prompt/description text alone, same as this project's
+    # plain-text-only path. pose_ref_path routes to FLUX's own ControlNet
+    # (InstantX Union, ~2/3-seed reliable for back views — see
+    # flux_workflow.py's docstring), independent of workflow.py's SD1.5/
+    # SDXL OpenPose branch.
+    if (width, height) == (640, 896):
+        width, height = 832, 1216
+    raw_path = flux_workflow.generate(
         prompt=full_prompt,
         out_dir=out_dir,
-        negative=negative if negative is not None else workflow.DEFAULT_NEGATIVE,
+        negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
         width=width,
         height=height,
         seed=seed,
-        ref_path=ref_path,
-        ref_denoise=ref_denoise,
         model=model,
         lora=effective_lora,
         lora_strength=lora_strength,
-        identity_mode=identity_mode,
-        ip_adapter_weight=ip_adapter_weight,
         pose_ref_path=pose_ref_path,
         pose_strength=pose_strength,
         pose_preprocess=pose_preprocess,
+        pose_control_type=pose_control_type,
         detail_fix=detail_fix,
     )
-
-    tier_note = "Tier 1 (img2img)"
+    tier_note = "FLUX base generation"
     if effective_lora and effective_lora == entry.get("lora"):
-        tier_note = f"Tier 3 (baked LoRA '{effective_lora}') + " + tier_note
-    if identity_mode != "off":
-        tier_note += f" + Tier 2 identity ({identity_mode})"
+        tier_note = f"style LoRA '{effective_lora}' + " + tier_note
     if pose_ref_path:
-        tier_note += (" + Tier 2 pose (synthesized mannequin map)" if not pose_preprocess
-                      else " + Tier 2 pose (OpenPose)")
+        if pose_control_type == "depth":
+            tier_note += (" + ControlNet pose (VRM depth map, ~3/3-seed reliable "
+                          "for back views once calibrated — see vrm_depth.py)")
+        else:
+            tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
+                          "reliable for back views — reroll on a miss)" if not pose_preprocess
+                          else " + ControlNet pose (OpenPose)")
     if detail_fix:
-        tier_note += " + face/hand detail fix"
+        tier_note += " + hand detail fix (no face pass — untested for FLUX)"
     return raw_path, tier_note
 
 
@@ -476,7 +420,7 @@ def generate_pose_map(
 
     Validated recipe for a genuine back view (2026-07-19, after ~12 failed 2D-
     extraction configs): yaw=180, pose_strength=1.4-1.5 (1.0 pins the pose but
-    drifts back to front-facing), identity_mode="off" or ip_adapter_weight~0.3,
+    drifts back to front-facing),
     plus anti-duplicate negative terms (SHEET_NEGATIVE, or your own — "2boys",
     "duplicate character", "fused body"). Stochastic, not deterministic —
     identical settings with a different seed have produced a front-facing
@@ -503,7 +447,7 @@ def generate_pose_map(
     return (f"Pose map generated: {path}\n"
             f"Feed to generate_character_pose(pose_ref_path='{path}', "
             f"pose_preprocess=False, pose_strength=1.4 for yaw>=~135, "
-            f"identity_mode='off' or a low ip_adapter_weight). Stochastic — "
+            f"). Stochastic — "
             f"try a couple of seeds and curate.")
 
 
@@ -565,13 +509,10 @@ def generate_character_pose(
     prompt: str = "",
     negative: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
     width: int = 640,
     height: int = 896,
     seed: int | None = None,
-    ref_denoise: float = 0.55,
-    identity_mode: str = "off",
-    ip_adapter_weight: float = 0.8,
     pose_ref_path: str | None = None,
     pose_strength: float = 1.0,
     pose_preprocess: bool = True,
@@ -583,15 +524,17 @@ def generate_character_pose(
 ) -> str:
     """Render a registered character alone, in a new pose, on a clean backdrop.
 
-    Layers three consistency tiers (README.md): Tier 1 (always on) img2img
-    seeds from the character's primary reference, drifts on ambitious poses.
-    Tier 2 (opt-in, identity_mode) adds IP-Adapter identity conditioning —
-    stack with Tier 1, or ref_denoise=1.0 for pure txt2img + IP-Adapter (more
-    pose range); needs setup_models.py's Tier-2 models + ComfyUI_IPAdapter_plus.
-    pose_ref_path additionally pins the pose via OpenPose ControlNet
-    (independent of identity_mode) — generate_pose_map is the only reliable
-    way to get a genuine back view. Tier 3 (automatic once baked) uses
-    bake_character_lora's LoRA unless you pass your own `lora=`.
+    **This path has NO image identity input.** Identity comes from the
+    character's bible description as prompt text, so it WILL drift — the SD
+    tiers that used to compensate (img2img seeding, IP-Adapter) are retired,
+    and FLUX never supported IP-Adapter. Reach for this tool when the camera
+    angle matters more than the likeness; reach for edit_character_image
+    (Kontext, conditions on an actual image) when the likeness matters more.
+
+    pose_ref_path pins the pose structurally via ControlNet, and is the reason
+    this tool still exists: generate_pose_map / generate_pose_depth_map are the
+    only way to force a genuine back view, which no amount of prompting or
+    reference conditioning achieves.
 
     detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack):
     detect-and-repair pass on face/hands after the main render — fixes
@@ -608,16 +551,9 @@ def generate_character_pose(
             bible name/description is prepended automatically.
         negative: Extra negative terms (appended to sane defaults).
         project: Which comic's bible/output to use.
-        model / width / height / seed: As generate_background. model="flux_manwha"
-            (Stage 5) gives better hand anatomy with detail_fix=True, but
-            identity_mode must stay "off" (IP-Adapter+FLUX untested) — use
-            pose_ref_path for pose control instead.
-        ref_denoise: 0-1, how much of the reference survives Tier 1's img2img.
-            Lower = closer/safer/less pose range; higher = more prompt-driven,
-            more drift risk unless identity_mode compensates. Default 0.55.
-        identity_mode: "off" (default), "plus" (body/identity, Tier-2 default),
-            or "plus_face" (portraits — not true FaceID).
-        ip_adapter_weight: IP-Adapter strength when identity_mode is set. Default 0.8.
+        model / width / height / seed: model defaults to "flux_manwha"; SD
+            resolutions (640x896) are bumped to FLUX-native 832x1216
+            automatically. detail_fix=True improves hand anatomy.
         pose_ref_path: A pose photo (extracted to OpenPose) or a
             generate_pose_map output (pass pose_preprocess=False). Pinned via ControlNet.
         pose_strength: ControlNet strength for pose_ref_path. For genuine back
@@ -653,15 +589,15 @@ def generate_character_pose(
             detail_fix=detail_fix, pose_control_type=pose_control_type)
     except characters.CharacterError as e:
         return f"Could not generate pose: {e}"
-    except workflow.ComfyUIError as e:
-        return f"Generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+    except comfy.ComfyUIError as e:
+        return f"Generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
 
     if not matte:
         return (f"Pose generated (not matted): {raw_path}\n"
                 f"{tier_note}, ref_denoise={ref_denoise} — curate before use.")
     try:
-        matted_path = workflow.matte(raw_path)
-    except workflow.ComfyUIError as e:
+        matted_path = comfy.matte(raw_path)
+    except comfy.ComfyUIError as e:
         return f"Pose generated but matting failed: {e}\n  raw render: {raw_path}"
     return (f"Pose generated: {matted_path}\n"
             f"  raw render (with backdrop): {raw_path}\n"
@@ -708,7 +644,7 @@ DEFAULT_SHEET_VIEWS = [
 # lower ip_adapter_weight (0.8 -> 0.25) — IP-Adapter's identity embedding
 # doesn't separate "this person" from "this scene," so a high weight drags the
 # reference's exact VFX/lighting along regardless of the backdrop prompt; (3)
-# explicit VFX-suppression terms, now baked into workflow.py's
+# explicit VFX-suppression terms, now baked into comfy.py's
 # CLEAN_BACKDROP_NEGATIVE globally (not just here) since clean backdrops are
 # Tier 1's whole promise, not a sheet-only concern. This also surfaced a second
 # artifact — SD1.5 sometimes renders two figures side-by-side at full denoise —
@@ -716,7 +652,7 @@ DEFAULT_SHEET_VIEWS = [
 # unreliable even after all of this (see the tool's honest caveat) — a real
 # SD1.5-checkpoint limitation for non-front angles on top of the composition-
 # anchoring bug, not something parameter tuning alone fully solves.
-SHEET_NEGATIVE = (workflow.DEFAULT_NEGATIVE
+SHEET_NEGATIVE = (comfy.DEFAULT_NEGATIVE
                   + ", two people, duplicate, multiple figures, split screen, "
                     "comparison, twins, side by side, before and after, "
                     # Validated during the SDXL back-view campaign (2026-07-19):
@@ -731,7 +667,7 @@ def generate_reference_sheet(
     character: str,
     views: list[str] | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
     width: int = 640,
     height: int = 896,
     identity_mode: str = "plus",
@@ -878,15 +814,15 @@ def generate_reference_sheet(
                 ref_override=view_ref_override, detail_fix=detail_fix)
         except characters.CharacterError as e:
             return f"Could not generate reference sheet: {e}"
-        except workflow.ComfyUIError as e:
+        except comfy.ComfyUIError as e:
             lines.append(f"• {view}: FAILED — {e}")
             continue
         view_path = raw_path
         if matte:
             try:
-                view_path = workflow.matte(raw_path)
+                view_path = comfy.matte(raw_path)
                 lines.append(f"• {view}: {view_path}")
-            except workflow.ComfyUIError as e:
+            except comfy.ComfyUIError as e:
                 lines.append(f"• {view}: generated but matting failed ({e}) — raw: {raw_path}")
         else:
             lines.append(f"• {view}: {view_path}")
@@ -1008,8 +944,8 @@ def generate_turnaround_sheet(
         sheet_path = flux_workflow.generate_turnaround_sheet(
             image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height,
             extra_prompt=extra_prompt)
-    except workflow.ComfyUIError as e:
-        return f"Turnaround sheet generation failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+    except comfy.ComfyUIError as e:
+        return f"Turnaround sheet generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     return (f"Turnaround sheet generated: {sheet_path}\n"
             f"Scan the WHOLE figure on each panel you care about (collar shape, "
             f"hands, shoe orientation), not just facing direction — a partial "
@@ -1068,8 +1004,8 @@ def edit_character_image(
         edited_path = flux_workflow.edit_image(
             image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
             canvas_width=canvas_width, canvas_height=canvas_height)
-    except workflow.ComfyUIError as e:
-        return f"Edit failed: {e}\nIs ComfyUI running at {workflow.COMFY_URL}?"
+    except comfy.ComfyUIError as e:
+        return f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     return (f"Edited image: {edited_path}\n"
             f"Scan the WHOLE figure before trusting this — head, collar/"
             f"neckline, hands, legs, shoes — not just the region the "
@@ -1320,109 +1256,6 @@ def apply_vfx_overlay(
 
 
 @mcp.tool()
-def bake_character_lora(
-    character: str,
-    project: str = characters.DEFAULT_PROJECT,
-    epochs: int = 10,
-    repeats: int = 10,
-    network_dim: int = 32,
-    network_alpha: int = 16,
-    learning_rate: float = 1e-4,
-    resolution: int = 512,
-    class_word: str = "person",
-    model: str | None = None,
-    style_lora: str | None = training.STYLE_LORA,
-    style_lora_multiplier: float = training.STYLE_LORA_MULTIPLIER,
-) -> str:
-    """Start Tier-3 training: bake a per-character LoRA from the character's
-    reference set. Strongest consistency tier, but takes 30-90 min on a
-    3060-class GPU — returns immediately once training has STARTED, not once
-    done. Poll with check_lora_training.
-
-    Needs a separate kohya-ss/sd-scripts install (README.md's Tier-3 setup) —
-    heavier than Tier 1/2, which only need ComfyUI.
-
-    Best with 10-20 reference images. Fewer still works but risks overfitting;
-    the bootstrap loop (register_character with curated Tier-1/2 renders, then
-    re-bake) is the intended way to grow a thin reference set. One training
-    job per character at a time.
-
-    Args:
-        character: A character_id already in the bible, with at least one
-            reference image.
-        project: Which comic's bible to train from.
-        epochs / repeats: Training length — total exposure per image ≈
-            epochs × repeats. Defaults (10, 10) suit a 10-20 image set.
-        network_dim / network_alpha: LoRA rank/scale. Defaults (32, 16) are a
-            reasonable starting point.
-        learning_rate: Default 1e-4.
-        resolution: Training resolution, default 512 (SD1.5-native).
-        class_word: Regularization class word paired with the character's own
-            trigger token in captions (default "person").
-        model: Which checkpoint to train against (default: the server's
-            default render model) — use the same one you'll generate poses with.
-        style_lora: Merged into the checkpoint before training, so the baked
-            LoRA carries this style permanently — same mechanism as
-            generate_character_pose's `lora=`, but baked in rather than
-            applied per call. Defaults to the Niji V5 Style LoRA; pass "" to
-            train against a plain checkpoint instead.
-        style_lora_multiplier: Strength of the style merge (default 1.0).
-
-    Returns:
-        Confirmation that training has started, with how to check progress.
-    """
-    try:
-        job = training.bake(character, project, epochs=epochs, repeats=repeats,
-                            network_dim=network_dim, network_alpha=network_alpha,
-                            learning_rate=learning_rate, resolution=resolution,
-                            class_word=class_word, model=model,
-                            style_lora=style_lora, style_lora_multiplier=style_lora_multiplier)
-    except (training.TrainingError, characters.CharacterError) as e:
-        return f"Could not start training: {e}"
-    style_note = f", style base: {job['style_lora']}" if job.get("style_lora") else ""
-    return (f"Training started for '{character}' in project '{project}' "
-            f"({job['num_images']} reference image(s), {job['epochs']} epochs{style_note}, "
-            f"pid {job['pid']}).\n"
-            f"This runs 30-90 min in the background. Check progress with "
-            f"check_lora_training(character='{character}', project='{project}').\n"
-            f"Log: {job['log_path']}")
-
-
-@mcp.tool()
-def check_lora_training(character: str, project: str = characters.DEFAULT_PROJECT) -> str:
-    """Check the status of a Tier-3 LoRA training job (queued/training/done/
-    failed/cancelled). Once done, the LoRA is automatically installed into
-    ComfyUI's models/loras/ and recorded on the character's bible entry —
-    generate_character_pose will use it automatically from then on."""
-    job = training.status(character, project)
-    state = job.get("state", "none")
-    if state == "none":
-        return f"No training job found for '{character}' in project '{project}'."
-    if state == "done":
-        style_note = f" (style base: {job['style_lora']})" if job.get("style_lora") else ""
-        return (f"Training complete: {job['installed_lora']}{style_note} installed in "
-                f"ComfyUI's models/loras/ and set as '{character}''s default LoRA. "
-                f"generate_character_pose will use it automatically now.")
-    if state == "failed":
-        return (f"Training failed for '{character}'. Last log lines:\n{job['log_tail']}\n"
-                f"Full log: {job['log_path']}")
-    if state == "cancelled":
-        return f"Training for '{character}' was cancelled."
-    started = job.get("started_at", "?")
-    return (f"Training in progress for '{character}' (started {started}, pid {job['pid']}).\n"
-            f"Recent log:\n{job['log_tail']}")
-
-
-@mcp.tool()
-def cancel_lora_training(character: str, project: str = characters.DEFAULT_PROJECT) -> str:
-    """Cancel an in-progress Tier-3 training job for a character."""
-    cancelled = training.cancel(character, project)
-    if not cancelled:
-        return f"No in-progress training job for '{character}' in project '{project}'."
-    return f"Cancelled training for '{character}' in project '{project}'."
-
-
-@mcp.tool()
 def crop_reference(
     image_path: str,
     boxes: list[list[int]],
@@ -1509,12 +1342,12 @@ def check_status() -> str:
     generate_character_pose — the bible and compose_panel work without it)."""
     import requests
     try:
-        r = requests.get(f"{workflow.COMFY_URL}/system_stats", timeout=10)
+        r = requests.get(f"{comfy.COMFY_URL}/system_stats", timeout=10)
         if r.status_code == 200:
-            return f"ComfyUI is up at {workflow.COMFY_URL}."
+            return f"ComfyUI is up at {comfy.COMFY_URL}."
         return f"ComfyUI responded with HTTP {r.status_code}."
     except Exception as e:
-        return f"ComfyUI not reachable at {workflow.COMFY_URL}: {e}"
+        return f"ComfyUI not reachable at {comfy.COMFY_URL}: {e}"
 
 
 if __name__ == "__main__":

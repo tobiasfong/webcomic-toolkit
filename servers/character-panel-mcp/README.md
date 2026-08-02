@@ -6,8 +6,8 @@ times before page one. Whether you already have reference art (commissioned, or 
 ChatGPT/Midjourney character sheet), have a story and nothing else, or have one good
 drawing of a character, this tool gets it into a **Character Bible**, generates new
 poses and turnaround views that stay recognizably the same character, and composites
-them onto background plates into finished panels — wrapping a local ComfyUI + Stable
-Diffusion pipeline.
+them onto background plates into finished panels — wrapping a local ComfyUI + FLUX
+pipeline.
 
 It's the character-domain sibling of
 **[`webcomic-background-mcp`](../webcomic-background-mcp/README.md)**'s World Builder:
@@ -16,44 +16,36 @@ references are the ground truth for who a character is), same skeleton, same REA
 standard. No code dependency between the two servers; they just point at the same
 local ComfyUI by default.
 
-## Which path should I use?
+## How identity works (read this first)
 
-Read this before the tier table below, because the tier table describes **one** of
-two paths and it is not the one most of this project's finished art came from.
+There is **one** generation path: FLUX. The SD1.5/SDXL stack and its three-tier
+consistency design were retired (see CHANGELOG) — every panel of the first real
+scene went through FLUX Kontext, and the tiers were being carried unused.
 
-| | **FLUX Kontext** (Step 9) | **Stable Diffusion tiers** (Steps 1-8) |
+**Identity comes from conditioning on an image, not from a prompt.** FLUX Kontext
+takes an approved reference sheet — or an already-finished panel — as a latent
+input, so a new pose is generated *from* the existing art rather than from a
+description of it. `edit_character_image` and `generate_turnaround_sheet` are the
+tools that do this, and they are what keep a character on-model.
+
+### The one trade-off that shapes everything
+
+The two things you might want are mutually exclusive **in a single pass**:
+
+| | conditions on the character's art | controls the camera angle |
 |---|---|---|
-| Identity comes from | the reference **image**, via latent conditioning | prompt text, then IP-Adapter, then a baked LoRA |
-| Best at | new poses/edits of a character you already have art for | building a character up from little or nothing |
-| Pose/camera control | inherited from the reference; change it by cropping | ControlNet, incl. 3D pose maps |
-| Cost | ~8 min/edit on a 6 GB card | ~20-40 s (Tier 1-2); 30-90 min once to bake (Tier 3) |
-
-**If you already have approved reference art, use FLUX Kontext.**
-`edit_character_image` / `flux_workflow.edit_image()` conditions on that image
-directly, so the character arrives on-model rather than being described back into
-existence. This is the path that produced this project's finished panels.
-
-**If you're starting from nothing**, the SD path's Concept Genesis and the
-consistency tiers are how you *get* the reference art. Then switch.
-
-### The trade-off worth knowing before you pick
-
-The two paths' strongest features are mutually exclusive **in a single pass**:
-
-- `flux_workflow.edit_image()` takes an image and conditions on it — **no
-  structural pose control.** Framing and body angle are inherited from the
-  reference and do not respond to instruction.
-- `flux_workflow.generate()` takes `pose_ref_path` for ControlNet — **no image
-  identity input at all.** Identity comes from prompt text, so it will drift.
+| `edit_character_image` (Kontext) | **yes** — identity holds | no — framing and body angle are inherited from the reference and ignore instructions |
+| `generate_character_pose` | no — identity is prompt text, and drifts | **yes** — ControlNet pins the pose, including genuine back views |
 
 So you choose per generation: *this character's actual art*, or *this exact
-camera angle*. Not both. In practice, for finished panels the reference-driven
-path wins, and direction is handled by generating a proper turnaround sheet
-first (`generate_turnaround_sheet`) and then conditioning on whichever view you
-need out of it.
+camera angle*. In practice, for finished panels the reference-driven path wins,
+and direction is handled by generating a turnaround sheet first
+(`generate_turnaround_sheet`), then conditioning on whichever view you need.
 
-The 3D pose maps below remain the right tool when direction matters more than
-identity — early exploration, or a character whose look isn't locked yet.
+`generate_character_pose` earns its place for the case nothing else reaches: a
+genuine back view, forced structurally by `generate_pose_map` /
+`generate_pose_depth_map`. Reference sheets are almost always frontal, and no
+amount of prompting or reference conditioning turns a character around.
 
 ### Other things that surprise people
 
@@ -65,13 +57,15 @@ identity — early exploration, or a character whose look isn't locked yet.
   model invent what lies *underneath*? Raising arms into open air works;
   changing a pose beneath clothing does not.
 - **Expression must be set at generation time.** It is not a safe edit.
+- **Generation is minutes, not seconds.** Compositing is instant and GPU-free —
+  that separation is deliberate, and it is why panel assembly is CPU-side.
 
 See `../../CLAUDE.md` for the full set of rules this pipeline accumulated in
 production.
 
 ## What it does
 
-Twenty-two tools:
+Nineteen tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
@@ -87,59 +81,42 @@ Twenty-two tools:
 - **`generate_pose_depth_map`** — a more reliable alternative to
   `generate_pose_map` for back views (Step 10 below): a depth map rendered
   from a real posable VRM mesh in Blender, instead of a line skeleton.
-- **`generate_character_pose`** — render the character in a new pose, layering all
-  three consistency tiers (see below), auto-matted to a clean RGBA cutout.
-- **`generate_turnaround_sheet`** / **`edit_character_image`** / **`compose_reference_sheet`**
-  — FLUX-only staged workflow (Step 9 below): a multi-pose turnaround sheet from
-  one reference image, a plain-English image editor for surgical anatomy fixes,
-  and a poster composer that works from already-existing crops.
-- **`bake_character_lora`** / **`check_lora_training`** / **`cancel_lora_training`**
-  — Tier 3: kick off, poll, and cancel per-character LoRA training (async — a bake
-  takes 30-90 min, so these don't block).
+- **`generate_character_pose`** — render the character in a new pose with optional
+  ControlNet pose pinning, auto-matted to a clean RGBA cutout. No image identity
+  input — see "How identity works" above.
+- **`generate_turnaround_sheet`** / **`edit_character_image`** — **the identity
+  tools** (Step 9 below): a multi-pose turnaround sheet from one reference image,
+  and a plain-English image editor that conditions on real art. These are what
+  keep a character on-model.
+- **`compose_reference_sheet`** / **`compose_full_reference_sheet`** — poster
+  composers that work from already-existing crops. GPU-free.
 - **`compose_panel`** — deterministic CPU compositing: paste a matted character onto
   a background plate at a given feet position and height. Zero GPU, zero tokens,
   instant to iterate.
 - **`check_status`** — is the ComfyUI backend up? (Only tools that generate pixels
   need it — the bible, `crop_reference`, and `compose_panel` are GPU-free.)
 
-## Consistency tiers (the Stable Diffusion path)
+## Consistency: what actually holds a character together
 
-Character consistency is *the* unsolved-in-general problem of AI comics. On the
-**SD1.5/SDXL path**, this server answers it with three tiers. (FLUX does not use
-these — it has no IP-Adapter support; see "Which path should I use?" above.) They
-are shipped in order of cost/complexity, and they
-**stack** — Tier 1 is always on, Tier 2 is opt-in per call, Tier 3 (once baked) is
-used automatically:
+Character consistency is *the* unsolved-in-general problem of AI comics. This
+server's answer is **reference-latent conditioning via FLUX Kontext** — the
+registered art is the ground truth, and generations condition on it directly
+rather than on a description of it.
 
-| Tier | Mechanism | Status |
-|------|-----------|--------|
-| **1 — img2img from a reference** | Seed the render with the character's primary reference image (like World Builder's `location_denoise` mode). Good for "same character, slightly different angle." Drifts on anything ambitious. | ✅ **Shipped** |
-| **2 — IP-Adapter identity + ControlNet OpenPose** | IP-Adapter conditions generation on the reference images' *identity* (`identity_mode="plus"` or `"plus_face"`); an OpenPose ControlNet pins the *pose* from a supplied photo, or a synthesized map from `generate_pose_map` (`pose_ref_path`). | ✅ **Shipped** — needs the Tier-2 models (`setup_models.py`) + the `ComfyUI_IPAdapter_plus` custom node |
-| **3 — per-character LoRA baking** | Train a small SD 1.5 LoRA on the character's reference set (`bake_character_lora`, via kohya-ss/sd-scripts). Strongest, one-time cost per character (~30-90 min on a 3060-class GPU). Once baked, used automatically by `generate_character_pose`. **Bakes in the Niji V5 Style LoRA by default** (merged into the checkpoint before training via sd-scripts' `--base_weights`) — pass `style_lora=""` to train against a plain checkpoint instead. | ✅ **Shipped** — needs a separate kohya-ss install, the heaviest setup step |
+Earlier versions shipped a three-tier SD design (img2img seeding → IP-Adapter
+identity → per-character LoRA baking). All three are gone. Kontext superseded the
+first two, and the third was never used on a real character. The honest summary
+is that the tiers were a way to approximate what Kontext does directly.
 
-**Not built: true FaceID.** Tier 2's `"plus_face"` preset (from `h94/IP-Adapter`
-directly) covers face-focused portraits without extra install burden. True FaceID
-models need InsightFace + the `antelopev2` face-embedding model — a notoriously
-fiddly Windows install with its own distribution terms. Deliberately substituted,
-not silently dropped; revisit if `"plus_face"` proves insufficient in practice.
+**Validation is the other half.** `tools/check_bible.py` exits non-zero if a
+reference is missing, if an unregistered image is lurking in a character folder,
+or if the primary reference can't be traced back to an approved sheet. That check
+exists because a silently wrong reference once propagated a character's wrong
+hair colour through a run of finished panels before anyone noticed.
 
-**"Consistent enough for a webtoon with curation," not pixel-perfect** — even the
-strongest tier drifts on extreme angles, complex hand poses, and costume details. The
-writer curates; the tool narrows the drift, it doesn't eliminate it.
-
-**Cross-cutting fix, not a tier: `detail_fix`.** Hallucinated hands (missing/extra
-fingers) and mangled faces aren't a consistency problem — they're a *resolution*
-problem: a face or hand is a small fraction of a full-body frame, too few pixels for
-the checkpoint to render correctly, no matter how good the prompt or which tier is
-active. `detail_fix=True` on `generate_character_pose`/`generate_reference_sheet`
-detects the face and hands (ComfyUI-Impact-Pack's `FaceDetailer` + the YOLOv8
-detector models) and re-samples just that region at a much higher effective
-resolution before compositing it back — the standard fix for this class of failure.
-Verified live (2026-07-20): a closed-fist hand that rendered as a featureless blob
-came out with real finger separation after this pass, at `denoise=0.6` (0.45 detected
-the hand but didn't give the sampler enough freedom to fix it — this took an actual
-before/after comparison to find, not assumed). Off by default — needs the extra
-custom nodes (see Step 3) and roughly doubles generation time.
+**Cross-cutting fix: `detail_fix`.** Hallucinated hands are a resolution problem
+(too few pixels in a full-body frame), not a prompt problem — a detect-and-repair
+pass at higher resolution is the fix, independent of how identity is handled.
 
 ## Concept Genesis: getting a character into the bible
 
@@ -218,14 +195,14 @@ than a busy illustration.
 
 **Nothing auto-registers, ever.** `generate_character_concept` and
 `generate_reference_sheet` only ever produce candidates for you to look at — the same
-staging discipline as `bake_character_lora` never auto-training on garbage refs.
+staging discipline as never letting an unreviewed render become canon.
 A human always picks the canon.
 
 **Honest caveat:** genesis is bootstrapped, not solved. The very first image (or your
 own drawing) is the only ground truth; every other view is Tier-2 *inference* from it,
 which means back/side views of a character who only exists as one front-view image
 will drift and need retries. This is exactly what curation is for — and once you've
-accumulated ~10-20 curated views, `bake_character_lora` locks in the strongest version
+accumulated ~10-20 curated views, the bible holds the strongest version
 of what you approved.
 
 **Real-world tuning note (2026-07-19, from an actual test against RxR art):**
@@ -353,29 +330,34 @@ If you already run that server, this step is done.
 
 ## Step 2 — Models
 
-**Tier 1 needs no new models** — it reuses whatever SD 1.5 checkpoint you already
-installed for `webcomic-background-mcp` (default `solstice`; see that server's
-[model table](../webcomic-background-mcp/README.md#step-2--download-the-models)
-if you're installing this server standalone).
+FLUX only. Roughly 11 GB total, all of it fitting a 6 GB card via GGUF
+quantisation and ComfyUI's model offloading.
 
-**Tier 2 needs ~3.5 GB more** (IP-Adapter + OpenPose ControlNet). Run the bundled
-downloader:
+| Role | File | → Folder |
+|------|------|----------|
+| Base FLUX (txt2img) | `flux1-dev-Q3_K_S.gguf` | `unet/` |
+| FLUX Kontext (identity/editing) | `flux1-kontext-dev-Q3_K_S.gguf` | `unet/` |
+| Text encoder | `t5xxl_fp8_e4m3fn.safetensors` | `clip/` |
+| Text encoder | `clip_l.safetensors` | `clip/` |
+| VAE | `ae.safetensors` | `vae/` |
+| Manhwa style LoRA | `manwha_style.safetensors` | `loras/` |
+| Turnaround-sheet LoRA | `kontext-turnaround-sheet-v1.safetensors` | `loras/` |
+
+See **Step 9** for where these come from and the settings that matter
+(`manwha_style` at strength **1.5** — 1.0 loses the fight against ControlNet
+conditioning).
+
+**ControlNet (optional, for pose pinning)** — the Union Pro 2.0 model, via its
+own downloader:
 
 ```bash
-python setup_models.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI"
+python setup_models_controlnet_pro.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI"
 ```
 
-Or place manually:
-
-| Role | File | → Folder | Source |
-|------|------|----------|--------|
-| CLIP vision encoder | `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | `clip_vision/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors) |
-| IP-Adapter Plus (identity) | `ip-adapter-plus_sd15.safetensors` | `ipadapter/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus_sd15.safetensors) |
-| IP-Adapter Plus Face (portraits) | `ip-adapter-plus-face_sd15.safetensors` | `ipadapter/` | [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus-face_sd15.safetensors) |
-| ControlNet OpenPose | `control_v11p_sd15_openpose_fp16.safetensors` | `controlnet/` | [comfyanonymous/ControlNet-v1-1_fp16](https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors/resolve/main/control_v11p_sd15_openpose_fp16.safetensors) |
-
-**Tier 3 needs no new ComfyUI models** — it trains against the same checkpoint
-Tier 1/2 already use. See Step 7 for its (separate) install.
+> **Retired:** `setup_models.py` and `setup_models_sdxl.py` are gone along with the
+> SD1.5/SDXL path. If you have IP-Adapter, CLIP-vision or SD1.5 ControlNets
+> installed for an older version of this server, nothing here uses them any more —
+> though `webcomic-background-mcp` may still need its own SD checkpoints.
 
 ## Step 3 — Custom nodes
 
@@ -473,16 +455,6 @@ After adding it, **fully quit and relaunch the client** (see Troubleshooting).
 3. **Grow the reference set:** *"Generate a reference sheet for aria"*
    (`generate_reference_sheet`) — front/back/side/3-4 views + expressions, one
    generation each. Curate the keepers, `register_character` them in.
-4. **Tier 2, optional:** *"Generate that pose again with identity_mode='plus' so
-   it locks onto her reference more strongly"* — or pass `pose_ref_path` to a
-   photo of someone in the target pose to pin it via OpenPose.
-5. **Tier 3, optional:** *"Bake a LoRA for aria"* (`bake_character_lora`) once
-   you have 10-20 good references — see Step 7 for its setup. Once it finishes
-   (`check_lora_training`), every later `generate_character_pose` call for her
-   uses it automatically.
-6. Composite it: *"Composite that onto backgrounds/alley.png with her feet at
-   (512, 780), 340px tall."*
-
 ### Helper scripts (`tools/`)
 
 - **`compose_panel.py`** — also runnable standalone from the CLI:
@@ -510,84 +482,6 @@ personal, often commissioned/licensed art, and shouldn't be redistributed.
 
 ---
 
-## Step 7 — Tier 3 setup: kohya-ss/sd-scripts (optional, advanced)
-
-> **Heads-up — this is the heaviest step in this whole server.** It's a separate
-> ~5 GB ML training toolkit with its own venv, not a ComfyUI custom node. Skip
-> this entirely if Tier 1/2 are enough for you; nothing else in this server
-> depends on it.
-
-```bash
-git clone https://github.com/kohya-ss/sd-scripts.git C:/AI/sd-scripts
-cd C:/AI/sd-scripts
-python -m venv venv
-venv/Scripts/python -m pip install -r requirements.txt
-venv/Scripts/python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
-venv/Scripts/python -m accelerate.commands.config default
-```
-
-The last line runs `accelerate`'s one-time setup non-interactively with sane
-single-GPU defaults; run `venv/Scripts/python -m accelerate.commands.config`
-(without `default`) instead if you want to answer the prompts yourself (e.g. to
-pick `bf16` over `fp16`, or if you have multiple GPUs).
-
-Then point this server at it (defaults assume the path above — only needed if
-yours differs):
-
-```bash
-export WEBCOMIC_CHAR_KOHYA_DIR="C:/AI/sd-scripts"          # Windows: set / setx
-export WEBCOMIC_CHAR_COMFY_MODELS="C:/AI/ComfyUI_windows_portable/ComfyUI/models"
-```
-
-`bake_character_lora` reads the checkpoint straight off disk (unlike Tier 1/2,
-which only ever talk to ComfyUI's HTTP API) and writes the trained LoRA into
-`WEBCOMIC_CHAR_COMFY_MODELS/loras/` — set the latter if this server isn't sharing
-`webcomic-background-mcp`'s ComfyUI install.
-
-**One more file needed for baking to work with its defaults:** `bake_character_lora`
-bakes the **Niji V5 Style LoRA** into every character LoRA by default (see
-"Consistency tiers" above), which means `NijiV5Style.safetensors` must already be
-in `WEBCOMIC_CHAR_COMFY_MODELS/loras/` — it's the same file
-`webcomic-background-mcp`'s [model table](../webcomic-background-mcp/README.md#step-2--download-the-models)
-documents as an optional style choice; if you haven't downloaded it there, do
-that first, or pass `style_lora=""` to bake against a plain checkpoint instead.
-
----
-
-## Step 8 — SDXL prototype (optional, experimental): `model="mj_manga_sdxl"`
-
-> Added 2026-07-19 after live testing showed the SD1.5 stack's ceiling: distorted
-> full-body anatomy ("spider legs") and no genuine back views, regardless of
-> tuning. SDXL + the [Midjourney Manga Art Style LoRA](https://civitai.com/models/185798)
-> **fixes the anatomy and art-quality problems outright** (verified live on a
-> 6 GB RTX 3060 Laptop — ~30s warm generations, ~75s cold). It does NOT solve
-> back views (see the honest limitation below).
-
-```bash
-python setup_models_sdxl.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI" --stage1-only
-```
-
-`--stage1-only` fetches checkpoint + VAE + LoRA (~7.5 GB) — enough for Tier-1
-generation. Run again without it for the SDXL IP-Adapter/CLIP-vision/OpenPose
-models (~4.5 GB more) once you want Tier 2. Then just pass
-`model="mj_manga_sdxl"` to any generation tool — the LoRA's `mj manga` trigger
-word and SDXL-native resolution (832×1216 when you leave width/height at their
-defaults) are applied automatically. Existing SD1.5 models are untouched; this
-is an additional option, not a migration.
-
-**Validated settings** (from the live tuning session): `ip_adapter_weight≈0.3`
-for identity without scene-dragging, `ref_denoise=1.0` for pose freedom, and the
-anti-duplicate negatives now baked into `generate_reference_sheet` by default.
-
-**Genuine back views:** ~12 tuning configurations across SD1.5 and SDXL
-(prompt-only, img2img, IP-Adapter sweeps, pure text, OpenPose ControlNet at
-strengths 1.0–1.6 with face keypoints on/off) all failed to reach a clean
-single-figure back view — a checkpoint-level prior in how 2D-extracted pose
-conditioning works, not a tuning problem. This is what the **3D mannequin**
-(`generate_pose_map`, see above) was built to solve, and does — see
-CHANGELOG's "back-view campaign" for the full record and its honest
-stochastic caveat.
-
 ## Step 9 — FLUX: `model="flux_manwha"` + the staged concept-to-sheet workflow
 
 > Added 2026-07-21/22 after SDXL's hand-anatomy fixes (Step 7/CHANGELOG's LoRA-
@@ -605,7 +499,7 @@ VRAM budget) with a manhwa-style LoRA, genuinely better hand anatomy than SDXL o
 tested for FLUX), and the same 3D-mannequin `pose_ref_path` mechanism for back
 views, now ~2/3-seed reliable on FLUX's ControlNet too (an alpha-quality community
 adapter — reroll on a miss, don't expect every seed to land it). **Not supported**:
-`identity_mode`/IP-Adapter with FLUX — never tested, raises an error if you try.
+IP-Adapter was never supported on FLUX and the SD tiers are retired.
 
 Two new FLUX-only tools plus one general-purpose composer round out a staged
 workflow, designed specifically to catch mistakes early instead of discovering
@@ -708,13 +602,6 @@ is front-only) with a second, precise edit.
 | `WEBCOMIC_CHAR_PROJECT` | `default` | Default project when none is specified |
 | `WEBCOMIC_CHAR_COMFY_DIR` / `WEBCOMIC_CHAR_COMFY_LAUNCH` | `C:\AI\ComfyUI_windows_portable` / `run_nvidia_gpu.bat` | Auto-launch location/script for ComfyUI |
 | `WEBCOMIC_CHAR_AUTOLAUNCH` | `1` | Set `0` to require a manually-started ComfyUI (avoids two servers racing to launch it if you run both) |
-| `WEBCOMIC_CHAR_COMFY_MODELS` | `<COMFY_DIR>/ComfyUI/models` | **Tier 3 only** — ComfyUI's `models/` folder as a real filesystem path (training reads the checkpoint off disk and writes the output LoRA here; Tier 1/2 never need this, they only talk to ComfyUI's HTTP API) |
-| `WEBCOMIC_CHAR_KOHYA_DIR` | `C:\AI\sd-scripts` | **Tier 3 only** — where kohya-ss/sd-scripts is checked out |
-| `WEBCOMIC_CHAR_KOHYA_PYTHON` | `<KOHYA_DIR>/venv/Scripts/python.exe` | **Tier 3 only** — the Python with sd-scripts' deps installed |
-| `WEBCOMIC_CHAR_BAKE_STYLE_LORA` | `NijiV5Style.safetensors` | **Tier 3 only** — default `style_lora` for `bake_character_lora` (merged into the checkpoint before training); set empty to default to plain-checkpoint bakes |
-| `WEBCOMIC_CHAR_BAKE_STYLE_LORA_MULTIPLIER` | `1.0` | **Tier 3 only** — default strength of that style merge |
-| `WEBCOMIC_CHAR_SDXL_LORA` | `MJMangaSDXL.safetensors` | **SDXL prototype** — style LoRA auto-applied with `model="mj_manga_sdxl"` (trigger word added automatically) |
-| `WEBCOMIC_CHAR_SDXL_LORA_STRENGTH` / `WEBCOMIC_CHAR_SDXL_CLIP_SKIP` | `0.8` / `2` | **SDXL prototype** — the LoRA author's recommended settings |
 
 ## Troubleshooting
 
@@ -725,29 +612,12 @@ is front-only) with a second, precise edit.
   perfectly reliable; regenerate with a different seed, or lower `ref_denoise` to stay
   closer to the reference's own clean framing.
 - **Pose looks like a different character** — `ref_denoise` is too high for how
-  ambitious the pose is. Lower it, turn on `identity_mode="plus"` (Tier 2), or bake a
+  ambitious the pose is. Condition on real art with `edit_character_image` instead, or
   LoRA (Tier 3) if you need this character in many panels.
 - **`generate_character_pose` fails with an unknown node / `IPAdapterUnifiedLoader`
   error** — the `ComfyUI_IPAdapter_plus` custom node (Step 3) isn't installed, or
   `setup_models.py` hasn't been run (Step 2). Only relevant when `identity_mode` is
   set — Tier 1 alone never touches these nodes.
-- **`bake_character_lora` fails with "kohya-ss Python not found"** — Step 7 hasn't
-  been done, or `WEBCOMIC_CHAR_KOHYA_DIR`/`WEBCOMIC_CHAR_KOHYA_PYTHON` point at the
-  wrong path.
-- **`bake_character_lora` fails with "Checkpoint not found"** — `WEBCOMIC_CHAR_COMFY_MODELS`
-  doesn't point at a real ComfyUI `models/` folder, or the checkpoint file for the
-  chosen `model` isn't actually downloaded there.
-- **`bake_character_lora` fails with "Style LoRA not found"** — `NijiV5Style.safetensors`
-  (the default `style_lora`) isn't in `WEBCOMIC_CHAR_COMFY_MODELS/loras/`. Download it
-  (see `webcomic-background-mcp`'s model table) or pass `style_lora=""` to skip it.
-- **Training seems stuck / `check_lora_training` shows no new log lines for a long
-  time** — the first few minutes are usually the base model loading into VRAM; if
-  it's been 10+ minutes with zero progress, check the full log
-  (`check_lora_training`'s response includes the path) for an out-of-memory error —
-  the development baseline is an **RTX 3060 Laptop GPU (6 GB VRAM)**, which is tight
-  for training — lower `resolution` and/or `network_dim` if you hit OOM. (An earlier
-  revision of this file said "3060 12GB"; that was a mix-up between the desktop 3060
-  and the 6 GB laptop part, corrected 2026-08-01.)
 - **`pose_ref_path` fails with "Generation produced no image" and the ComfyUI log
   shows an `OpenposePreprocessor` download error** — the preprocessor tries to
   fetch its three annotator models (`body_pose_model.pth`, `hand_pose_model.pth`,
@@ -782,7 +652,7 @@ with a stub trainer; a real kohya-ss training run hasn't been exercised live
 yet), and deterministic panel compositing. Concept Genesis
 (`generate_character_concept`, `crop_reference`, `generate_reference_sheet`)
 is live-tested end-to-end against real character art, which surfaced and fixed
-real tuning bugs (see CHANGELOG). The optional SDXL prototype
+real tuning bugs (see CHANGELOG). The since-retired SDXL prototype
 (`model="mj_manga_sdxl"`) fixes anatomy/backdrop quality outright, verified
 live on a 6 GB GPU. The 3D mannequin (`generate_pose_map`) solves genuine back
 views after ~12 failed 2D-extraction configurations — live-verified, with an
@@ -792,7 +662,7 @@ honest stochastic caveat documented above and in CHANGELOG. **FLUX (Step 9,
 for the staged concept-to-sheet workflow — but individual pieces carry the same
 honest reliability caveats validated in scratch-script form: back views via
 ControlNet are ~2/3-seed reliable, the turnaround-sheet LoRA has one confirmed
-clean seed but no measured reliability rate yet, and `identity_mode`/IP-Adapter
+clean seed but no measured reliability rate yet, and IP-Adapter
 is not supported with FLUX at all (untested combination, raises an error).
 SDXL/SD1.5 remain fully intact and are still the default — FLUX is an
 additional option, same non-migration philosophy as the SDXL prototype.

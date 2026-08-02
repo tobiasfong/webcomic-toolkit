@@ -8,6 +8,45 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [Unreleased] — FLUX-only: the SD1.5/SDXL path is retired
+
+**Breaking.** This server now runs on FLUX exclusively. The SD path had been
+carried along unused — every finished panel of the first real scene went through
+FLUX Kontext — and maintaining two stacks meant two model registries, two sets
+of defaults, and ~1400 lines of graph code nobody executed.
+
+### Removed
+
+- **`workflow.py`** — SD1.5/SDXL graph building, `generate`, `generate_concepts`.
+  Its model-agnostic plumbing moved to the new **`comfy.py`** (connection,
+  auto-launch, image upload, clean-backdrop suffix, rembg matting).
+- **Tier 3 — `training.py`, `bake_character_lora`, `check_lora_training`,
+  `cancel_lora_training`.** kohya trains SD1.5 LoRAs; FLUX LoRA training is a
+  different pipeline and isn't built here. No character was ever baked.
+- **Tier 2 — `identity_mode`, `ip_adapter_weight`** on `generate_character_pose`,
+  and the guard that rejected them on FLUX. FLUX has never supported IP-Adapter.
+- **Tier 1 — `ref_denoise`** (img2img seeding from the primary reference).
+- `setup_models.py` (downloaded only the SD Tier-2 models) and
+  `setup_models_sdxl.py`. FLUX models are documented in README Step 9; the Union
+  Pro 2.0 ControlNet keeps `setup_models_controlnet_pro.py`.
+
+### Changed
+
+- `generate_character_concept` now defaults to `model="flux_manwha"`.
+- Tool count 22 → 19.
+
+### What this costs, stated plainly
+
+- **`generate_character_pose` has no image identity input at all.** Identity is
+  prompt text from the bible description, so it drifts. Use it when the camera
+  angle outranks the likeness; use `edit_character_image` (Kontext, conditions on
+  a real image) when the likeness outranks the angle. This is a real trade, not a
+  strict upgrade — the two mechanisms are mutually exclusive in one pass.
+- **Generation is minutes, not 20-40 seconds.** Compositing stays instant and
+  GPU-free; that separation matters more than before.
+- IP-Adapter identity conditioning is gone with no replacement. It defaulted to
+  off and the finished panels never used it, but it was a shipped capability.
+
 > This is the first tagged release. Everything below was built and live-tested across
 > one continuous development arc before anything was ever released or announced —
 > the numbered stages are development history, kept for the honest record of what was
