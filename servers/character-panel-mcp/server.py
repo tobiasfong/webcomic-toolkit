@@ -475,7 +475,7 @@ def generate_character_pose(
     try:
         raw_path, tier_note = _render_pose(
             character, pose, prompt, negative, project, model, width, height, seed,
-            ref_denoise, identity_mode, ip_adapter_weight, pose_ref_path, pose_strength,
+            pose_ref_path, pose_strength,
             lora, lora_strength, out_dir, pose_preprocess=pose_preprocess,
             detail_fix=detail_fix, pose_control_type=pose_control_type)
     except characters.CharacterError as e:
@@ -485,14 +485,14 @@ def generate_character_pose(
 
     if not matte:
         return (f"Pose generated (not matted): {raw_path}\n"
-                f"{tier_note}, ref_denoise={ref_denoise} — curate before use.")
+                f"{tier_note} — curate before use.")
     try:
         matted_path = comfy.matte(raw_path)
     except comfy.ComfyUIError as e:
         return f"Pose generated but matting failed: {e}\n  raw render: {raw_path}"
     return (f"Pose generated: {matted_path}\n"
             f"  raw render (with backdrop): {raw_path}\n"
-            f"{tier_note}, ref_denoise={ref_denoise} — curate before compose_panel. "
+            f"{tier_note} — curate before compose_panel. "
             f"Feed this to compose_panel as character_layer_path.")
 
 
@@ -561,9 +561,6 @@ def generate_reference_sheet(
     model: str = flux_workflow.DEFAULT_FLUX_MODEL,
     width: int = 640,
     height: int = 896,
-    identity_mode: str = "plus",
-    ip_adapter_weight: float = 0.25,
-    ref_denoise: float = 1.0,
     detail_fix: bool = False,
     lora: str | None = None,
     lora_strength: float | None = None,
@@ -625,15 +622,6 @@ def generate_reference_sheet(
             view to redo just one.
         project: Which comic's bible/output to use.
         model / width / height: As generate_character_pose.
-        identity_mode: Defaults "plus" (unlike generate_character_pose, which
-            defaults "off") — needs Tier-2 models + ComfyUI_IPAdapter_plus;
-            pass "off" if those aren't installed.
-        ip_adapter_weight: Default 0.25, much lower than generate_character_pose's
-            0.8 — locks identity (helped by a good description) without
-            dragging the reference's exact composition/lighting along.
-        ref_denoise: Default 1.0 (text prompt drives composition), much higher
-            than generate_character_pose's 0.55 — turnarounds need real
-            freedom from the source framing.
         detail_fix: Auto-repair hallucinated hands/faces on every view. Default
             False — ~2x generation time per view; consider enabling once
             you're generating the keeper set.
@@ -700,7 +688,7 @@ def generate_reference_sheet(
         try:
             raw_path, tier_note = _render_pose(
                 character, view, "", SHEET_NEGATIVE, project, model, width, height, None,
-                ref_denoise, identity_mode, ip_adapter_weight, None, 1.0,
+                None, 1.0,
                 lora, lora_strength, out_dir,
                 ref_override=view_ref_override, detail_fix=detail_fix)
         except characters.CharacterError as e:
