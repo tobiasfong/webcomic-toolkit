@@ -247,7 +247,7 @@ def generate_character_concept(
     n: int = 4,
     label: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = workflow.DEFAULT_MODEL,
+    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
     width: int = 640,
     height: int = 896,
     seed: int | None = None,
@@ -258,6 +258,15 @@ def generate_character_concept(
     doesn't exist in the bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md
     §8b.6): a writer with a story but no reference art. Pure txt2img, n distinct
     seeds, the same clean backdrop as every other tier (matting-ready).
+
+    **Defaults to FLUX** (`flux_manwha`), unlike the SD1.5-defaulting tools
+    around it. Concept genesis is pure text-to-image with no identity to
+    preserve — nothing here depends on the SD tier stack — so it gets FLUX's
+    better anatomy and hands for free. `generate_character_pose` deliberately
+    still defaults to SD1.5, because its value IS the tier stack (IP-Adapter
+    identity + ControlNet) and FLUX has no IP-Adapter support at all; pointing
+    it at FLUX would silently downgrade identity to prompt-text-only. Pass
+    `model="solstice"` here for the fast SD path (~20-40s vs FLUX's minutes).
 
     Does NOT register anything. Look at the candidates, then
     register_character(image_paths=['<the winner>'], ...) to make one canon —
