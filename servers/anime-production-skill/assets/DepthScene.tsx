@@ -186,7 +186,7 @@ export const DepthScene: React.FC<{
         <Plane
           map={tex.map}
           depth={tex.depth}
-          strength={layout.strength ?? 0.25}
+          strength={layout.strength ?? 0.18}
           planeW={planeW}
           planeH={planeH}
         />

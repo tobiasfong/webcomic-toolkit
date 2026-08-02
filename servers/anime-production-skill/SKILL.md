@@ -132,6 +132,20 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
   money shots 3–4. Also set `clipSeconds` on video panels (the clip's true
   length) so the engine retimes playback to fit the bar count instead of
   truncating the camera move.
+- **Depth camera — ENVIRONMENT AND WIDE SHOTS ONLY. Never a character
+  close-up.** Measured 2026-08-02 on a two-character night scene: displacing a
+  mesh by a depth map destroys a face in profile. The profile silhouette *is* a
+  depth cliff and the nose/lips/chin sit directly on it, so the mesh spans the
+  cliff and drags those features out into the background — they dissolve into a
+  smear. Lowering `strength` to 0.18 did not fix it; neither did repairing the
+  depth map (morphological closing dilates near-depth across the silhouette and
+  makes it worse). This is the same reason a 3D mannequin failed for character
+  reference in this ecosystem: **anime faces are cheated 2D**, drawn to read
+  from one angle, and giving them relief breaks them. For character shots keep
+  the flat Ken Burns path or a gentle pre-baked 2D parallax clip, which smears
+  rather than tearing. Use the depth camera on landscapes, architecture,
+  interiors, crowds-at-distance — anywhere depth is continuous and no face is
+  near a silhouette edge.
 - **Depth camera** (`depth` on a still panel) — the 2.5D upgrade. Give it a
   depth map (`tools/make_depth.py` in webcomic-background-mcp; white = near)
   and the still becomes a subdivided mesh displaced along Z with a real

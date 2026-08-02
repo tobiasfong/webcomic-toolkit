@@ -70,7 +70,12 @@ export interface DepthLayout {
   src: string;
   /** カメラの動き。省略時は push */
   move?: "push" | "pull" | "pan" | "crane" | "orbit" | "drift";
-  /** 変位の強さ。大きすぎるとシルエット際が伸びる。省略時 0.55 */
+  /**
+   * 変位の強さ。省略時 0.18。
+   * ⚠ 顔のアップでは 0.15–0.2 を超えないこと。アニメの顔は「一方向から見えるよう
+   * 描かれた嘘の立体」なので、起伏を与えると輪郭が伸びて破綻します。
+   * 風景・引きの絵なら 0.3–0.4 まで上げられます。
+   */
   strength?: number;
   /** カメラの移動量。省略時 0.35 */
   amount?: number;
@@ -167,12 +172,7 @@ export const bgm: { src: string; volume: number; fadeOutSeconds?: number } | nul
 //   },
 // 例 / example — beat-synced shot list:
 //   { src: "panels/01.mp4", durationInSeconds: 3.2, bars: 2, clipSeconds: 4, effects: ["sparkles"] },
-//   // 深度カメラ（静止画 + 深度マップを編集時に動かす）:
-//   { src: "panels/02.jpg", durationInSeconds: 3.2, bars: 2,
-//     depth: { src: "panels/02-depth.png", move: "push", strength: 0.25 } },
-//   {
-//     src: "panels/cover.jpg", durationInSeconds: 4.8, bars: 3,
-//     showcase: { background: "#ffffff", artPosition: "top", artSize: 0.78 },
-//     overlays: [{ text: "Story: ...", position: "bottom-center", fontSize: 30, plain: true }],
-//   },
+//   // 深度カメラは「風景・引き」専用。顔のアップには使わないこと（SKILL.md 参照）:
+//   { src: "panels/landscape.jpg", durationInSeconds: 3.2, bars: 2,
+//     depth: { src: "panels/landscape-depth.png", move: "crane", strength: 0.3 } },
 export const panels: Panel[] = [];
