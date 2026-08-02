@@ -843,6 +843,8 @@ def edit_character_image(
     seed: int | None = None,
     canvas_width: int | None = None,
     canvas_height: int | None = None,
+    matte: bool = False,
+    matte_tol: float | None = None,
 ) -> str:
     """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
     image with a plain-English instruction, via FLUX Kontext dev as a pure
@@ -852,6 +854,23 @@ def edit_character_image(
     landscape action panel (1600x900) from a portrait character reference.
     Default (both None) matches the reference image's own aspect ratio, same
     as before this parameter existed. Supply both or neither.
+
+    matte: key the result to a transparent RGBA cutout, ready to drop onto a
+    background plate (compose_panel, or a plate from webcomic-background-mcp).
+    Off by default because it only makes sense when the edit was rendered on a
+    clean backdrop — a story panel with real scenery has nothing to key.
+    Uses tools/cutout.py's border-connected keying, NOT rembg: the backdrop is
+    whatever is connected to the frame edge AND close to the border colour,
+    which keeps white, black and skin inside the figure regardless of their
+    value, and takes the cast shadow with it.
+
+    matte_tol: keying tolerance. Omit to MEASURE it from this image (Otsu over
+    the distance-to-backdrop histogram) rather than guess — tolerance is
+    genuinely per-image; live values ranged 14 to 120 across two characters.
+    The measured number is always reported so you can re-run with an override.
+    Watch for `pale_figure_risk` in the response: silver hair or a cream costume
+    sits close to a pale backdrop and the measurement runs high there, which
+    bites into the figure's edge. Lower matte_tol if you see it.
 
     Validated for LOCAL fixes on a pose already facing the right direction —
     e.g. "show both of his hands fully visible hanging at his sides, relaxed
@@ -885,7 +904,28 @@ def edit_character_image(
             canvas_width=canvas_width, canvas_height=canvas_height)
     except comfy.ComfyUIError as e:
         return f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
-    return (f"Edited image: {edited_path}\n"
+    matte_note = ""
+    if matte:
+        try:
+            from tools.cutout import key_cutout, measure_backdrop_tol
+            if matte_tol is None:
+                tol, stats = measure_backdrop_tol(edited_path)
+            else:
+                tol, stats = float(matte_tol), {"tolerance": float(matte_tol),
+                                                "measured": False}
+            cut = os.path.splitext(edited_path)[0] + "_cut.png"
+            key_cutout(edited_path, cut, backdrop_tol=tol)
+            matte_note = f"Matted cutout: {cut}\n  keying: {stats}\n"
+            if stats.get("pale_figure_risk"):
+                matte_note += ("  WARNING pale_figure_risk — part of the figure sits "
+                               "close to the backdrop colour; check the silhouette for "
+                               "bites out of pale hair or costume, and re-run with a "
+                               "lower matte_tol if so.\n")
+            matte_note += "  Drop onto a plate with compose_panel.\n"
+        except Exception as e:
+            matte_note = f"Matting failed ({type(e).__name__}: {e}) — the raw edit above is fine.\n"
+
+    return (f"Edited image: {edited_path}\n{matte_note}"
             f"Scan the WHOLE figure before trusting this — head, collar/"
             f"neckline, hands, legs, shoes — not just the region the "
             f"instruction targeted; a local edit can succeed exactly where "

@@ -82,6 +82,64 @@ def key_cutout(src: str, out: str, box=None, drop_skin: bool = False,
     return out
 
 
+def measure_backdrop_tol(src: str, box=None) -> tuple[float, dict]:
+    """Suggest a `backdrop_tol` for this specific image instead of guessing one.
+
+    Tolerance is per-image and has to be measured -- a pale costume sits ~20 RGB
+    from a white backdrop while a cast shadow sits ~100, so one global default
+    either eats the costume or keeps the shadow. Live values ranged 14 to 120
+    across two characters, which is why this exists.
+
+    Method: take the backdrop colour from the border, build the distance map,
+    and split it with Otsu. The backdrop is the near mode, the figure the far
+    one; the threshold that separates them IS the tolerance. Returns the value
+    plus the stats behind it, so a caller can report the number rather than
+    silently applying it.
+    """
+    im = Image.open(src).convert("RGB")
+    if box:
+        im = im.crop(box)
+    a = np.array(im).astype(float)
+
+    # Backdrop colour = median of a border ring, robust to a figure touching an edge.
+    k = max(2, min(a.shape[0], a.shape[1]) // 50)
+    ring = np.concatenate([a[:k].reshape(-1, 3), a[-k:].reshape(-1, 3),
+                           a[:, :k].reshape(-1, 3), a[:, -k:].reshape(-1, 3)])
+    bg = np.median(ring, axis=0)
+
+    dist = np.sqrt(((a - bg) ** 2).sum(2)).ravel()
+    hist, edges = np.histogram(dist, bins=256, range=(0, 442))
+    hist = hist.astype(float)
+    total = hist.sum()
+    if total == 0:
+        return 120.0, {"backdrop_rgb": tuple(bg.round().astype(int)), "note": "empty"}
+
+    # Otsu: maximise between-class variance over the distance histogram.
+    w0 = np.cumsum(hist) / total
+    centres = (edges[:-1] + edges[1:]) / 2
+    m0 = np.cumsum(hist * centres) / total
+    mt = m0[-1]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        between = (mt * w0 - m0) ** 2 / (w0 * (1 - w0))
+    between[~np.isfinite(between)] = 0
+    tol = float(centres[int(np.argmax(between))])
+
+    # Otsu finds the valley between backdrop and figure, but it runs high when
+    # the FIGURE contains near-backdrop values -- silver hair on a 236-grey
+    # backdrop measured 135 and ate a wedge out of the hair, where 40-90 all
+    # keyed it cleanly. Cap at 110 and flag the risk rather than trusting it.
+    raw = tol
+    tol = float(min(max(tol, 10.0), 110.0))
+    covered = float((dist < tol).mean())
+    return tol, {
+        "backdrop_rgb": tuple(int(v) for v in bg.round()),
+        "tolerance": round(tol, 1),
+        "otsu_raw": round(raw, 1),
+        "backdrop_fraction": round(covered, 3),
+        "pale_figure_risk": bool(raw > 110.0),
+    }
+
+
 def _largest_blob(mask: np.ndarray) -> np.ndarray:
     """Keep only the biggest connected region, dropping keying speckle.
 
