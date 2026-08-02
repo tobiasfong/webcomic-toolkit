@@ -23,6 +23,12 @@ straight into this pipeline as animated panels.
 Give the agent a folder of artwork and a song; it assembles and renders a
 YouTube-Shorts-style video:
 
+- 🥁 **Beat-synced editing** — a dependency-free analysis pass extracts tempo,
+  beat grid and loudness envelope from your track, then every cut lands exactly
+  on a downbeat. Panels are timed in *bars*, not seconds
+- 🎨 **Anime grade** — highlight-thresholded bloom/halation, film grain,
+  vignette, white impact flashes and zoom punches on downbeats, with bloom
+  riding the music's loudness envelope
 - 🎥 **Per-panel camera motion** — zoom/pan (Ken Burns) over stills; tall
   webtoon pages get the scroll-down effect (`panDown`)
 - 🎞️ **Video panels** — drop in animated clips (image-to-video output,

@@ -15,11 +15,15 @@ import {
   FPS,
   TRANSITION_FRAMES,
   BACKGROUND_COLOR,
+  beatSync,
+  grade,
   type Panel,
   type TextOverlay,
   type OverlayPosition,
 } from "./data/manhwa-panels";
 import { Effects } from "./effects/Effects";
+import { Grade, FadeInOut, envelopeAt } from "./effects/Grade";
+import { beatMap } from "./data/beats";
 
 // 日本語対応フォント（オーバーレイ文字用）/ Japanese-capable font for overlays
 const { fontFamily } = loadFont("normal", {
@@ -32,12 +36,22 @@ const T = TRANSITION_FRAMES;
 // 動画クリップ（Kling/Pika等）か静止画かを拡張子で判定 / video clip vs still image
 const isVideo = (src: string) => /\.(mp4|webm|mov|m4v)$/i.test(src);
 
+/** 1小節の秒数 / seconds per bar (4 beats) */
+const barSeconds = beatMap.beatInterval * 4;
+
 // パネルのメディア（静止画 or 動画）。動画は音声をミュート（BGM優先）
-const Media: React.FC<{ src: string; video: boolean; style: React.CSSProperties }> = ({
-  src,
-  video,
-  style,
-}) => (video ? <OffthreadVideo src={src} style={style} muted /> : <Img src={src} style={style} />);
+const Media: React.FC<{
+  src: string;
+  video: boolean;
+  style: React.CSSProperties;
+  /** 再生速度（クリップ尺をパネル尺に合わせる） */
+  playbackRate?: number;
+}> = ({ src, video, style, playbackRate }) =>
+  video ? (
+    <OffthreadVideo src={src} style={style} muted playbackRate={playbackRate} />
+  ) : (
+    <Img src={src} style={style} />
+  );
 
 // テキストの水平寄せ / horizontal alignment within a row
 const hJustify = (pos: OverlayPosition): React.CSSProperties["justifyContent"] =>
@@ -108,16 +122,47 @@ const Overlays: React.FC<{ overlays?: TextOverlay[] }> = ({ overlays }) => {
   );
 };
 
-// 各パネルの開始フレームと長さを計算（クロスフェード分だけ重ねる）
-// Compute each panel's start frame and length, overlapping by T for crossfades.
+/**
+ * 各パネルのタイミングを計算 / Compute panel timings.
+ *
+ * ビート同期時は、各カット時刻を拍のグリッド上に置き、ディゾルブが
+ * 「拍の頭で完了する」ように T フレーム手前から重ねます（拍をまたがない）。
+ * 前のパネルはフェードアウトさせず、新しいパネルが上に乗って消す方式なので
+ * クロスフェード中に暗く沈みません。
+ */
 export const getPanelTimings = () => {
-  let cursor = 0;
-  const timings = panels.map((p, i) => {
-    const frames = Math.round(p.durationInSeconds * FPS);
-    const start = i === 0 ? 0 : cursor - T;
-    cursor = start + frames;
-    return { start, frames };
+  const synced = beatSync.enabled && panels.some((p) => p.bars);
+
+  // カット時刻（秒）: cuts[i] = パネル i が完全に現れる時刻
+  const cuts: number[] = [0];
+  if (synced) {
+    let bars = 0;
+    for (const p of panels) {
+      bars += p.bars ?? p.durationInSeconds / barSeconds;
+      // 最初のカット以外は拍グリッド（offset + n小節）に正確に乗せる
+      cuts.push(beatMap.offset + bars * barSeconds);
+    }
+  } else {
+    let t = 0;
+    for (const p of panels) {
+      t += p.durationInSeconds;
+      cuts.push(t);
+    }
+  }
+
+  const cutFrames = cuts.map((t) => Math.round(t * FPS));
+  const timings = panels.map((_, i) => {
+    const start = i === 0 ? 0 : Math.max(0, cutFrames[i] - T);
+    return {
+      start,
+      frames: Math.max(1, cutFrames[i + 1] - start),
+      /** フェードイン完了までのフレーム数（0 = 即座に表示） */
+      fadeIn: i === 0 ? 0 : cutFrames[i] - start,
+      /** このパネルが実際に見えている秒数（動画の再生速度計算用） */
+      seconds: (cutFrames[i + 1] - start) / FPS,
+    };
   });
+
   const totalFrames = timings.length
     ? timings[timings.length - 1].start + timings[timings.length - 1].frames
     : FPS;
@@ -149,27 +194,35 @@ const kenBurns = (motion: Panel["motion"], progress: number): string => {
   }
 };
 
-const PanelView: React.FC<{ panel: Panel; frames: number; isFirst: boolean; isLast: boolean }> = ({
-  panel,
-  frames,
-  isFirst,
-  isLast,
-}) => {
+const PanelView: React.FC<{
+  panel: Panel;
+  frames: number;
+  fadeIn: number;
+  seconds: number;
+}> = ({ panel, frames, fadeIn, seconds }) => {
   const frame = useCurrentFrame();
   const progress = interpolate(frame, [0, frames], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
-  // フェードイン（最初以外）とフェードアウト（最後以外）でクロスフェード
-  const fadeIn = isFirst ? 1 : interpolate(frame, [0, T], [0, 1], { extrapolateRight: "clamp" });
-  const fadeOut = isLast
-    ? 1
-    : interpolate(frame, [frames - T, frames], [1, 0], { extrapolateLeft: "clamp" });
-  const opacity = Math.min(fadeIn, fadeOut);
+  // 新しいパネルが上に重なって前を消すので、フェードアウトは不要
+  // (fading the new panel in ON TOP avoids the mid-dissolve dip to black)
+  const opacity =
+    fadeIn <= 0
+      ? 1
+      : interpolate(frame, [0, fadeIn], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
 
   const src = staticFile(panel.src);
   const video = isVideo(panel.src);
+  // クリップ尺 ≠ パネル尺 なら再生速度でフィット（カメラワークの尻切れ防止）
+  const playbackRate =
+    video && panel.clipSeconds && seconds > 0
+      ? Math.max(0.25, Math.min(4, panel.clipSeconds / seconds))
+      : undefined;
 
   // ショーケース表示（角川ラノベ広告風）：単色背景 + 影付きの表紙 + 余白クレジット。静止。
   if (panel.showcase) {
@@ -189,6 +242,7 @@ const PanelView: React.FC<{ panel: Panel; frames: number; isFirst: boolean; isLa
           <Media
             src={src}
             video={video}
+            playbackRate={playbackRate}
             style={{
               maxWidth: pos === "left" || pos === "right" ? `${size}%` : "100%",
               maxHeight: pos === "left" || pos === "right" ? "100%" : `${size}%`,
@@ -210,6 +264,7 @@ const PanelView: React.FC<{ panel: Panel; frames: number; isFirst: boolean; isLa
         <Media
           src={src}
           video={video}
+          playbackRate={playbackRate}
           style={{
             width: "100%",
             height: "100%",
@@ -224,6 +279,7 @@ const PanelView: React.FC<{ panel: Panel; frames: number; isFirst: boolean; isLa
         <Media
           src={src}
           video={video}
+          playbackRate={playbackRate}
           style={{
             maxWidth: "100%",
             maxHeight: "100%",
@@ -243,19 +299,50 @@ const PanelView: React.FC<{ panel: Panel; frames: number; isFirst: boolean; isLa
 
 export const Manhwa: React.FC = () => {
   const { timings, totalFrames } = getPanelTimings();
+  const frame = useCurrentFrame();
 
-  return (
+  // ショーケース（白背景の表紙）ではグレードを抑える。
+  // 周辺減光が白地を汚すと「印刷広告」感が消えるため。
+  let damp = 0;
+  panels.forEach((p, i) => {
+    if (!p.showcase) return;
+    const t = timings[i];
+    if (frame < t.start || frame >= t.start + t.frames) return;
+    const ramp =
+      t.fadeIn > 0
+        ? interpolate(frame, [t.start, t.start + t.fadeIn], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          })
+        : 1;
+    damp = Math.max(damp, ramp);
+  });
+
+  const shots = (
     <AbsoluteFill style={{ backgroundColor: BACKGROUND_COLOR }}>
       {panels.map((panel, i) => (
         <Sequence key={i} from={timings[i].start} durationInFrames={timings[i].frames}>
           <PanelView
             panel={panel}
             frames={timings[i].frames}
-            isFirst={i === 0}
-            isLast={i === panels.length - 1}
+            fadeIn={timings[i].fadeIn}
+            seconds={timings[i].seconds}
           />
         </Sequence>
       ))}
+    </AbsoluteFill>
+  );
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: BACKGROUND_COLOR }}>
+      {grade ? (
+        <Grade config={grade} damp={damp}>
+          {shots}
+        </Grade>
+      ) : (
+        shots
+      )}
+      <FadeInOut totalFrames={totalFrames} />
       {bgm && (
         <Audio
           src={staticFile(bgm.src)}

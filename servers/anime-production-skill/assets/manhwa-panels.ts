@@ -66,8 +66,19 @@ export interface Panel {
   /**
    * この絵/クリップを表示する秒数。
    * 動画パネルの場合はクリップの長さに合わせてください（短いと最終フレームで静止します）。
+   * `bars` を指定し beatSync が有効な場合は無視されます。
    */
   durationInSeconds: number;
+  /**
+   * 小節数（1小節 = 4拍）。beatSync 有効時はこちらが優先され、
+   * カットが必ず拍の頭に来ます。ティーザーは 2小節が基本、見せ場は 3–4小節。
+   */
+  bars?: number;
+  /**
+   * 動画クリップの実際の長さ（秒）。パネル尺と違う場合、再生速度を調整して
+   * カメラワーク全体をパネル尺に収めます（尻切れ防止）。
+   */
+  clipSeconds?: number;
   /** カメラの動き（ケンバーンズ効果）。省略時は zoomIn。動画パネルでは無視されます。 */
   motion?: PanelMotion;
   /** パーティクル効果（複数可）。例: ["twinkle", "shootingStars"] */
@@ -83,8 +94,29 @@ export const FPS = 30;
 export const WIDTH = 1080;
 export const HEIGHT = 1920; // 縦型 9:16 / vertical Shorts
 
-/** パネル間のクロスフェード長（フレーム）。30fpsで20=約0.67秒 */
-export const TRANSITION_FRAMES = 20;
+/**
+ * パネル間のクロスフェード長（フレーム）。ディゾルブは拍の頭で「完了」します。
+ * ビート同期時は短いほど切れ味が出ます（30fpsで6 = 0.2秒 = 150BPMの8分音符）。
+ */
+export const TRANSITION_FRAMES = 6;
+
+// --- ビート同期 / Beat sync ---
+// `tools/extract-beats.mjs <mp3>` で src/data/beats.ts を生成してから有効化。
+// 有効にすると各パネルの `bars` から尺が決まり、カットが必ず拍に乗ります。
+export const beatSync = { enabled: false };
+
+// --- 仕上げ / Post-processing grade（src/effects/Grade.tsx 参照）---
+// 数値はすべて省略可。null にすると仕上げ処理そのものを無効化。
+export const grade: import("../effects/Grade").GradeConfig | null = {
+  bloom: 0.3,
+  grain: 0.1,
+  vignette: 0.32,
+  flash: 0.16,
+  punch: 0.01,
+  audioReactive: 0.55,
+  saturation: 1.06,
+  contrast: 1.04,
+};
 
 /** 背景色（絵がフレームを覆わない場合に見える色） */
 export const BACKGROUND_COLOR = "#000000";
@@ -109,13 +141,11 @@ export const bgm: { src: string; volume: number; fadeOutSeconds?: number } | nul
 //       { text: "Art・Story・Lyrics: Tomoyuki", position: "bottom-left", fontSize: 22 },
 //     ],
 //   },
-// 表紙のショーケース例 / cover showcase example (Kadokawa-LN-ad style):
+// 例 / example — beat-synced shot list:
+//   { src: "panels/01.mp4", durationInSeconds: 3.2, bars: 2, clipSeconds: 4, effects: ["sparkles"] },
 //   {
-//     src: "panels/cover.jpg",
-//     durationInSeconds: 5.5,
+//     src: "panels/cover.jpg", durationInSeconds: 4.8, bars: 3,
 //     showcase: { background: "#ffffff", artPosition: "top", artSize: 0.78 },
-//     overlays: [
-//       { text: "Story: ...\nIllustrations: ...", position: "bottom-center", fontSize: 30, plain: true },
-//     ],
+//     overlays: [{ text: "Story: ...", position: "bottom-center", fontSize: 30, plain: true }],
 //   },
 export const panels: Panel[] = [];

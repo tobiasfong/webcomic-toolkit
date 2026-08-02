@@ -18,7 +18,7 @@ NanoBanana Pro / VOICEVOX are required (see "Scope of tools" below).
 
 ## One-time setup (agent-executable)
 
-Target state: a Remotion project with this skill's three source files installed.
+Target state: a Remotion project with this skill's engine files installed.
 Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
 
 1. **Node.js 18+** — check `node --version`. If missing (Windows):
@@ -33,8 +33,11 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
 
 3. **Install this skill's engine** — copy from this skill's `assets/`:
    - `assets/manhwa-panels.ts` → `<project>/src/data/manhwa-panels.ts`
+   - `assets/beats.ts`         → `<project>/src/data/beats.ts` (placeholder; regenerated in step 6)
    - `assets/Manhwa.tsx`       → `<project>/src/Manhwa.tsx`
    - `assets/Effects.tsx`      → `<project>/src/effects/Effects.tsx`
+   - `assets/Grade.tsx`        → `<project>/src/effects/Grade.tsx`
+   - `assets/tools/extract-beats.mjs` → `<project>/tools/extract-beats.mjs`
 
 4. **Register the composition** in `<project>/src/Root.tsx`:
    ```tsx
@@ -46,6 +49,13 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
    ```
 
 5. **Verify**: `npx remotion compositions src/index.ts` should list `Manhwa`.
+
+6. **Beat map** (only once the user has supplied music) — from `<project>`:
+   `node tools/extract-beats.mjs public/bgm/<song>.mp3`
+   This overwrites `src/data/beats.ts` with the real tempo/beat grid. Then set
+   `beatSync.enabled = true` in `manhwa-panels.ts` and give panels `bars`.
+   Until this is run, the shipped placeholder keeps everything compiling with
+   audio-reactive effects inert.
 
 ### Known gotchas (each of these cost real debugging time — check here first)
 
@@ -63,6 +73,18 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
   as fake `NativeCommandError` noise — not real failures, check exit state.
 - **Long/Japanese file paths**: copy media into the project with short ASCII
   names (e.g. `01-intro.mp4`, `bgm/theme.mp3`); use `-LiteralPath` in PowerShell.
+- **`extract-beats.mjs` can't spawn npx** on Node 20+/24 (`spawnSync npx.cmd
+  EINVAL`). It resolves Remotion's bundled ffmpeg binary directly out of
+  `node_modules/@remotion/compositor-*/`; if you port it, keep that, don't
+  shell out to `npx remotion ffmpeg`.
+- **Bloom must threshold the highlights.** `backdrop-filter: brightness(...)`
+  alone lifts the blacks and the whole frame goes milky. Crush the darks first
+  (`contrast(2.6)`) so only highlights survive the `screen` blend — measured,
+  this is the difference between "graded" and "hazy".
+- **Beat detection can pick an octave.** Sanity-check the reported BPM against
+  the median inter-onset interval before trusting cut timings; alignment
+  percentages must be normalised for grid density (a denser grid catches more
+  onsets by chance) or you'll pick double-tempo.
 
 ## Usage
 
@@ -95,7 +117,19 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
 - **Showcase panels** (cover shots, Kadokawa-LN-ad style): add
   `showcase: { background: "#ffffff", artPosition: "top", artSize: 0.78 }` —
   solid background, drop-shadowed art, credits in the empty space, static
-  (Ken Burns is ignored). `artPosition`: `top|left|right|center`.
+  (Ken Burns is ignored). `artPosition`: `top|left|right|center`. The grade
+  auto-damps on these panels so the vignette can't dirty a clean white.
+- **Beat sync** — with a beat map present and `beatSync.enabled = true`, give a
+  panel `bars: 2` instead of relying on `durationInSeconds`. Cuts then land
+  exactly on downbeats (verified to 0.0ms). 2 bars is the teaser default; give
+  money shots 3–4. Also set `clipSeconds` on video panels (the clip's true
+  length) so the engine retimes playback to fit the bar count instead of
+  truncating the camera move.
+- **Grade** (`grade` in the config, `null` to disable): `bloom`, `grain`,
+  `vignette`, `flash` (white hit on downbeats), `punch` (zoom hit),
+  `audioReactive` (bloom rides the loudness envelope), `saturation`, `contrast`.
+  Bloom is applied via `backdrop-filter` — the panels are never rendered twice,
+  so it costs one pass no matter how many video layers are underneath.
 - **Aspect handling**: every panel is shown complete (`contain`) over a blurred
   cover-fill of itself — landscape art gets soft bands above/below
   (YouTube-Shorts style), nothing is cropped.
