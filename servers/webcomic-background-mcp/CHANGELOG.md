@@ -27,17 +27,23 @@ tight, but there is no lower-quality fallback.**
 - **The entire SD1.5 pipeline.** `workflow.py` is deleted. The `solstice`,
   `counterfeit` and `dreamshaper` checkpoints, the SD1.5 ControlNets, and the
   `ManhwaUltimate` / `fantasy-style` recipe are no longer used or downloaded.
-- **`character_path`** on `generate_background` — the "build a plate *around*
-  my drawn character" mode. It was a two-pass SD1.5 inpaint that was never
-  ported to FLUX, so it could not survive the removal. Its job is now better
-  served by `character-panel-mcp` (which generates the figure) plus that
-  server's `compose_panel` (which composites it) — generate the plate here,
-  composite there.
+- **`character_path`** on `generate_background` — the two-pass SD1.5 inpaint.
+  **The workflow it served is not gone**, only that mechanism: use the new
+  `match_canvas_to` (below) to size a plate to your character, then composite
+  with `character-panel-mcp`'s `compose_panel`, which accepts any RGBA PNG —
+  **including your own hand-drawn characters**, not just generated ones. Three
+  explicit steps instead of one implicit one, and it works with art this server
+  never touched.
 - The SD1.5 "manhwa recipe" constants. FLUX's terse equivalent lives in
   `flux_workflow.FLUX_PROMPT_SUFFIX`; the old suffix's "painterly soft
   lighting, atmospheric perspective, cinematic" wording actively harmed FLUX.
 
 ### Added
+- **`match_canvas_to`** on `generate_background` — point it at a character image
+  and the plate is rendered at that canvas size, with the response reporting the
+  `height_px` / `feet_x` / `feet_y` to hand to `compose_panel`. This is the
+  practical half of the old `character_path` mode, minus the SD1.5 inpaint: it
+  sets dimensions, it does not condition the render.
 - **`comfy.py`** — the ComfyUI plumbing (URL/launcher config, auto-launch,
   image upload, graph submit/poll) extracted out of `workflow.py` before it was
   deleted. Model-agnostic by design; `flux_workflow.py` imports from it. Mirrors

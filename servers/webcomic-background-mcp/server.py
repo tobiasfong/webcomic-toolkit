@@ -51,6 +51,7 @@ def _recipe(prompt: str, extra_negative: str | None) -> str:
 def generate_background(
     prompt: str,
     sketch_path: str | None = None,
+    match_canvas_to: str | None = None,
     model: str = DEFAULT_MODEL,
     width: int = 768,
     height: int = 512,
@@ -93,6 +94,13 @@ def generate_background(
         prompt: Description of the scene (e.g. "hive city corridor at night, deep
             blue moonlight"). Avoid describing characters — this makes empty
             backgrounds to draw over. Put palette/mood in the prompt.
+        match_canvas_to: Path to a drawn character PNG. Sizes the plate to that
+            image's canvas so the two line up 1:1 when you composite — the
+            practical half of the old `character_path` mode, without the SD1.5
+            inpaint. The character is NOT used to condition the render (FLUX has
+            no equivalent path); it only sets the output dimensions, and the
+            response reports the numbers to hand to `compose_panel`. Long side is
+            capped for VRAM; dimensions are rounded to a multiple of 16.
         sketch_path: Optional rough perspective sketch (white lines on black) —
             ControlNet forces the output to match this composition/angle. Use an
             edge map of a reference (e.g. a Warhammer 40K hive photo via
@@ -122,6 +130,23 @@ def generate_background(
     """
     negative = _recipe(prompt, extra_negative)
 
+    canvas_note = ""
+    if match_canvas_to:
+        if not os.path.exists(match_canvas_to):
+            return f"match_canvas_to image not found: {match_canvas_to}"
+        from PIL import Image
+        with Image.open(match_canvas_to) as im:
+            cw, ch = im.size
+        MAX_SIDE = 1024                      # 6 GB VRAM ceiling for FLUX
+        k = min(1.0, MAX_SIDE / max(cw, ch))
+        width = max(256, int(cw * k) // 16 * 16)
+        height = max(256, int(ch * k) // 16 * 16)
+        canvas_note = (f"  canvas matched to {os.path.basename(match_canvas_to)} "
+                       f"({cw}x{ch}) -> {width}x{height}\n"
+                       f"  to composite: character height_px={height}, "
+                       f"feet_x={width // 2}, feet_y={height} "
+                       f"(character-panel-mcp's compose_panel)\n")
+
     location_ref_path = None
     if location:
         loc = world.get_location(location, project=project)
@@ -149,7 +174,7 @@ def generate_background(
             lora_strength=lora_strength,
             hires=hires,
         )
-        return f"Background generated: {out_path}"
+        return f"Background generated: {out_path}\n" + canvas_note
     except comfy.ComfyUIError as e:
         return (f"Generation failed: {e}\n"
                 f"Is ComfyUI running at {comfy.COMFY_URL}?")

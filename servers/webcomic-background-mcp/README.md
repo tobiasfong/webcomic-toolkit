@@ -52,19 +52,29 @@ generation backend is up.
 > ("grimdark", "dim lighting", "deep shadow"). They drag it toward semi-realistic
 > murk. Name the subject, let FLUX light it, then darken with `grade_plate`.
 
-### Drawing a character into the plate
+### Generate a background around your character
 
-Earlier versions had a `character_path` mode that built a plate *around* a drawn
-character. It was an SD1.5 two-pass inpaint and was removed with the SD1.5
-pipeline in v2.0.0.
+Still supported — the workflow survives v2.0.0, only the mechanism changed.
+The old `character_path` mode was an SD1.5 two-pass inpaint and went with the
+SD1.5 removal. What replaced it is three explicit steps instead of one implicit
+one, and it works with **your own hand-drawn characters**, not just generated
+ones:
 
-That job now splits across two tools, which does it better anyway:
-generate the plate here, then use the sibling
-**[`character-panel-mcp`](../character-panel-mcp/README.md)** to generate the
-figure and composite it (`compose_panel`) at a measured feet position and
-height. `generate_city_scene`'s `anchor_x`/`anchor_z` still reports the exact
-on-screen character height and feet line for a spot in a 3D city, which is what
-you feed that compositing step.
+1. **Size the plate to your character.** Pass `match_canvas_to=<character.png>`
+   to `generate_background`. The plate comes back at your character's canvas
+   size, and the response reports the exact `height_px` / `feet_x` / `feet_y` to
+   composite with. (The character is not used to condition the render — FLUX has
+   no equivalent to the old inpaint path — it only sets dimensions.)
+2. **Cut your character out**, if it isn't already transparent.
+   `character-panel-mcp`'s `tools/cutout.py` keys a figure off a flat backdrop,
+   including a scan or a drawing on white paper.
+3. **Composite**, with that server's `compose_panel` — it takes *any* RGBA PNG
+   and pastes it bottom-centred at a given feet position and height. It does not
+   care whether the figure was generated or drawn by hand.
+
+For a plate from `generate_city_scene`, use `anchor_x`/`anchor_z` instead of
+step 1: it reports the on-screen character height and feet line for a spot in
+the 3D city, with occlusion accounted for, which is exactly what step 3 wants.
 
 ## Architecture
 
