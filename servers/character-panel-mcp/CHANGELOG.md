@@ -33,7 +33,36 @@ of defaults, and ~1400 lines of graph code nobody executed.
 ### Changed
 
 - `generate_character_concept` now defaults to `model="flux_manwha"`.
-- Tool count 22 → 19.
+- Tool count 22 → 17 (three Tier-3 tools, two pose-map tools).
+
+- **The 3D pose-map generators — `generate_pose_map`, `generate_pose_depth_map`,
+  `mannequin.py`, `vrm_depth.py`, `vrm_scene.py`, `blender_scripts/` and the VRM
+  base meshes (~930 lines + 33 MB).** They forced direction structurally through
+  ControlNet and worked (~2/3 and ~3/3 seeds), but they fed
+  `generate_character_pose`, which has no image identity input. A
+  structurally-correct back view of nobody in particular cannot become a
+  reference for a specific character, and Kontext cannot rotate a viewpoint to
+  fix it afterward. `generate_turnaround_sheet` produces a genuine back view
+  **with the likeness intact** — which is what the real reference sheets used.
+  Removing IP-Adapter is what turned this machinery from redundant into unusable.
+
+  **ControlNet is NOT retired.** `generate_character_pose` still accepts any
+  control map via `pose_ref_path`, which is how `tools/sketch_to_lineart.py`
+  corrects hand-drawn anatomy (`pose_control_type="canny_auto"`).
+
+### Fixed
+
+- **FLUX txt2img was returning photorealistic people.** `CLEAN_BACKDROP_SUFFIX`
+  said "studio backdrop", "simple even lighting" and "clean sharp edges" — all
+  photography words, fighting `manwha_style` on every generation — and this
+  server had no style suffix at all. Added `FLUX_STYLE_SUFFIX` naming only the
+  medium (no lighting, mood or camera words). Verified live on a fixed seed:
+  distinct colours 857 → 382, luminance 0.577 → 0.786, photoreal → cel-shaded
+  manhwa. Applies to txt2img only; `edit_image()` and the turnaround sheet
+  inherit style from their reference. **This predated the migration** — it was
+  invisible because every finished panel went through Kontext.
+
+
 
 ### What this costs, stated plainly
 

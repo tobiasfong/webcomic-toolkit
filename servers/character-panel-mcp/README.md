@@ -43,9 +43,9 @@ and direction is handled by generating a turnaround sheet first
 (`generate_turnaround_sheet`), then conditioning on whichever view you need.
 
 `generate_character_pose` earns its place for the case nothing else reaches: a
-genuine back view, forced structurally by `generate_pose_map` /
-`generate_pose_depth_map`. Reference sheets are almost always frontal, and no
-amount of prompting or reference conditioning turns a character around.
+pose pinned by a control map you supply via `pose_ref_path` — which is how
+`tools/sketch_to_lineart.py` corrects hand-drawn anatomy. For a genuine back
+view, use `generate_turnaround_sheet` instead: it keeps the likeness.
 
 ### Other things that surprise people
 
@@ -65,7 +65,7 @@ production.
 
 ## What it does
 
-Nineteen tools:
+Seventeen tools:
 
 - **`register_character`** — add (or grow) a character's reference set in the bible.
   Accepts one or more images at once; calling it again on the same character
@@ -75,12 +75,6 @@ Nineteen tools:
 - **`generate_character_concept`** / **`crop_reference`** / **`generate_reference_sheet`**
   — **Concept Genesis**: get a character into the bible in the first place (see
   below), whether you're starting from nothing, a composite sheet, or one drawing.
-- **`generate_pose_map`** — synthesize an OpenPose control map from a posable 3D
-  skeleton at any angle (front, side, **genuine back view**), for when a text
-  prompt or a 2D reference photo can't force the direction (see below).
-- **`generate_pose_depth_map`** — a more reliable alternative to
-  `generate_pose_map` for back views (Step 10 below): a depth map rendered
-  from a real posable VRM mesh in Blender, instead of a line skeleton.
 - **`generate_character_pose`** — render the character in a new pose with optional
   ControlNet pose pinning, auto-matted to a clean RGBA cutout. No image identity
   input — see "How identity works" above.
@@ -153,7 +147,7 @@ IP-Adapter fighting the pose did get back-facing content into frame, but
 full-resolution review (hands and feet specifically, not just "does it face
 backward") found it came with a fused hand and hoof-like feet, and retrying reproduced
 the same failure. Reverted rather than ship a mechanism that trades wrong-direction
-for deformed. If you actually need a back view, use `generate_pose_map` +
+for deformed. If you actually need a back view, use `generate_turnaround_sheet` +
 `generate_character_pose` directly and curate across a few seeds by hand (see below)
 — a reviewed one-at-a-time flow, not something safe to fire unattended in bulk.
 
@@ -223,29 +217,34 @@ and not solved by further prompt/weight tuning. For a back view you actually nee
 `generate_character_pose`'s `pose_ref_path` (an actual back-facing photo, via
 OpenPose) forces the angle structurally instead of hoping the prompt gets there.
 
-## Genuine back views: the 3D mannequin
+## Genuine back views
 
-A text prompt saying "back view" and a real photo fed through OpenPose both hit
-the same wall: the checkpoint can paint back-body geometry, but the *pose
-conditioning itself* never unambiguously says "this is the back" — a 2D photo's
-skeleton is *extracted* by guessing left/right limb assignment from appearance,
-which has no way to encode facing-away-from-camera, so every clean single-figure
-result relaxes back toward front/profile. (~12 tuning configurations confirmed
-this the hard way — see CHANGELOG's "back-view campaign.")
+Reference sheets are almost always frontal, and a text prompt saying "back view"
+does not work — the model can paint back-body geometry, but nothing in the
+conditioning unambiguously says *this is the back*, so results relax toward
+front or profile. (~12 tuning configurations confirmed this the hard way; see
+CHANGELOG's "back-view campaign".)
 
-`generate_pose_map(preset, yaw)` sidesteps extraction entirely: it poses and
-rotates a 3D skeleton, then projects it straight into an OpenPose-format map.
-At `yaw=180` the left/right limb colors flip and the face keypoints vanish —
-exactly like a real back-view annotation, because it's built from an actual 3D
-angle instead of guessed from a flat image. Feed the result to
-`generate_character_pose(pose_ref_path=<map>, pose_preprocess=False, pose_strength=1.4)`.
+**The answer is `generate_turnaround_sheet`** — FLUX Kontext plus a
+turnaround-sheet LoRA, which produces a multi-pose sheet (typically 7 panels)
+from one reference image, including a genuine back view, **with the character's
+identity intact**. Crop the view you want and register it; every later
+generation can then condition on it.
 
-**It works, but it's a curate-a-few-seeds tool, not a one-shot button** —
-identical settings with a different seed can still come back front-facing.
-Generate 2-3 seeds at `pose_strength≈1.4-1.5` for yaw≥135° and pick the hit,
-same discipline as everything else in this server. `identity_mode="off"` (or a
-low `ip_adapter_weight`) is recommended at this strength until identity
-retention on strongly-rotated poses gets its own testing pass.
+> **Retired:** earlier versions shipped `generate_pose_map` and
+> `generate_pose_depth_map` — a 3D skeleton and a posable VRM mesh that forced
+> direction structurally through ControlNet. They worked (~2/3 and ~3/3 seeds
+> respectively), but they fed `generate_character_pose`, which has **no image
+> identity input**. A structurally-correct back view of *nobody in particular*
+> can't become a reference for a specific character, and Kontext cannot rotate a
+> viewpoint to fix it afterward. The turnaround sheet solves the same problem
+> without discarding the likeness, so the 3D machinery, its VRM assets and its
+> Blender scripts were removed.
+>
+> ControlNet itself is **not** retired: `generate_character_pose` still accepts
+> `pose_ref_path` with any control map you supply, which is how
+> `tools/sketch_to_lineart.py` corrects hand-drawn anatomy
+> (`pose_control_type="canny_auto"`).
 
 ## How a panel gets made
 
@@ -542,53 +541,6 @@ HuggingFace), `manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safete
 for these yet — fetched by hand during the investigation; see `flux_workflow.py`'s
 module docstring for the exact filenames each constant expects.
 
-## Step 10 — `generate_pose_depth_map`: a more reliable back view (optional, needs Blender)
-
-> Added 2026-07-22/23 (ARCHITECTURE.md §8b.10) — Step 9's mannequin-skeleton
-> ControlNet back view is real but capped at ~2/3-seed direction-lock
-> reliability. A depth map rendered from a real posable VRM mesh
-> (`assets/Base_Male.vrm`) instead of a line skeleton reaches **~3/3** once
-> properly calibrated. Same `flux_controlnet_union_alpha.safetensors` model
-> you already have — just a different `SetUnionControlNetType` mode
-> (`pose_control_type="depth"` instead of the default `"openpose"`).
-
-**This needs a separate Blender install** — `pip install bpy` doesn't work for
-this project (the pip package skips Python 3.12 entirely, jumping 3.11→3.13),
-so this drives a real Blender executable via subprocess, the same pattern
-`workflow.py` already uses for ComfyUI. One-time setup:
-
-1. Download the portable Blender 5.2 LTS zip (no installer needed) from
-   [blender.org/download](https://www.blender.org/download/) and unzip it
-   anywhere.
-2. Install the community [VRM Add-on for Blender](https://github.com/saturday06/VRM-Addon-for-Blender)
-   (the "Extension" package, not the legacy "-addon" one) headlessly:
-   ```
-   blender.exe --background --python-expr "
-   import bpy
-   bpy.ops.extensions.package_install_files(
-       filepath=r'<path to VRM_Addon_for_Blender-Extension-*.zip>',
-       repo='user_default', enable_on_install=True)
-   bpy.ops.wm.save_userpref()"
-   ```
-   The `save_userpref()` call is required — without it the addon silently
-   reverts to disabled on the next headless launch.
-3. Set `WEBCOMIC_CHAR_BLENDER` to your `blender.exe` path.
-
-**Usage**: `generate_pose_depth_map(yaw=180)` → feed the result to
-`generate_character_pose(pose_ref_path=<that path>, pose_preprocess=False,
-model="flux_manwha", pose_control_type="depth")`. Only the "standing" pose
-is implemented.
-
-**This is a pose/anatomy tool, not a costume tool** — the VRM mesh wears a
-plain t-shirt, and describing a different outfit in the prompt causes a
-text-vs-geometry conflict (ragged texture-clash artifacts, confirmed live).
-`pose_control_type="depth"` automatically drops the character bible's
-`description` from the prompt for exactly this reason. Once you have a clean
-structural result, dress it in the real costume via `edit_character_image` as
-a separate pass — validated end-to-end, including catching and fixing a real
-logical error (a necktie rendered on the *back* of a back-view figure — a tie
-is front-only) with a second, precise edit.
-
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |
@@ -627,7 +579,6 @@ is front-only) with a second, precise edit.
   `ComfyUI/custom_nodes/comfyui_controlnet_aux/ckpts/lllyasviel/Annotators/`.
 - **Asked for a back view, got a profile/front view** — text prompts and 2D-photo
   `pose_ref_path` both hit this (see the SDXL section above). Use
-  `generate_pose_map(yaw=180)` + `pose_preprocess=False` + `pose_strength≈1.4-1.5`
   instead — and generate a couple of seeds, it's stochastic.
 - **`detail_fix=True` fails with an unknown node / `FaceDetailer`/
   `UltralyticsDetectorProvider` error** — `ComfyUI-Impact-Pack`/`ComfyUI-Impact-Subpack`
@@ -654,7 +605,6 @@ yet), and deterministic panel compositing. Concept Genesis
 is live-tested end-to-end against real character art, which surfaced and fixed
 real tuning bugs (see CHANGELOG). The since-retired SDXL prototype
 (`model="mj_manga_sdxl"`) fixes anatomy/backdrop quality outright, verified
-live on a 6 GB GPU. The 3D mannequin (`generate_pose_map`) solves genuine back
 views after ~12 failed 2D-extraction configurations — live-verified, with an
 honest stochastic caveat documented above and in CHANGELOG. **FLUX (Step 9,
 `model="flux_manwha"`) is now wired in** — `flux_workflow.py`, plus
@@ -667,7 +617,6 @@ is not supported with FLUX at all (untested combination, raises an error).
 SDXL/SD1.5 remain fully intact and are still the default — FLUX is an
 additional option, same non-migration philosophy as the SDXL prototype.
 **A second, more reliable back-view path landed the same arc** (Step 10,
-`generate_pose_depth_map` + `pose_control_type="depth"`): a real VRM mesh's
 depth map, rendered via a separate Blender install, reaches ~3/3-seed
 direction-lock reliability once properly calibrated — a real improvement
 over the mannequin skeleton's ~2/3, validated live including a full

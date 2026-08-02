@@ -20,7 +20,7 @@ CHANGELOG's "FLUX exploration" entry for the full record, including what did
 NOT work):
 
 1. `generate()` / `generate_concepts()` — base FLUX txt2img, optionally with
-   the mannequin's ControlNet pose map for back views (~2/3-seed reliable —
+   a supplied ControlNet control map (~2/3-seed reliable for direction —
    an alpha-quality community ControlNet adapter, not a tuning problem) and/or
    a hand-only Impact Pack detail_fix pass (denoise=0.7, needed — 0.55 was
    insufficient). No IP-Adapter/identity_mode support — that combination with
@@ -97,7 +97,7 @@ FLUX_GUIDANCE = float(os.environ.get("WEBCOMIC_CHAR_FLUX_GUIDANCE", "3.5"))
 # enum, not guessed from docs). Explicitly alpha-quality, which is the likely
 # cause of "openpose" mode's seed-dependent (~2/3) direction-lock reliability
 # rather than a strength-tuning problem (see CHANGELOG) — "depth" mode
-# reaches ~3/3 once the depth map itself is properly calibrated (vrm_depth.py).
+# reaches ~3/3 once the depth map itself is properly calibrated.
 FLUX_CONTROLNET_UNION = os.environ.get(
     "WEBCOMIC_CHAR_FLUX_CONTROLNET", "flux_controlnet_union_alpha.safetensors")
 FLUX_DEFAULT_POSE_STRENGTH = float(os.environ.get("WEBCOMIC_CHAR_FLUX_POSE_STRENGTH", "0.8"))
@@ -260,16 +260,16 @@ def _build_base_graph(
 
     # ControlNet pose branch — two validated sources, selected by
     # pose_control_type:
-    #   "openpose" — mannequin.py's synthesized line-skeleton (used since
+    #   "openpose" — a supplied OpenPose-format skeleton map (used since
     #     v1.0.0), run through OpenposePreprocessor unless pose_preprocess is
-    #     False (the map is already OpenPose-format, e.g. from mannequin.py).
-    #   "depth" — vrm_depth.py's rendered depth map from the real VRM mesh
+    #     False when the map is already in OpenPose format.
+    #   "depth" — a rendered depth map from a posable 3D mesh
     #     (ARCHITECTURE.md §8b.9) — validated 2026-07-22/23 as MORE reliable
     #     for back views (3/3 seeds vs. ~2/3 for the skeleton), but ONLY once
     #     the depth map's near/far window is properly calibrated (see
-    #     vrm_depth.py) and ONLY with a costume-neutral prompt (the VRM mesh's
+    #     ) and ONLY with a costume-neutral prompt (a bare mesh's
     #     plain-shirt geometry conflicts with text describing a different
-    #     outfit — see flux_workflow.py's/vrm_depth.py's docstrings). Never
+    #     outfit will fight the prompt). Never
     #     run OpenposePreprocessor on a depth map — it isn't a pose skeleton.
     #   "canny" — a hand-drawn storyboard sketch (or any line art), run through
     #     CannyEdgePreprocessor to normalise it to the white-lines-on-black edge
@@ -406,11 +406,11 @@ def generate(
     pose_ref_path + ControlNet is the validated mechanism for back views, in
     two flavors selected by pose_control_type:
 
-    - "openpose" (default): mannequin.render_pose_map(yaw=180), pose_strength
+    - "openpose" (default): a supplied yaw=180 skeleton map, pose_strength
       =0.8, pose_preprocess=False. ~2/3-seed direction-lock reliability.
-    - "depth": vrm_depth.render_depth_map(yaw=180) — a real posable VRM
+    - "depth": a supplied yaw=180 depth map from a posable
       mesh's depth map, ~3/3-seed reliability once calibrated (see
-      vrm_depth.py). pose_preprocess is forced off automatically for this
+      ). pose_preprocess is forced off automatically for this
       mode. IMPORTANT: `prompt` must NOT describe the character's actual
       costume in this mode — the VRM mesh wears a plain t-shirt, and
       describing a different outfit causes a text-vs-geometry conflict
@@ -637,7 +637,7 @@ def generate_turnaround_sheet(
     """FLUX Kontext dev + the turnaround-sheet LoRA — see module docstring for
     the trigger-phrase fix this depends on (FLUX_TURNAROUND_PROMPT). One
     confirmed clean back view so far; not yet a measured reliability rate —
-    treat like the mannequin ControlNet path early on: generate, inspect the
+    treat like the ControlNet path early on: generate, inspect the
     whole figure (not just direction), reroll with a different seed if the
     back-view panel isn't genuinely clean.
 

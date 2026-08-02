@@ -34,13 +34,13 @@ users who don't already have a full reference set: no art at all
 (generate_reference_sheet — also the tool for on-ramp 3, an artist's own art;
 that on-ramp needs no new tool, just register_character on the drawing itself).
 
-Ships the 3D mannequin (ARCHITECTURE.md §8b.7/§8b.9) — generate_pose_map
-synthesizes an OpenPose control map from a posable 3D skeleton at any yaw angle,
-and generate_pose_depth_map renders a depth map from a real posable VRM mesh,
-both feeding generate_character_pose's pose_ref_path. This is the structural
-path to a genuine back view; 2D-photo pose extraction always relaxes back toward
-front-facing. Reliability is honest and stochastic: ~2/3 seeds for the line
-skeleton ("openpose"), ~3/3 for the VRM depth map once calibrated ("depth").
+generate_character_pose still accepts a control map via pose_ref_path (any
+OpenPose, depth or canny map you supply), which is how tools/sketch_to_lineart.py
+corrects hand-drawn anatomy. The 3D mannequin and VRM depth-map GENERATORS that
+used to feed it were removed with the SD path: they forced direction structurally
+but produced a figure with no identity, which cannot become a reference for a
+specific character. generate_turnaround_sheet gives a genuine back view WITH the
+likeness intact, which is what the finished sheets actually used.
 
 The Kontext tools are the ones that carry identity: generate_turnaround_sheet
 (Kontext + a turnaround-sheet LoRA — a multi-pose sheet from one reference
@@ -51,8 +51,8 @@ assemble Avery-style posters from already-existing images, as opposed to
 generate_reference_sheet's fresh-generation-per-view path.
 
 Exposes: register_character, get_character, list_characters, forget_character,
-list_projects, generate_character_concept, crop_reference, generate_pose_map,
-generate_pose_depth_map, generate_character_pose, generate_reference_sheet,
+list_projects, generate_character_concept, crop_reference,
+generate_character_pose, generate_reference_sheet,
 generate_turnaround_sheet, edit_character_image, compose_reference_sheet,
 compose_full_reference_sheet, apply_gradient_background, apply_vfx_overlay,
 compose_panel, check_status.
@@ -69,8 +69,6 @@ from mcp.server.fastmcp import FastMCP
 import characters
 import comfy
 import flux_workflow
-import vrm_depth
-import mannequin
 from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
 from tools.compose_sheet import compose_sheet as _compose_sheet
@@ -338,7 +336,7 @@ def _render_pose(
 
     pose_control_type="depth" (FLUX + pose_ref_path only, ARCHITECTURE.md
     §8b.9): the character's bible `description` is deliberately EXCLUDED from
-    the auto-built prompt here — the VRM depth mesh wears a plain t-shirt, and
+    the auto-built prompt here — a bare depth mesh has no costume, and
     including a costume description (the usual case) causes a text-vs-geometry
     conflict that produces ragged texture-clash artifacts. Only the name and
     the explicit `pose`/`prompt` text are used; apply the character's actual
@@ -384,122 +382,15 @@ def _render_pose(
         tier_note = f"style LoRA '{effective_lora}' + " + tier_note
     if pose_ref_path:
         if pose_control_type == "depth":
-            tier_note += (" + ControlNet pose (VRM depth map, ~3/3-seed reliable "
+            tier_note += (" + ControlNet pose (depth map, ~3/3-seed reliable "
                           "for back views once calibrated — see vrm_depth.py)")
         else:
-            tier_note += (" + ControlNet pose (synthesized mannequin map, ~2/3-seed "
+            tier_note += (" + ControlNet pose (skeleton map, ~2/3-seed "
                           "reliable for back views — reroll on a miss)" if not pose_preprocess
                           else " + ControlNet pose (OpenPose)")
     if detail_fix:
         tier_note += " + hand detail fix (no face pass — untested for FLUX)"
     return raw_path, tier_note
-
-
-@mcp.tool()
-def generate_pose_map(
-    preset: str = "standing",
-    yaw: float = 0.0,
-    width: int = 832,
-    height: int = 1216,
-    out: str | None = None,
-) -> str:
-    """Synthesize an OpenPose-format pose map from a 3D posable skeleton, at any
-    viewing angle — the fix for back/angled views that no prompt or reference-
-    photo tuning could reach (ARCHITECTURE.md §8b.7). A real 2D photo fed to
-    pose_ref_path gets its skeleton *extracted* by OpenposePreprocessor, which
-    guesses left/right limb assignment from appearance and can't tell the
-    person is facing away — so it always relaxes back toward front-facing.
-    This tool instead poses/rotates a 3D skeleton and projects it directly: at
-    yaw=180 the left/right assignment flips and face keypoints vanish, exactly
-    like a genuine back-view annotation, since it's built from an unambiguous
-    3D angle rather than guessed from a flat image.
-
-    Feed the output to generate_character_pose(pose_ref_path=<this path>,
-    pose_preprocess=False, ...) — required, since running the human-detector
-    preprocessor on an already-synthesized stick figure fails.
-
-    Validated recipe for a genuine back view (2026-07-19, after ~12 failed 2D-
-    extraction configs): yaw=180, pose_strength=1.4-1.5 (1.0 pins the pose but
-    drifts back to front-facing),
-    plus anti-duplicate negative terms (SHEET_NEGATIVE, or your own — "2boys",
-    "duplicate character", "fused body"). Stochastic, not deterministic —
-    identical settings with a different seed have produced a front-facing
-    figure instead. Generate 2-3 seeds and curate the hit.
-
-    Args:
-        preset: A named pose — "standing", "t_pose", "hands_behind_back",
-            "arms_crossed", or "walking". Add new presets in mannequin.py's
-            POSES dict (hand-authored joint coordinates, no IK).
-        yaw: Degrees around the vertical axis. 0 = facing viewer, 90 = their
-            left side toward viewer, 180 = seen from behind. Any value works
-            (e.g. 135 for a 3/4-back angle).
-        width / height: Canvas size — match generate_character_pose (defaults
-            are SDXL-native portrait).
-        out: Output path. Defaults to a scratch file named by preset/yaw.
-
-    Returns:
-        The filesystem path to the synthesized pose map PNG.
-    """
-    try:
-        path = mannequin.render_pose_map(preset, yaw, width, height, out)
-    except ValueError as e:
-        return f"Could not generate pose map: {e}"
-    return (f"Pose map generated: {path}\n"
-            f"Feed to generate_character_pose(pose_ref_path='{path}', "
-            f"pose_preprocess=False, pose_strength=1.4 for yaw>=~135, "
-            f"). Stochastic — "
-            f"try a couple of seeds and curate.")
-
-
-@mcp.tool()
-def generate_pose_depth_map(
-    yaw: float = 180.0,
-    width: int = 832,
-    height: int = 1216,
-    out: str | None = None,
-) -> str:
-    """FLUX-only (ARCHITECTURE.md §8b.9): render a depth map from a real,
-    posable VRM mesh (assets/Base_Male.vrm), standing pose — validated
-    2026-07-22/23 as MORE reliable than generate_pose_map's line-skeleton for
-    genuine back views (~3/3 seeds vs. ~2/3), once the depth map's near/far
-    window is calibrated (already done — see vrm_depth.py).
-
-    Requires a separate Blender install (see vrm_depth.py's docstring:
-    download Blender, install the community VRM Add-on, set
-    WEBCOMIC_CHAR_BLENDER to the executable path).
-
-    Pose/anatomy tool, NOT a costume tool — the VRM mesh wears a plain
-    t-shirt. Feed the output to generate_character_pose(pose_ref_path=<this
-    path>, pose_preprocess=False, model="flux_manwha", pose_control_type=
-    "depth") with a prompt that does NOT describe the actual costume (the
-    bible `description` is auto-excluded in this mode) — otherwise text and
-    plain-shirt geometry conflict, producing ragged texture-clash artifacts
-    (confirmed live). Once the pose/anatomy result is clean, dress it in the
-    real costume via edit_character_image as a separate pass — validated
-    end-to-end 2026-07-23.
-
-    Only "standing" (arms at sides) is implemented.
-
-    Args:
-        yaw: Degrees around the vertical axis. 0 = facing viewer, 180 = seen
-            from behind — same convention as generate_pose_map.
-        width / height: Canvas size — match generate_character_pose (defaults
-            are FLUX-native portrait).
-        out: Output path. Defaults to a scratch file named by yaw.
-
-    Returns:
-        The filesystem path to the rendered depth map PNG.
-    """
-    try:
-        path = vrm_depth.render_depth_map(yaw, width, height, out)
-    except vrm_depth.VrmDepthError as e:
-        return f"Could not generate depth map: {e}"
-    return (f"Depth map generated: {path}\n"
-            f"Feed to generate_character_pose(pose_ref_path='{path}', "
-            f"pose_preprocess=False, model='flux_manwha', "
-            f"pose_control_type='depth', pose_strength=0.8) with a "
-            f"costume-neutral prompt — then edit_character_image to apply "
-            f"the real costume afterward.")
 
 
 @mcp.tool()
@@ -532,9 +423,9 @@ def generate_character_pose(
     (Kontext, conditions on an actual image) when the likeness matters more.
 
     pose_ref_path pins the pose structurally via ControlNet, and is the reason
-    this tool still exists: generate_pose_map / generate_pose_depth_map are the
-    only way to force a genuine back view, which no amount of prompting or
-    reference conditioning achieves.
+    this tool still exists: a supplied control map is the only way to force
+    structure the prompt cannot. For a genuine back view WITH the likeness,
+    use generate_turnaround_sheet instead.
 
     detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack):
     detect-and-repair pass on face/hands after the main render — fixes
@@ -555,7 +446,7 @@ def generate_character_pose(
             resolutions (640x896) are bumped to FLUX-native 832x1216
             automatically. detail_fix=True improves hand anatomy.
         pose_ref_path: A pose photo (extracted to OpenPose) or a
-            generate_pose_map output (pass pose_preprocess=False). Pinned via ControlNet.
+            pre-made control map (pass pose_preprocess=False). Pinned via ControlNet.
         pose_strength: ControlNet strength for pose_ref_path. For genuine back
             views (yaw=180 mannequin maps), 1.0 pins the pose but drifts back
             toward front-facing — 1.4-1.5 actually forces the direction.
