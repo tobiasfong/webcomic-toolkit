@@ -57,7 +57,7 @@ import time
 import tempfile
 import requests
 
-from workflow import (
+from comfy import (
     COMFY_URL, ComfyUIError, ensure_comfy_running, _upload_image,
     CLEAN_BACKDROP_SUFFIX, DEFAULT_NEGATIVE,
 )
