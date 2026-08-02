@@ -37,7 +37,14 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
    - `assets/Manhwa.tsx`       → `<project>/src/Manhwa.tsx`
    - `assets/Effects.tsx`      → `<project>/src/effects/Effects.tsx`
    - `assets/Grade.tsx`        → `<project>/src/effects/Grade.tsx`
+   - `assets/DepthScene.tsx`   → `<project>/src/effects/DepthScene.tsx`
    - `assets/tools/extract-beats.mjs` → `<project>/tools/extract-beats.mjs`
+
+   The depth camera needs three extra packages (everything else is stock
+   Remotion). Pin `@react-three/fiber` to v8 — v9 requires React 19 and a
+   React 18 project will fail `ERESOLVE`:
+   `npm i @remotion/three@<your remotion version> "@react-three/fiber@^8.17.10" three @types/three`
+   Skip this only if you will never use `depth` panels.
 
 4. **Register the composition** in `<project>/src/Root.tsx`:
    ```tsx
@@ -125,6 +132,18 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
   money shots 3–4. Also set `clipSeconds` on video panels (the clip's true
   length) so the engine retimes playback to fit the bar count instead of
   truncating the camera move.
+- **Depth camera** (`depth` on a still panel) — the 2.5D upgrade. Give it a
+  depth map (`tools/make_depth.py` in webcomic-background-mcp; white = near)
+  and the still becomes a subdivided mesh displaced along Z with a real
+  PerspectiveCamera moving through it: `{ src, move, strength, amount }`,
+  `move` = `push|pull|pan|crane|orbit|drift`. Unlike a pre-baked parallax mp4,
+  the move is a function of the panel's own progress — **retime the shot to a
+  different `bars` count and the camera retimes for free.** Camera distance is
+  computed to fit the plane (`objectFit: contain` equivalent), so any aspect
+  ratio works. Keep `strength` ≈ 0.2–0.3: it is a relief map, not a model, so
+  large values stretch silhouette edges (same caveat as `parallax.py`). Costs
+  a WebGL pass per frame — a 35s 1080×1920 render with one depth shot took
+  ~6 min.
 - **Grade** (`grade` in the config, `null` to disable): `bloom`, `grain`,
   `vignette`, `flash` (white hit on downbeats), `punch` (zoom hit),
   `audioReactive` (bloom rides the loudness envelope), `saturation`, `contrast`.

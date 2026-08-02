@@ -31,8 +31,12 @@ YouTube-Shorts-style video:
   riding the music's loudness envelope
 - 🎥 **Per-panel camera motion** — zoom/pan (Ken Burns) over stills; tall
   webtoon pages get the scroll-down effect (`panDown`)
+- 🧊 **Depth camera (2.5D)** — give a still its depth map and it becomes a
+  displaced mesh with a real 3D camera moving through it: genuine perspective
+  and occlusion, and because the move is computed at edit time it retimes
+  automatically when you change a shot's length
 - 🎞️ **Video panels** — drop in animated clips (image-to-video output,
-  depth-parallax renders); auto-detected by file extension, played as-is
+  pre-baked parallax renders); auto-detected by file extension, played as-is
 - 🖼️ **Any aspect ratio, no cropping** — art is shown complete over a blurred
   self-fill (the YouTube-Shorts letterbox look)
 - ✨ **Particle effects** — twinkling stars, shooting stars, sparkles, embers,

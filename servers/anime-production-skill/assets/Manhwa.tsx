@@ -22,6 +22,7 @@ import {
   type OverlayPosition,
 } from "./data/manhwa-panels";
 import { Effects } from "./effects/Effects";
+import { DepthScene } from "./effects/DepthScene";
 import { Grade, FadeInOut, envelopeAt } from "./effects/Grade";
 import { beatMap } from "./data/beats";
 
@@ -274,21 +275,25 @@ const PanelView: React.FC<{
           }}
         />
       </AbsoluteFill>
-      {/* 前景（絵全体を表示。静止画はケンバーンズ、動画はそのまま再生） */}
-      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-        <Media
-          src={src}
-          video={video}
-          playbackRate={playbackRate}
-          style={{
-            maxWidth: "100%",
-            maxHeight: "100%",
-            objectFit: "contain",
-            transform: video ? undefined : kenBurns(panel.motion, progress),
-            willChange: video ? undefined : "transform",
-          }}
-        />
-      </AbsoluteFill>
+      {/* 前景。深度マップがあれば 2.5D カメラ、なければ静止画=ケンバーンズ / 動画=そのまま */}
+      {panel.depth && !video ? (
+        <DepthScene layout={panel.depth} src={src} progress={progress} />
+      ) : (
+        <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
+          <Media
+            src={src}
+            video={video}
+            playbackRate={playbackRate}
+            style={{
+              maxWidth: "100%",
+              maxHeight: "100%",
+              objectFit: "contain",
+              transform: video ? undefined : kenBurns(panel.motion, progress),
+              willChange: video ? undefined : "transform",
+            }}
+          />
+        </AbsoluteFill>
+      )}
       {/* パーティクル効果（絵の上） */}
       <Effects effects={panel.effects} />
       {/* テキスト（余白の黒帯） */}

@@ -57,6 +57,25 @@ export interface ShowcaseLayout {
   artSize?: number;
 }
 
+/**
+ * 深度カメラ / Depth camera (2.5D).
+ *
+ * 静止画 + 深度マップから、編集時にカメラを動かします。事前に mp4 へ焼き込む
+ * `parallax.py` と違い、尺（bars）を変えればカメラワークも自動で追従します。
+ * 深度マップは webcomic-background-mcp の `tools/make_depth.py` 等で生成し、
+ * public/panels/ に置いてください（白 = 手前）。
+ */
+export interface DepthLayout {
+  /** 深度マップのファイル名（public/panels/ 内） */
+  src: string;
+  /** カメラの動き。省略時は push */
+  move?: "push" | "pull" | "pan" | "crane" | "orbit" | "drift";
+  /** 変位の強さ。大きすぎるとシルエット際が伸びる。省略時 0.55 */
+  strength?: number;
+  /** カメラの移動量。省略時 0.35 */
+  amount?: number;
+}
+
 export interface Panel {
   /**
    * ファイル名（public/panels/ 内）。静止画 (.jpg/.png) または動画クリップ (.mp4/.webm/.mov)。
@@ -87,6 +106,11 @@ export interface Panel {
   overlays?: TextOverlay[];
   /** 表紙用ショーケース表示（白背景+影+余白クレジット）。通常パネルは省略 */
   showcase?: ShowcaseLayout;
+  /**
+   * 深度カメラ（2.5D）。静止画パネルに深度マップを与えると、平面の代わりに
+   * 変位メッシュ + 実カメラで描画されます。motion（ケンバーンズ）より優先。
+   */
+  depth?: DepthLayout;
 }
 
 // --- グローバル設定 / Global settings ---
@@ -143,6 +167,9 @@ export const bgm: { src: string; volume: number; fadeOutSeconds?: number } | nul
 //   },
 // 例 / example — beat-synced shot list:
 //   { src: "panels/01.mp4", durationInSeconds: 3.2, bars: 2, clipSeconds: 4, effects: ["sparkles"] },
+//   // 深度カメラ（静止画 + 深度マップを編集時に動かす）:
+//   { src: "panels/02.jpg", durationInSeconds: 3.2, bars: 2,
+//     depth: { src: "panels/02-depth.png", move: "push", strength: 0.25 } },
 //   {
 //     src: "panels/cover.jpg", durationInSeconds: 4.8, bars: 3,
 //     showcase: { background: "#ffffff", artPosition: "top", artSize: 0.78 },
