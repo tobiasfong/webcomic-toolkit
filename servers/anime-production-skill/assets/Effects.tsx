@@ -48,20 +48,20 @@ const Twinkle: React.FC = () => {
 const ShootingStars: React.FC = () => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
-  const events = 5;
+  const events = 11;          // 流れ星の本数（密度）
   const travel = 30; // frames per streak
-  const tail = 150;
+  const tail = 190;
   const angleDeg = 155; // travel direction (down-left) in screen coords
   const theta = (angleDeg * Math.PI) / 180;
   const speed = 26; // px per frame
   return (
     <AbsoluteFill>
       {new Array(events).fill(0).map((_, i) => {
-        const startFrame = i * 42 + Math.floor(random(`ss-t-${i}`) * 28);
+        const startFrame = i * 19 + Math.floor(random(`ss-t-${i}`) * 22);
         const local = frame - startFrame;
         if (local < 0 || local > travel) return null;
         const p = local / travel;
-        const sx = (0.3 + random(`ss-x-${i}`) * 0.6) * width;
+        const sx = (0.15 + random(`ss-x-${i}`) * 0.8) * width;
         const sy = (0.05 + random(`ss-y-${i}`) * 0.35) * height;
         const dx = Math.cos(theta) * speed * local;
         const dy = Math.sin(theta) * speed * local;

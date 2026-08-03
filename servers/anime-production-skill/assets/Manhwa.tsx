@@ -17,11 +17,15 @@ import {
   BACKGROUND_COLOR,
   beatSync,
   grade,
+  defaultBackdrop,
   type Panel,
   type TextOverlay,
   type OverlayPosition,
+  type Backdrop,
 } from "./data/manhwa-panels";
 import { Effects } from "./effects/Effects";
+import { Impact, shakeTransform } from "./effects/Impact";
+import { frameAt } from "./anim/frames";
 import { DepthScene } from "./effects/DepthScene";
 import { Grade, FadeInOut, envelopeAt } from "./effects/Grade";
 import { beatMap } from "./data/beats";
@@ -195,6 +199,59 @@ const kenBurns = (motion: Panel["motion"], progress: number): string => {
   }
 };
 
+
+/**
+ * 背景（バックドロップ）。画像が指定されていればそれを敷き、なければ
+ * 従来どおり「ぼかした自分自身」で埋める。drift でゆっくり漂わせると
+ * 静止画の後ろでも奥行きが出る。
+ */
+const BackdropLayer: React.FC<{
+  backdrop: Backdrop | null;
+  fallbackSrc: string;
+  fallbackVideo: boolean;
+  progress: number;
+}> = ({ backdrop, fallbackSrc, fallbackVideo, progress }) => {
+  if (backdrop && (backdrop.src || backdrop.color)) {
+    const drift = backdrop.drift ?? 0;
+    const dx = Math.sin(progress * Math.PI * 2) * 22 * drift;
+    const dy = Math.cos(progress * Math.PI * 2) * 14 * drift;
+    return (
+      <AbsoluteFill style={{ backgroundColor: backdrop.color ?? "#000", overflow: "hidden" }}>
+        {backdrop.src && (
+          <Img
+            src={staticFile(backdrop.src)}
+            style={{
+              width: "112%",
+              height: "112%",
+              marginLeft: "-6%",
+              marginTop: "-6%",
+              objectFit: "cover",
+              transform: `translate(${dx}px, ${dy}px)`,
+              filter: `blur(${backdrop.blur ?? 0}px) brightness(${1 - (backdrop.darken ?? 0)})`,
+            }}
+          />
+        )}
+      </AbsoluteFill>
+    );
+  }
+  // 従来のぼかした自分自身で埋める
+  return (
+    <AbsoluteFill>
+      <Media
+        src={fallbackSrc}
+        video={fallbackVideo}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: "scale(1.15)",
+          filter: "blur(40px) brightness(0.45)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
 const PanelView: React.FC<{
   panel: Panel;
   frames: number;
@@ -225,6 +282,24 @@ const PanelView: React.FC<{
       ? Math.max(0.25, Math.min(4, panel.clipSeconds / seconds))
       : undefined;
 
+  // ⚠ Sequence はカットの T フレーム手前から始まる（ディゾルブ用）。
+  // startAt / at は「絵が完全に出た時点」を 0 とするほうが直感的なので、
+  // フェードイン分を引いたローカル時間で animation / impact を動かす。
+  const localFrame = frame - fadeIn;
+
+  // 手描きのコマ再生: 表示するコマを差し替える
+  const anim = panel.animation;
+  const fs = anim ? frameAt(anim, localFrame, FPS) : null;
+  const shownSrc = fs ? staticFile(anim!.frames[fs.index] ?? panel.src) : src;
+  // スメア（中割りブラー）: コマが切り替わった直後だけ方向性ブラーをかけ、
+  // 枚数の少ない速い動きを「速い」と読ませる（欠けたコマの代わり）
+  const smear =
+    anim?.smear && fs && fs.age < 2 && fs.index !== fs.prev
+      ? `blur(${(anim.smear ?? 0) * (2 - fs.age) * 3}px)`
+      : undefined;
+  const shake = shakeTransform(panel.impact, localFrame, FPS);
+  const backdrop = panel.backdrop ?? defaultBackdrop;
+
   // ショーケース表示（角川ラノベ広告風）：単色背景 + 影付きの表紙 + 余白クレジット。静止。
   if (panel.showcase) {
     const sc = panel.showcase;
@@ -241,7 +316,7 @@ const PanelView: React.FC<{
           }}
         >
           <Media
-            src={src}
+            src={shownSrc}
             video={video}
             playbackRate={playbackRate}
             style={{
@@ -253,6 +328,7 @@ const PanelView: React.FC<{
           />
         </AbsoluteFill>
         <Effects effects={panel.effects} />
+        <Impact fx={panel.impact} offset={fadeIn} />
         <Overlays overlays={panel.overlays} />
       </AbsoluteFill>
     );
@@ -260,42 +336,41 @@ const PanelView: React.FC<{
 
   return (
     <AbsoluteFill style={{ opacity }}>
-      {/* ぼかし背景（縦横比が合わない余白を埋める） */}
-      <AbsoluteFill>
-        <Media
-          src={src}
-          video={video}
-          playbackRate={playbackRate}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            transform: "scale(1.15)",
-            filter: "blur(40px) brightness(0.45)",
-          }}
-        />
+      {/* 背景: 指定があれば飾りの背景、なければぼかした自分自身 */}
+      <BackdropLayer
+        backdrop={backdrop}
+        fallbackSrc={src}
+        fallbackVideo={video}
+        progress={progress}
+      />
+      {/* 前景。深度マップがあれば 2.5D カメラ、なければ静止画=ケンバーンズ / 動画=そのまま。
+          カメラの揺れ(shake)は前景だけに掛ける（背景まで揺れると画面全体がブレて安っぽい） */}
+      <AbsoluteFill style={{ transform: shake, willChange: shake ? "transform" : undefined }}>
+        {panel.depth && !video ? (
+          <DepthScene layout={panel.depth} src={shownSrc} progress={progress} />
+        ) : (
+          <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
+            <Media
+              src={shownSrc}
+              video={video}
+              playbackRate={playbackRate}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                transform: video ? undefined : kenBurns(panel.motion, progress),
+                willChange: video ? undefined : "transform",
+                filter: smear,
+                boxShadow: backdrop?.shadow ? "0 22px 60px rgba(0,0,0,0.55)" : undefined,
+              }}
+            />
+          </AbsoluteFill>
+        )}
       </AbsoluteFill>
-      {/* 前景。深度マップがあれば 2.5D カメラ、なければ静止画=ケンバーンズ / 動画=そのまま */}
-      {panel.depth && !video ? (
-        <DepthScene layout={panel.depth} src={src} progress={progress} />
-      ) : (
-        <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-          <Media
-            src={src}
-            video={video}
-            playbackRate={playbackRate}
-            style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
-              objectFit: "contain",
-              transform: video ? undefined : kenBurns(panel.motion, progress),
-              willChange: video ? undefined : "transform",
-            }}
-          />
-        </AbsoluteFill>
-      )}
       {/* パーティクル効果（絵の上） */}
       <Effects effects={panel.effects} />
+      {/* 衝撃演出（集中線・フラッシュ・破片） */}
+      <Impact fx={panel.impact} offset={fadeIn} />
       {/* テキスト（余白の黒帯） */}
       <Overlays overlays={panel.overlays} />
     </AbsoluteFill>

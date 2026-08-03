@@ -38,6 +38,8 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
    - `assets/Effects.tsx`      → `<project>/src/effects/Effects.tsx`
    - `assets/Grade.tsx`        → `<project>/src/effects/Grade.tsx`
    - `assets/DepthScene.tsx`   → `<project>/src/effects/DepthScene.tsx`
+   - `assets/Impact.tsx`       → `<project>/src/effects/Impact.tsx`
+   - `assets/anim/frames.ts`   → `<project>/src/anim/frames.ts`
    - `assets/tools/extract-beats.mjs` → `<project>/tools/extract-beats.mjs`
 
    The depth camera needs three extra packages (everything else is stock
@@ -158,6 +160,31 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
   large values stretch silhouette edges (same caveat as `parallax.py`). Costs
   a WebGL pass per frame — a 35s 1080×1920 render with one depth shot took
   ~6 min.
+- **Hand-drawn frames** (`animation` on a panel) — the artist draws a few key
+  drawings; the engine handles timing. `{ frames[], mode, holds, startAt, smear }`.
+  `mode`: `once` (punch/action, holds the last drawing) · `loop` · `pingpong`
+  (sway) · `blink` (mostly frame 0, irregular flicks, occasional double) ·
+  `mouth` (speech-rhythm flapping). **`holds` is per-drawing** so one cut can run
+  wind-up on threes → contact on ones → recovery on twos, which is what sells
+  impact. `smear` adds a directional blur on the frames right after a change —
+  it fakes the missing in-between and makes a 3-drawing turn read as fast rather
+  than as missing frames.
+  ⚠ **Set `FPS = 24` for anything with hand-drawn animation.** At 24, `holds: 2`
+  is exactly "on twos" = 12 drawings/sec. At 30fps no integer hold gives 12, so
+  you get uneven 3,3,2,2 holds and visible judder.
+- **Impact FX** (`impact` on a panel) — sells a hit without any extra drawing,
+  which is what anime actually does (it doesn't animate the punch travelling):
+  `{ at, speedlines, flash, shake, debris, originX, originY }` plus `*Decay`
+  and colour options. `at` is seconds from when the panel is **fully visible**.
+  Peaks land exactly on `at` (attack = 0) — a one-frame-late flash reads as
+  broken. Shake is applied to the foreground only; shaking the backdrop too
+  looks cheap.
+- **Backdrop** (`backdrop` per panel, or `defaultBackdrop` globally) — replaces
+  the blurred self-fill with a designed background: `{ src, color, drift, blur,
+  darken, shadow }`. Use for vertical frames where portrait art leaves bands —
+  a generated backdrop plus `shadow: true` reads as designed rather than
+  letterboxed. `drift` slowly moves it for depth. This is NOT outpainting: the
+  art is not extended or blended, so there is no seam or style mismatch.
 - **Grade** (`grade` in the config, `null` to disable): `bloom`, `grain`,
   `vignette`, `flash` (white hit on downbeats), `punch` (zoom hit),
   `audioReactive` (bloom rides the loudness envelope), `saturation`, `contrast`.
