@@ -236,9 +236,12 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 
   This **inverts** the common "dev = production quality, distilled = fast draft"
   advice. That may hold for still-image fidelity; for *motion* dev is close to
-  static (~1.5 is barely above noise) and no prompt moves it. Possible cause is
-  over-convergence on the image conditioning — different `max_shift`/`base_shift`
-  may unlock it, untested.
+  static (~1.5 is barely above noise) and no prompt moves it.
+
+  **Three knobs tested on dev; none unlock motion — do not retry these:**
+  steps (8 vs 25), cfg (1.0 / 3.0), and the sigma shift
+  (`max_shift`/`base_shift` at 2.05/0.95, 4.0/1.5, 7.0/2.5 → motion 2.6, 1.5,
+  1.9). Tripling the shift did nothing. Use `distilled` and stop tuning `dev`.
 - **Directed prompting works, but only on distilled**: generic 13.8 -> directed
   30.6 (2.2x). Prompt wording is a real lever there and inert on dev.
 - **cfg is not the motion knob.** Lowering it 3.0 -> 1.0 *reduced* motion

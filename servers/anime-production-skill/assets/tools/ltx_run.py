@@ -58,10 +58,10 @@ def build(a, v):
 
         # --- sampling ---
         "9": {"class_type": "ModelSamplingLTXV",
-              "inputs": {"model": ["1", 0], "max_shift": 2.05, "base_shift": 0.95,
+              "inputs": {"model": ["1", 0], "max_shift": a.max_shift, "base_shift": a.base_shift,
                          "latent": ["7", 2]}},
         "10": {"class_type": "LTXVScheduler",
-               "inputs": {"steps": a.steps, "max_shift": 2.05, "base_shift": 0.95,
+               "inputs": {"steps": a.steps, "max_shift": a.max_shift, "base_shift": a.base_shift,
                           "stretch": True, "terminal": 0.1, "latent": ["7", 2]}},
         "11": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "12": {"class_type": "SamplerCustom",
@@ -96,6 +96,9 @@ def main():
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=12345)
     p.add_argument("--variant", default="distilled", choices=list(VARIANTS))
+    p.add_argument("--max-shift", dest="max_shift", type=float, default=2.05,
+                   help="sigma schedule shift; higher = starts further from the input = more motion")
+    p.add_argument("--base-shift", dest="base_shift", type=float, default=0.95)
     p.add_argument("--cfg", type=float, default=0.0, help="override variant cfg; higher sticks harder to the input image (and reduces motion)")
     p.add_argument("--prompt", default="anime illustration, the character moves slightly, "
                                        "hair and clothes sway, subtle natural motion, "
@@ -112,7 +115,7 @@ def main():
         if d % 32:
             raise SystemExit(f"width/height must be divisible by 32 (got {a.w}x{a.h})")
 
-    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']}")
+    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift}")
     t0 = time.time()
     try:
         r = post("/prompt", {"prompt": build(a, v)})
