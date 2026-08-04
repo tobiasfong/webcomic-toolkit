@@ -52,9 +52,9 @@ def build(a, v):
         "7": {"class_type": "LTXVImgToVideo",
               "inputs": {"positive": ["5", 0], "negative": ["6", 0], "vae": ["3", 0],
                          "image": ["4", 0], "width": a.w, "height": a.h,
-                         "length": a.length, "batch_size": 1, "strength": 1.0}},
+                         "length": a.length, "batch_size": 1, "strength": a.strength}},
         "8": {"class_type": "LTXVConditioning",
-              "inputs": {"positive": ["7", 0], "negative": ["7", 1], "frame_rate": 24.0}},
+              "inputs": {"positive": ["7", 0], "negative": ["7", 1], "frame_rate": a.fps}},
 
         # --- sampling ---
         "9": {"class_type": "ModelSamplingLTXV",
@@ -103,6 +103,11 @@ def main():
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=12345)
     p.add_argument("--variant", default="distilled", choices=list(VARIANTS))
+    p.add_argument("--strength", type=float, default=1.0,
+                   help="image conditioning grip. 1.0 = perfectly faithful but the clip FREEZES "
+                        "(the notorious LTX I2V failure). ~0.8 gives motion room. THE key lever.")
+    p.add_argument("--fps", type=float, default=24.0,
+                   help="frame_rate conditioning; 48 is a known anti-static trick")
     p.add_argument("--scheduler", default="ltxv",
                    choices=["ltxv","simple","sgm_uniform","karras","exponential",
                             "ddim_uniform","beta","normal","linear_quadratic"],
@@ -126,7 +131,7 @@ def main():
         if d % 32:
             raise SystemExit(f"width/height must be divisible by 32 (got {a.w}x{a.h})")
 
-    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift} sched={a.scheduler}")
+    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift} sched={a.scheduler} strength={a.strength} fps={a.fps}")
     t0 = time.time()
     try:
         r = post("/prompt", {"prompt": build(a, v)})

@@ -238,6 +238,29 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   advice. That may hold for still-image fidelity; for *motion* dev is close to
   static (~1.5 is barely above noise) and no prompt moves it.
 
+  ### ✅ The two levers that actually work
+
+  **`strength` on `LTXVImgToVideo` is THE lever, and its default is the trap.**
+  At `1.0` the first frames are pulled hard onto your image and the clip
+  freezes — that *is* the notorious LTX I2V "slow zoom, no motion" failure, and
+  it is what made `dev` look broken here for six experiments. Set it to **0.8**.
+
+  **`frame_rate` on `LTXVConditioning`: use 48, not 24.** A known anti-static
+  trick, and here it improved motion *and* fidelity simultaneously — the only
+  change all day that did not just trade one for the other.
+
+  Measured, dev, same prompt/seed, comparing frame 12 at native resolution:
+
+  | config | motion | frame 12 faces |
+  |---|---|---|
+  | strength 1.0, fps 24 | 2.6 | perfect, but a still |
+  | strength 0.8, fps 24 | 37.3 | glasses smeared, hand a blob |
+  | **strength 0.8, fps 48** | **44.5** | **glasses readable, faces clean, fingers intact** |
+
+  Degradation is **progressive over the clip** — frame 8 is cleaner than frame
+  12, which is cleaner than 24. So generate 25 frames and use the first ~12;
+  trimming is free.
+
   **Everything below was tested and FAILED. Do not retry them:**
 
   | attempted fix | result |
