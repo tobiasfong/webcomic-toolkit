@@ -295,6 +295,14 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   threshold, so the character's small motion is less likely to be ignored.
   It is the same trick limited-animation anime uses to hide a held cel.
 
+  > ⚠ **UNVERIFIED — the rules in this block need re-testing.** They were each
+  > drawn from a single run, and the seed was changed between runs. The same
+  > shot (Matsuyama) moved at 35.6 with a diminutive-heavy prompt on seed 201
+  > and FROZE at 2.29 with a plain prompt on seed 401 — the opposite of what
+  > "diminutives freeze it" predicts. Seed variance is the uncontrolled
+  > variable. Before trusting any of this, run the same prompt across 3+ seeds
+  > and compare distributions, not single samples.
+
   **Do not stack diminutives, and never use negation.** Writing "slightly /
   slowly / gently / tiny" into a prompt — especially alongside a style suffix
   like "subtle gentle motion" — pushes the ask under the threshold and the clip
