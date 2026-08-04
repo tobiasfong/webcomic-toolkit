@@ -60,9 +60,16 @@ def build(a, v):
         "9": {"class_type": "ModelSamplingLTXV",
               "inputs": {"model": ["1", 0], "max_shift": a.max_shift, "base_shift": a.base_shift,
                          "latent": ["7", 2]}},
-        "10": {"class_type": "LTXVScheduler",
-               "inputs": {"steps": a.steps, "max_shift": a.max_shift, "base_shift": a.base_shift,
-                          "stretch": True, "terminal": 0.1, "latent": ["7", 2]}},
+        # Scheduler. LTXVScheduler is the native one; BasicScheduler is the
+        # community workaround claimed to unstick dev's motion.
+        "10": ({"class_type": "LTXVScheduler",
+                "inputs": {"steps": a.steps, "max_shift": a.max_shift,
+                           "base_shift": a.base_shift, "stretch": True,
+                           "terminal": 0.1, "latent": ["7", 2]}}
+               if a.scheduler == "ltxv" else
+               {"class_type": "BasicScheduler",
+                "inputs": {"model": ["9", 0], "scheduler": a.scheduler,
+                           "steps": a.steps, "denoise": 1.0}}),
         "11": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "12": {"class_type": "SamplerCustom",
                "inputs": {"model": ["9", 0], "add_noise": True, "noise_seed": a.seed,
@@ -96,6 +103,10 @@ def main():
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=12345)
     p.add_argument("--variant", default="distilled", choices=list(VARIANTS))
+    p.add_argument("--scheduler", default="ltxv",
+                   choices=["ltxv","simple","sgm_uniform","karras","exponential",
+                            "ddim_uniform","beta","normal","linear_quadratic"],
+                   help="ltxv = native LTXVScheduler; anything else uses BasicScheduler")
     p.add_argument("--max-shift", dest="max_shift", type=float, default=2.05,
                    help="sigma schedule shift; higher = starts further from the input = more motion")
     p.add_argument("--base-shift", dest="base_shift", type=float, default=0.95)
@@ -115,7 +126,7 @@ def main():
         if d % 32:
             raise SystemExit(f"width/height must be divisible by 32 (got {a.w}x{a.h})")
 
-    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift}")
+    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift} sched={a.scheduler}")
     t0 = time.time()
     try:
         r = post("/prompt", {"prompt": build(a, v)})

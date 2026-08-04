@@ -238,10 +238,32 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   advice. That may hold for still-image fidelity; for *motion* dev is close to
   static (~1.5 is barely above noise) and no prompt moves it.
 
-  **Three knobs tested on dev; none unlock motion — do not retry these:**
-  steps (8 vs 25), cfg (1.0 / 3.0), and the sigma shift
-  (`max_shift`/`base_shift` at 2.05/0.95, 4.0/1.5, 7.0/2.5 → motion 2.6, 1.5,
-  1.9). Tripling the shift did nothing. Use `distilled` and stop tuning `dev`.
+  **Everything below was tested and FAILED. Do not retry them:**
+
+  | attempted fix | result |
+  |---|---|
+  | steps 8 vs 25 | no motion (2.6) |
+  | cfg 1.0 vs 3.0 | no motion; lower cfg was *worse* (1.5) |
+  | `max_shift`/`base_shift` 4.0/1.5, 7.0/2.5 | no motion (1.5, 1.9) |
+  | swap `LTXVScheduler` → `BasicScheduler` | no motion (2.66) |
+  | low resolution (640x384) | image **destroyed** — characters dissolve |
+  | hybrid split-sigma: distilled early → dev late | **broken** — frame 0 never denoises, quality worse than distilled alone |
+
+  The hybrid is worth explaining since it sounds plausible: the idea is that
+  early high-noise steps decide motion and late steps decide detail, so
+  distilled commits the motion and dev cleans up. It does not work here — most
+  likely the two variants' latents are not interchangeable mid-sample, having
+  separate VAEs and connectors. (A version of this circulating online puts dev
+  *first*; that ordering is worse still, since it locks in stillness during the
+  steps where motion is decided.)
+
+  **Conclusion: use `distilled`. The motion/fidelity trade-off survived six
+  attempts to break it and looks like a property of the model, not a setting.**
+
+  ⚠ **Judge output by eye, not by the motion metric.** Mean pixel difference
+  measures *change*, so a frame dissolving into mush scores higher than a clean
+  action: the destroyed 640x384 run scored 40.9 and the broken hybrid 105.2,
+  against 30.6 for the good distilled take. Always look at the frames.
 - **Directed prompting works, but only on distilled**: generic 13.8 -> directed
   30.6 (2.2x). Prompt wording is a real lever there and inert on dev.
 - **cfg is not the motion knob.** Lowering it 3.0 -> 1.0 *reduced* motion
