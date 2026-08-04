@@ -201,6 +201,35 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
 - Render: `npx remotion render src/index.ts Manhwa out/video.mp4`
 - Spot-check a frame: `npx remotion still src/index.ts Manhwa out/f.png --frame=N`
 
+## Optional: local image-to-video (LTX-2.3)
+
+This skill assembles video from art you already have; it does not generate
+motion. If a shot needs to actually move, **`ltx-setup.md`** covers running
+LTX-2.3 locally in ComfyUI (no subscription), and **`assets/tools/ltx_run.py`**
+is a working driver — it builds the ComfyUI API graph, submits it and polls.
+Clips come back as ordinary video panels.
+
+**Verified on a 6 GB RTX 3060 Laptop**: 25 frames @ 832x576 in ~161 s,
+distilled-1.1 at 8 steps. No OOM, no special flags.
+
+Measured behaviour, so expectations are right:
+- **Style survives well** — cel shading, linework, colour and background hold;
+  no drift toward photoreal. Verified on both generated panels and hand-drawn
+  illustrations.
+- **Faces drift on close/complex shots** — glasses dissolved by frame 24 on one
+  test, while a portrait-framed illustration held cleanly. Favour mid/long
+  shots; keep clips short, since drift compounds with generated time.
+- **Never render below 540p** — fine linework mushes below it, before any
+  upscale can recover it.
+
+The gotcha that wastes the most time: **a GGUF text encoder will not load via
+ComfyUI's core `LTXAVTextEncoderLoader`** (it reads `models/checkpoints/`, and
+`.gguf` is not in ComfyUI's supported extensions). Use city96's
+`DualCLIPLoaderGGUF(..., type="ltxv")` with the encoder in `models/text_encoders/`.
+Also: connector and VAE must match the checkpoint's variant *and* generation, or
+you get silent garbage; and ComfyUI caches model listings at startup, so restart
+after adding files.
+
 ## Production guidance
 
 - **Panel curation**: teaser = ~8–15 strongest beats, ~4s each, end on

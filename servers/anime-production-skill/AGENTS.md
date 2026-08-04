@@ -16,6 +16,22 @@ vertical (9:16) anime teaser / marketing video, rendered locally with
   showcase cover mode, video panels, BGM with fade-out)
 - Render commands and production guidance
 
+## Optional: local image-to-video (LTX-2.3)
+
+The skill assembles video; it does not generate motion. If the user wants shots
+that actually move, `ltx-setup.md` documents running **LTX-2.3 locally in
+ComfyUI** — no subscription — and `assets/tools/ltx_run.py` is a working driver
+(builds the ComfyUI API graph, submits, polls). Verified on a 6 GB card:
+25 frames @ 832x576 in ~161 s.
+
+Read `ltx-setup.md` before attempting it. The one that wastes the most time:
+**a GGUF text encoder cannot load through ComfyUI's core `LTXAVTextEncoderLoader`**
+— it reads `models/checkpoints/`, and `.gguf` is not in ComfyUI's supported
+extensions, so the file will never appear however you move it. Use city96's
+`DualCLIPLoaderGGUF(..., type="ltxv")` with the encoder in `models/text_encoders/`.
+
+Generated clips drop back into the pipeline as ordinary video panels.
+
 ## Repo layout
 
 - `SKILL.md` — full agent-executable setup + usage guide (start here)
@@ -23,6 +39,10 @@ vertical (9:16) anime teaser / marketing video, rendered locally with
 - `assets/Effects.tsx` — particle effects → copy to `<project>/src/effects/Effects.tsx`
 - `assets/manhwa-panels.ts` — panel/BGM config, the ONLY file edited per video
   → copy to `<project>/src/data/manhwa-panels.ts`
+- `assets/tools/` — helper scripts: `extract-beats.mjs` (beat map),
+  `repair_depth.py` (depth-map cleanup, environments only),
+  `fetch-ltx.sh` + `ltx_run.py` (optional local image-to-video)
+- `ltx-setup.md` — local LTX-2.3 setup, 6 GB settings, and its gotchas
 
 The engine is plain Remotion + React + TypeScript — no harness-specific
 dependencies anywhere.

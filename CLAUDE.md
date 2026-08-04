@@ -180,6 +180,36 @@ as lying on his *side*.
   ("lit from the upper left") — mismatched lighting is the one thing manual
   compositing cannot fix cheaply.
 
+## Video: LTX-2.3 image-to-video (local, 6 GB card)
+
+Verified working 2026-08-04 — 25 frames @ 832x576 in **161 s** on the RTX 3060
+Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
+`anime-production/tools/ltx_run.py`.
+
+- **A GGUF text encoder will NOT load through the core node.**
+  `LTXAVTextEncoderLoader` reads `models/checkpoints/`, and ComfyUI's
+  `supported_pt_extensions` has no `.gguf` — so it can never list a GGUF Gemma,
+  no matter where you move the file. That node is for *safetensors* encoders.
+  Use city96's loader instead, with Gemma in `models/text_encoders/`:
+  `DualCLIPLoaderGGUF(clip_name1=gemma-*.gguf,
+  clip_name2=<variant>_embeddings_connectors.safetensors, type="ltxv")`.
+- **Connector and VAE must match the checkpoint's variant** (distilled↔distilled,
+  dev↔dev) *and* generation. Mixing them does not error — it silently produces
+  garbage, which is a miserable thing to debug.
+- **ComfyUI caches folder listings at startup.** After adding models, restart it;
+  re-querying `/object_info` will keep returning the stale list.
+- Hard constraints: width and height divisible by **32**; frame count must be
+  **8n+1** (25, 49, 73, 97).
+- **Never render below 540p** for this art. Dropping resolution is the obvious
+  way to fit a small card, but fine linework and cel shading turn to mush below
+  it — before any upscale can recover them. A VRAM test at 360p proves nothing.
+- **What survives and what doesn't**, measured on a finished panel: style holds
+  well — cel shading, linework, colour, background, no drift toward photoreal.
+  **Faces drift** (glasses dissolved by frame 24). So: fine on mid/long shots,
+  risky on close-ups. Keep clips short; drift compounds with generated time.
+- ComfyUI does not auto-start for this work:
+  `Start-Process C:\AI\ComfyUI_windows_portableun_nvidia_gpu.bat`.
+
 ## Practical
 
 - ComfyUI runs prompts **serially**. Submit one job at a time; stacked jobs burn
