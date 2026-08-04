@@ -203,12 +203,49 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 - **Never render below 540p** for this art. Dropping resolution is the obvious
   way to fit a small card, but fine linework and cel shading turn to mush below
   it — before any upscale can recover them. A VRAM test at 360p proves nothing.
-- **What survives and what doesn't**, measured on a finished panel: style holds
-  well — cel shading, linework, colour, background, no drift toward photoreal.
-  **Faces drift** (glasses dissolved by frame 24). So: fine on mid/long shots,
-  risky on close-ups. Keep clips short; drift compounds with generated time.
+- **Motion and fidelity trade off directly.** This is the constraint to design
+  around, measured across three runs on the same hardware:
+
+  | Prompt | Motion produced | Face fidelity |
+  |---|---|---|
+  | generic "subtle motion" | mild | mild drift |
+  | ambient, portrait framing | minimal | **excellent** — glasses, linework intact |
+  | directed "she kicks him" | **real, dynamic** | **badly degraded** — glasses dissolved, features mush |
+
+  Prompting *does* direct the action — the kick happened. It costs identity to
+  get it. So ask for the least motion that reads, and let the impact FX
+  (speedlines, flash, shake) carry the rest. That is also what anime does: it
+  sells a hit with the hit, not with the travel.
+- **Style survives regardless** — cel shading, linework, colour and background
+  hold in every run; no drift toward photoreal. Verified on generated panels
+  *and* hand-drawn illustrations. It is specifically **faces** that degrade.
+- Favour mid/long shots for animation; keep close-ups static or nearly so. Keep
+  clips short — drift compounds with generated time.
+- **Use `distilled` for motion. `dev` barely moves.** Measured as mean absolute
+  pixel difference between first and last frame (0-255 scale), same seed and
+  prompt:
+
+  | run | motion | peak |
+  |---|---|---|
+  | distilled, generic prompt | 13.8 | 3.3 |
+  | distilled, ambient (portrait) | 6.9 | 2.9 |
+  | **distilled, directed "she kicks him"** | **30.6** | **17.3** |
+  | dev@25 steps, same prompt, cfg 3.0 | 2.6 | 1.9 |
+  | dev@25 steps, same prompt, cfg 1.0 | 1.5 | 1.2 |
+  | dev@25 steps, "ice grows rapidly" | 1.5 | 1.2 |
+
+  This **inverts** the common "dev = production quality, distilled = fast draft"
+  advice. That may hold for still-image fidelity; for *motion* dev is close to
+  static (~1.5 is barely above noise) and no prompt moves it. Possible cause is
+  over-convergence on the image conditioning — different `max_shift`/`base_shift`
+  may unlock it, untested.
+- **Directed prompting works, but only on distilled**: generic 13.8 -> directed
+  30.6 (2.2x). Prompt wording is a real lever there and inert on dev.
+- **cfg is not the motion knob.** Lowering it 3.0 -> 1.0 *reduced* motion
+  (2.6 -> 1.5), the opposite of the obvious guess.
 - ComfyUI does not auto-start for this work:
-  `Start-Process C:\AI\ComfyUI_windows_portableun_nvidia_gpu.bat`.
+  `Start-Process C:\AI\ComfyUI_windows_portable
+un_nvidia_gpu.bat`.
 
 ## Practical
 

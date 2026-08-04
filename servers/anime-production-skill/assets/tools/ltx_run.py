@@ -96,6 +96,7 @@ def main():
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=12345)
     p.add_argument("--variant", default="distilled", choices=list(VARIANTS))
+    p.add_argument("--cfg", type=float, default=0.0, help="override variant cfg; higher sticks harder to the input image (and reduces motion)")
     p.add_argument("--prompt", default="anime illustration, the character moves slightly, "
                                        "hair and clothes sway, subtle natural motion, "
                                        "cel shaded, clean linework")
@@ -103,6 +104,8 @@ def main():
     v = VARIANTS[a.variant]
     if not a.steps:
         a.steps = v["steps"]
+    if a.cfg:
+        v = dict(v, cfg=a.cfg)
     if (a.length - 1) % 8:
         raise SystemExit(f"--len must be 8n+1 (got {a.length}); try 25, 49, 73, 97")
     for d in (a.w, a.h):
