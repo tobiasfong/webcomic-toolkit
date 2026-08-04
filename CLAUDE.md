@@ -280,6 +280,49 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   **Ask for small motion.** Big actions (a kick) still wreck faces and hands at
   any setting. Small ones — a blink, a head tilt, cloth drift — come out clean.
 
+  **Never ask for ROTATION.** Turning a head or body needs an angle the drawing
+  does not contain, so the model invents it and the face smears. Measured: a
+  head *lowering* (Silvia) stayed clean; a head *turning from profile toward the
+  viewer* (Matsuyama) degraded the eye and hair. Word prompts to forbid it —
+  "tilts her head down, still facing the same way" — because a loose phrase like
+  "lowers and tilts his head" is enough for the model to rotate him.
+
+  **Animate the ENVIRONMENT, not the character.** Cloth, hanging scrolls, hair,
+  fire, water, foliage, particles and glow have no identity to preserve, so
+  there is nothing to degrade — and they are what this model is best at. Give
+  the character one small safe action (head lowering, eyes closing) and let the
+  scene carry the life. This also lifts the total ask above the frozen
+  threshold, so the character's small motion is less likely to be ignored.
+  It is the same trick limited-animation anime uses to hide a held cel.
+
+  **Do not stack diminutives, and never use negation.** Writing "slightly /
+  slowly / gently / tiny" into a prompt — especially alongside a style suffix
+  like "subtle gentle motion" — pushes the ask under the threshold and the clip
+  comes back static. Measured: two shots froze at 1.87 and 1.27 for exactly this
+  reason, while a plain "closes her eyes and lowers her head" worked at 20.8.
+  State the action plainly. And phrase what you *want*, never what you don't —
+  "without turning" tends to summon the turn.
+
+  **There is a motion WINDOW — asks can be too small as well as too big.**
+  Measured: "blinks slowly, hair drifts gently, tiny head movement" produced
+  motion 1.87, i.e. a frozen clip with three identical frames. "Closes her eyes
+  and lowers her head" produced 20-40 and worked. A kick produced 30+ and
+  destroyed the faces. So aim for a middle-sized ask: a head lowering, a sway,
+  ice growing. If a clip comes back static, the fix is a BIGGER ask, not a
+  smaller one.
+
+  **LTX will NOT animate a mouth.** Prompting "their mouths open and close as
+  they talk" produced a mouth held open for all 25 frames — measured by cropping
+  the mouth region and diffing every frame. Open/close is a small, high-frequency
+  articulation and the model treats the mouth as fixed facial geometry. Do mouths
+  (and blinks) with the engine's frame player instead: one drawn closed-mouth
+  frame plus `animation: { mode: "mouth" }`. Instant, deterministic, no VRAM.
+
+  Safe asks: eyes closing, head lowering/nodding, hair and
+  cloth drift, fire/water/particles, glow pulsing.
+  Unsafe asks: head or body turning, limbs travelling far, anything revealing a
+  surface not visible in the source.
+
   **Everything below was tested and FAILED. Do not retry them:**
 
   | attempted fix | result |
