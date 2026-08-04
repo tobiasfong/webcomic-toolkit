@@ -257,9 +257,28 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   | strength 0.8, fps 24 | 37.3 | glasses smeared, hand a blob |
   | **strength 0.8, fps 48** | **44.5** | **glasses readable, faces clean, fingers intact** |
 
-  Degradation is **progressive over the clip** — frame 8 is cleaner than frame
-  12, which is cleaner than 24. So generate 25 frames and use the first ~12;
-  trimming is free.
+  **Render near the source's native resolution.** At 576x832 a portrait
+  illustration came back with scratchy noise through the fine hairline and
+  eyebrows; at **768x1088** (same seed, same everything else) that vanished —
+  clean eyes, clean strands. Fine linework needs pixels to survive, and this
+  bites well above the 540p floor. Raising strength does NOT fix it: 0.90, 0.92
+  and 0.95 all showed identical scratching. It is a resolution problem.
+
+  Degradation is **progressive over the clip** — frame 8 is cleaner than 12,
+  which is cleaner than 24. Generate 25 frames and use the first ~18; trimming
+  is free.
+
+  ### Working recipe for small character motion
+
+      --variant dev --strength 0.9 --fps 48 --steps 25 --cfg 3.0
+      --w 768 --h 1088 --len 25          # near-native aspect, both /32
+
+  ~400 s per shot on a 6 GB card. Verified on a hand-drawn portrait asked to
+  "close her eyes and lower her head": eyes shut cleanly by frame 16, head down
+  by 24, face intact throughout.
+
+  **Ask for small motion.** Big actions (a kick) still wreck faces and hands at
+  any setting. Small ones — a blink, a head tilt, cloth drift — come out clean.
 
   **Everything below was tested and FAILED. Do not retry them:**
 
