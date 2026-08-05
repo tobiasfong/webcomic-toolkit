@@ -80,7 +80,7 @@ def build(a, v):
         # --- out ---
         "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["3", 0]}},
         "14": {"class_type": "SaveAnimatedWEBP",
-               "inputs": {"images": ["13", 0], "filename_prefix": "ltx_test",
+               "inputs": {"images": ["13", 0], "filename_prefix": a.prefix,
                           "fps": 24.0, "lossless": False, "quality": 90,
                           "method": "default"}},
     }
@@ -116,6 +116,9 @@ def main():
                    help="sigma schedule shift; higher = starts further from the input = more motion")
     p.add_argument("--base-shift", dest="base_shift", type=float, default=0.95)
     p.add_argument("--cfg", type=float, default=0.0, help="override variant cfg; higher sticks harder to the input image (and reduces motion)")
+    p.add_argument("--prefix", default="ltx_test",
+                   help="output filename prefix; give each run of a sweep its own so "
+                        "results can be told apart afterwards")
     p.add_argument("--prompt", default="anime illustration, the character moves slightly, "
                                        "hair and clothes sway, subtle natural motion, "
                                        "cel shaded, clean linework")

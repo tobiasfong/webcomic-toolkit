@@ -209,18 +209,75 @@ LTX-2.3 locally in ComfyUI (no subscription), and **`assets/tools/ltx_run.py`**
 is a working driver — it builds the ComfyUI API graph, submits it and polls.
 Clips come back as ordinary video panels.
 
-**Verified on a 6 GB RTX 3060 Laptop**: 25 frames @ 832x576 in ~161 s,
-distilled-1.1 at 8 steps. No OOM, no special flags.
+**Verified on a 6 GB RTX 3060 Laptop.** Settled recipe — start here, don't tune:
 
-Measured behaviour, so expectations are right:
-- **Style survives well** — cel shading, linework, colour and background hold;
-  no drift toward photoreal. Verified on both generated panels and hand-drawn
-  illustrations.
-- **Faces drift on close/complex shots** — glasses dissolved by frame 24 on one
-  test, while a portrait-framed illustration held cleanly. Favour mid/long
-  shots; keep clips short, since drift compounds with generated time.
-- **Never render below 540p** — fine linework mushes below it, before any
-  upscale can recover it.
+```
+--variant distilled --len 17 --strength 0.9 --fps 48   # ~65 s per take
+```
+
+`distilled` at len 17 is ~5x faster than `dev` at len 25 **with no motion
+penalty** (measured: distilled out-moved dev on the same shot). That speed is
+what makes the workflow below affordable.
+
+### The rule that decides whether a shot will work at all
+
+> **LTX RELOCATES what exists. It cannot RE-IMAGINE it.**
+
+Everything below follows from that one line:
+
+| works | fails |
+|---|---|
+| Arm swings, head turns, a fist moving down | **Blinks** — the eyelid was never drawn |
+| Hair, cloth, drifting snow, rotating runes | **Mouth shapes** — teeth/tongue don't exist |
+| **Fire** — existing pixels churning | **Growing crystals** — new geometry |
+| Camera drift | **Foreshortening** — a punch toward the viewer needs knuckles redrawn at a new angle |
+
+- **Ask for the LARGEST motion that reads, and put it FIRST in the prompt.** The
+  leading request gets the motion budget. "Blinks slowly" froze on 4 seeds;
+  the same shot with "turns her head gently" moved — and the eyes closed *along
+  with it*. Feature-scale motion only ever arrives as a passenger.
+- **Then run ~3 seeds and keep the best — roughly 1 in 3 lands.** Seed variance
+  is real, but ONLY when the request is achievable; an impossible ask freezes on
+  every seed, so re-rolling a blink is wasted time.
+- **Seeds do NOT transfer across configs.** Changing `--len` or `--variant`
+  reshuffles everything — a seed that moved at len 25 can freeze at len 17.
+  Re-hunt after any parameter change.
+- **Two seeds can be MERGED.** All takes share frame 0, so they start aligned:
+  composite region B from seed Y over seed X through a feathered mask. One take
+  moved the scrolls, another the quill — the final shot used both.
+- **Never render below 540p** — fine linework mushes before any upscale can
+  recover it.
+- Style survives well: cel shading, linework and colour hold, with no drift
+  toward photoreal.
+
+### Judging the result — the part that goes wrong
+
+- **`retime.py` FIRST.** `ltx_run.py` writes at 24 fps, so a 17-frame clip plays
+  in **0.7 s** and reads as "nothing happened" even when the motion is fine.
+  Always retime to 12 fps before looking.
+- **`measure_motion.py --box` and then LOOK.** The number measures *change*, not
+  quality — a clip whose faces dissolve scores very high. Crop the moving part
+  at native resolution and check it.
+- **Compare the SAME region across runs, never different regions.** Mean-abs-diff
+  scales with local contrast, so a dark background and high-contrast linework
+  give different numbers under identical drift.
+- **Use an unmoved region as a control.** If the arm scores 17 and the face
+  scores 2, that's real localized motion. If both move, it's global drift.
+- **On art with frame-wide animated FX** (glowing text, sparkles) the metric is
+  meaningless — those inflate every box they touch. Judge by watching.
+
+### What LTX can't do, and what does it instead
+
+- **Blinks / mouth shapes** → `kontext_edit.py` generates the keyframe, then
+  composite ONLY the eye or mouth patch back over the original. Kontext
+  regenerates the whole frame and will quietly restyle hair or colour, so never
+  ship its output wholesale. It is also **binary** — it cannot do a half-lid, so
+  blend the open and closed composites for mid positions.
+- **Anything that must APPEAR** (growing ice, shooting stars, speed lines) →
+  draw it. Deterministic, retimeable onto musical beats, and it can't smear a
+  face. `impact_preview.py` previews the speed-line/flash/shake kit.
+- **Negative instructions are ignored by BOTH models.** "Do not close her eyes"
+  closed them; "without turning" turned. Phrase every request positively.
 
 The gotcha that wastes the most time: **a GGUF text encoder will not load via
 ComfyUI's core `LTXAVTextEncoderLoader`** (it reads `models/checkpoints/`, and
@@ -234,10 +291,15 @@ after adding files.
 
 - **Panel curation**: teaser = ~8–15 strongest beats, ~4s each, end on
   cover/CTA with credits. A 60s Short cannot hold a full chapter.
-- **Motion clips**: for "living illustration" panels, generate image-to-video
-  clips externally (Kling/Hailuo etc. — user's own account) and drop them in as
-  video panels. Free tiers watermark their output; the Remotion pipeline itself
-  adds no watermark. Animate only 1–3 hero panels; Ken Burns covers the rest.
+- **Motion clips**: prefer the **local LTX path above** — no subscription, no
+  watermark, ~65 s a take. Paid services (Kling/Hailuo) remain an option via the
+  user's own account, but are no longer necessary; their free tiers watermark
+  output, while this pipeline adds none. Animate only 1–3 hero panels and let
+  Ken Burns carry the rest — that is a pacing choice as much as a cost one.
+- **A punch does not need the arm to travel.** Anime sells the moment of
+  contact, not the trajectory: speed lines, flash, camera shake and a held
+  drawing read as an impact. `Impact.tsx` does this, and it is why a paid
+  image-to-video service is not required for action beats.
 - **Music**: this pipeline plays an mp3; it does not generate music. AI music
   (e.g. Suno) is generated by the user in their own account — the usage license
   attaches at generation time (free tier = non-commercial).

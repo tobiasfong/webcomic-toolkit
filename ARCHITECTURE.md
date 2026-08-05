@@ -29,6 +29,7 @@ A **single local interface** that unifies Tobias's webcomic/animation ecosystem:
 | Publication server (EPUB/CBZ/PDF/webtoon-strip export) | MCP server (CPU) | 🔜 Planned here (§7) | — |
 | Character & Panel server (character bible, consistent characters from references, panel compositing, Concept Genesis, SDXL prototype, 3D mannequin for genuine back views) | MCP server (GPU, ComfyUI) | ✅ Shipped v1.0.0, all 3 tiers + back-view solved (§8b) | `tobiasfong/webcomic-toolkit` (`servers/character-panel-mcp`) |
 | Prose → Storyboard adaptation (bridges novel-translation-mcp chapters to panel generation) | Agent skill or new server | 🔜 Planned, not built (§8a.1) | — |
+| Music generation server (BGM / theme songs for teasers & MVs, local) | MCP server (GPU, ComfyUI) | 🔜 Planned, not built (§7a) | — |
 | Orchestration skill ("make a promo short" etc.) | Agent skill | 🔜 Planned (§8) | — |
 
 **Background Generator — next step, 3D props via OBJ import (not yet built):** v1.8.0
@@ -434,6 +435,43 @@ replacement (same stance as the background generator's character-first workflow)
 **Scope guard:** if this server starts growing glossary management beyond the translation
 core's needs, chapter-level translation memory, or storefront uploads — stop and split.
 Packaging only.
+
+---
+
+## 7a. Music generation MCP server (planned, not built)
+
+**Why it exists.** The anime-production skill *plays* an mp3; it has never generated one.
+Today's teaser music comes from **Suno**, which is exactly the paid-cloud dependency this
+ecosystem exists to avoid (same category as Kling for video, meshy.ai for props). Tobias also
+dislikes the vocal on the current RxR track and wants it redone. Local generation closes the
+last outsourced step in the video pipeline.
+
+**Responsibility:** generate BGM and full theme songs locally, on the same 6 GB RTX 3060 as
+the other GPU servers, and hand back an mp3/wav the Remotion pipeline can drop straight in.
+
+**Undecided — resolve before building:**
+- **Model.** ACE-Step is the obvious candidate: it is the only strong open local model that
+  does *songs with vocals*, which is what a theme song needs. MusicGen and Stable Audio Open
+  are instrumental-only — fine for BGM, useless for a vocal track.
+- **Whether 6 GB is enough.** Untested. Assume quantisation will be needed, as with
+  LTX-2.3 (GGUF Q4_K_M) and FLUX Kontext (Q3_K_S). If it will not fit, the fallback is
+  instrumental-only BGM locally and vocals stay a manual step.
+- **Language.** RxR's track is Japanese. Vocal quality in Japanese specifically must be
+  auditioned before committing — most open models are trained English-heavy.
+
+**Likely tools (sketch, not a contract):**
+- `generate_track(prompt, duration, bpm?, key?, seed)` — the core call.
+- `generate_variations(track_id, n)` — songs need auditioning; one take is never enough.
+- `extract_beats(path)` — already solved: `assets/tools/extract-beats.mjs` does spectral-flux
+  onset detection + autocorrelation tempo, dependency-free, via Remotion's bundled ffmpeg.
+  Move it here so cuts and effects can be pinned to downbeats at generation time.
+
+**Integration:** fills the empty `"video": { "music": "" }` field in `project.json` (§6), and
+pairs with the anime-production skill's beat-sync — the existing teaser already lands cuts on
+downbeats at 0.0 ms error against a 150 BPM track.
+
+**Scope guard:** generation and beat analysis only. Mixing, mastering and stem separation are
+a different product — if those appear, stop and split.
 
 ---
 
