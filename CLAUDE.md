@@ -365,8 +365,113 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   `Start-Process C:\AI\ComfyUI_windows_portable
 un_nvidia_gpu.bat`.
 
+## Music: ACE-Step text-to-music (local, 6 GB card)
+
+Verified working 2026-08-06 — a 120 s vocal track at 48 kHz stereo in **87-105 s**
+on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
+`servers/music-generation-mcp/` (MCP) or `tools/ace_run.py` (CLI).
+
+- **No custom nodes.** ACE-Step 1.0 and 1.5 are both in ComfyUI core as of 0.25
+  (`comfy_extras/nodes_ace.py`). Nothing to install but the weights — unlike LTX,
+  which needed city96's GGUF loaders.
+- **6 GB is enough, and no quantisation exists or is needed.** Peak ~5.9-6.0 GB
+  for a 120 s track. It runs FASTER THAN REAL TIME, which inverts the assumption
+  that auditioning would be expensive: `generate_variations` at n=5 is ~9 minutes.
+  Audition properly instead of settling for the first usable take.
+- **`--lowvram` makes no measurable difference here — use the plain
+  `run_nvidia_gpu.bat`.** Measured on the same 120 s graph and seed:
+  with the flag 87 s / 5972 MiB peak, without it 91 s / 5904 MiB. Neither OOMs;
+  the gap is run-to-run noise. Do not inherit the flag from a running process and
+  assume it was a considered choice.
+- **1.5 needs `DualCLIPLoader(type="ace")` with TWO text encoders.**
+  `comfy/text_encoders/ace15.py` always builds a qwen3_06b for the base/lyrics
+  embedding, and the larger Qwen is a *separate* autoregressive audio-code LLM.
+  A single-file `CLIPLoader` does not error — it silently lands on ACE 1.0's T5
+  path instead (`comfy/sd.py:1527` vs `:1692`). Same class of silent-garbage trap
+  as mixing LTX connectors across variants.
+- **`duration` and `seconds` are two inputs that must agree.**
+  `TextEncodeAceStepAudio1.5` conditions on `duration`; `EmptyAceStep1.5LatentAudio`
+  sets the real latent length from `seconds`. Nothing checks them, and a mismatch
+  conditions for one length while sampling another. Derive both from one value.
+- **Never let the negative conditioning run the audio-code LLM.**
+  `generate_audio_codes` defaults to True; leaving it on for the negative pays for
+  a second autoregressive pass that is discarded — and at cfg 1.0 the negative is
+  not used at all.
+- **1.5 is the LARGER download** (10.0 GB vs 1.0's 7.7 GB), not the smaller one,
+  because of the second text encoder. Chosen anyway: it has an explicit
+  `language` input including `ja`, plus `bpm`/key/time-signature. 1.0 has no way
+  to declare a language and infers it from the lyric script.
+- `memory_usage_factor` 4.7 (1.5) vs 0.5 (1.0) is **not** an OOM signal — the
+  factors multiply different latent shapes. For 120 s the attention working sets
+  come out comparable (~282 MB vs ~207 MB).
+- **Judge by ear.** Compression ratio catches silence (<6% of raw) and noise
+  (>92%), and real music sits between — 27% for a sparse lo-fi bed, ~60% for a
+  full band with vocals. That is a *sanity* check, not a quality one. No
+  statistic tells you whether the vocal is any good, which is the entire reason
+  this server exists.
+
+  ### Writing a song that actually sings (learned on RxR's セカンドチャンス)
+
+  **Lyric density is the master control, and it is arithmetic.** One bar =
+  `4 * 60 / bpm` seconds. Divide the track's bars by the number of SUNG lines:
+
+  | bars/line | what you hear |
+  |---|---|
+  | ~4.7 | each line stretched across 2-3 fragments with gaps — sounds broken |
+  | **~2.3** | **correct — lines sung as lines** |
+  | <2 | lines run together with no breath, and trailing lines get DROPPED |
+
+  Measured: 16 lines over 120 s at 150 BPM = 75 bars = 4.7 bars/line, and every
+  line came back fragmented. The same lyric at 60 s = 2.34 bars/line sang
+  cleanly. **If a clip sounds broken, do the division before touching anything
+  else.**
+
+  **Instrumental sections are NOT free duration — they compete with the lyric
+  for the same bars.** Adding `[intro]`, three `[instrumental]` blocks and an
+  `[outro]` to an 85 s track silently truncated the lyric: it sang lines 1-10 of
+  16 and stopped. Budget **~6 bars per instrumental block**, not the ~4 that
+  seems reasonable. The full-song budget that worked:
+  `16 lines * 2.3 bars + 5 blocks * 6 bars = 67 bars = ~107 s at 150 BPM`.
+
+  **A blank line between EVERY lyric line produces per-line pauses.** Bare
+  newlines are weak punctuation to the Qwen encoder and lines get sung
+  back-to-back with no breath. Putting a blank line between each one fixed it;
+  phrasing instructions in the `tags` did not (tested separately).
+
+  **Requesting a relative minor does nothing — it is the same seven notes.**
+  Asking for `B minor` returns audio that measures as **D major** (its relative
+  major); `E minor` measures as **G major**. This is not the analyser failing,
+  it is what a relative pair *is*. Picking B minor to "keep the tonal centre
+  related to the D major they liked" was exactly backwards: sharing a pitch
+  collection is what made it unable to change the mood. To actually shift mood,
+  count how many notes differ from the current key — D→B minor differs by 0,
+  D→E minor or F# minor by 1, D→D minor by 3 (which overshot into "wrong").
+
+  **`tools/analyze_reference.py` measures bpm and key** from any mp3/flac/wav —
+  no ffmpeg needed. Use it on a reference track the author already likes instead
+  of guessing at parameters, and on your own output to check what the model
+  actually did. Validated against known inputs: 152.0 measured vs 150 requested.
+  It cannot separate relative major/minor pairs (nothing chroma-based can) and
+  it flags them when it sees one.
+
+  **Two things are NOT controllable, so sample and pick rather than tune:**
+  - *Vocal gender/register.* Identical `deep male vocal, baritone, low register`
+    tags produced a male vocal at 85 s and a female-sounding one at 95 s.
+  - *Half-time feel.* The same `bpm=150` request landed at a measured 73.8
+    (half-time) on some takes and 152.0 on others. The half-time takes read as
+    weightier and more deliberate — which is likely what "finally sounds like
+    regret" came from, NOT the key change credited at the time.
+
+  This is the same lesson as LTX's seed variance: single samples produce
+  confident conclusions that do not replicate. Once the config is musically
+  right, use `generate_variations` and choose a performance.
+
 ## Practical
 
+- **Pin `mcp<2` in every Python server.** mcp 2.0.0 REMOVED `mcp.server.fastmcp`,
+  which all four servers import. An unbounded `mcp>=1.2.0` resolves to 2.0 on a
+  fresh install and dies at import. Verified 2026-08-06: bounded → 1.29.0,
+  unbounded → 2.0.0. Existing venvs are unaffected; this bites new installs only.
 - ComfyUI runs prompts **serially**. Submit one job at a time; stacked jobs burn
   their timeouts waiting in queue.
 - Use the repo venv: `servers/character-panel-mcp/.venv/Scripts/python.exe`.

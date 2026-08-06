@@ -20,6 +20,11 @@ production — see `servers/*` for individually-installable pieces. Each has its
   query tools over novel manuscripts (docx) so translation work in chat never
   re-reads the whole document. Multi-project (one server, many novels); publishing/EPUB
   assembly is deferred to a future Publication MCP server.
+- [`servers/music-generation-mcp`](servers/music-generation-mcp/README.md) — local BGM
+  and vocal theme songs via ComfyUI's native ACE-Step support, returning a lossless
+  FLAC and a Remotion-ready MP3 plus a beat grid for downbeat-synced cuts. Closes the
+  last outsourced step in the video pipeline: the anime-production skill could always
+  play a track but never generate one.
 - [`servers/character-panel-mcp`](servers/character-panel-mcp/README.md) — for writers
   who aren't artists: register existing character reference art as a Character Bible,
   generate consistent poses (Tier 1 of a three-tier design), and composite panels onto

@@ -29,7 +29,7 @@ A **single local interface** that unifies Tobias's webcomic/animation ecosystem:
 | Publication server (EPUB/CBZ/PDF/webtoon-strip export) | MCP server (CPU) | 🔜 Planned here (§7) | — |
 | Character & Panel server (character bible, consistent characters from references, panel compositing, Concept Genesis, SDXL prototype, 3D mannequin for genuine back views) | MCP server (GPU, ComfyUI) | ✅ Shipped v1.0.0, all 3 tiers + back-view solved (§8b) | `tobiasfong/webcomic-toolkit` (`servers/character-panel-mcp`) |
 | Prose → Storyboard adaptation (bridges novel-translation-mcp chapters to panel generation) | Agent skill or new server | 🔜 Planned, not built (§8a.1) | — |
-| Music generation server (BGM / theme songs for teasers & MVs, local) | MCP server (GPU, ComfyUI) | 🔜 Planned, not built (§7a) | — |
+| Music generation server (BGM / theme songs for teasers & MVs, local) | MCP server (GPU, ComfyUI) | 🟡 Built, live generation not yet verified (§7a) | `tobiasfong/webcomic-toolkit` (`servers/music-generation-mcp`) |
 | Orchestration skill ("make a promo short" etc.) | Agent skill | 🔜 Planned (§8) | — |
 
 **Background Generator — next step, 3D props via OBJ import (not yet built):** v1.8.0
@@ -438,7 +438,57 @@ Packaging only.
 
 ---
 
-## 7a. Music generation MCP server (planned, not built)
+## 7a. Music generation MCP server — 🟡 BUILT 2026-08-06, live generation not yet verified
+
+**Status: shipped and generating.** Lives in `servers/music-generation-mcp/`
+(v0.1.0). Six tools (`generate_track`, `generate_variations`, `list_tracks`,
+`get_track`, `extract_beats`, `check_status`), 29 offline graph tests passing,
+every graph validated against a live ComfyUI `/prompt` schema check, and **five
+real generations run end to end** — including two 120-second Japanese vocal
+takes of RxR's セカンドチャンス. The one thing still open is whether those
+vocals are any *good*, which is a listening question, not a build one. See that
+server's CHANGELOG for the full report.
+
+**It runs faster than real time** — a 120-second track in 87-105 s at ~5.9 GB
+peak on the 6 GB card. That inverts this section's assumption that auditioning
+would be expensive: `generate_variations` at n=5 costs about nine minutes, so
+the intended workflow is to audition a direction properly rather than accept the
+first usable take.
+
+The three questions this section flagged as *undecided — resolve before
+building* are resolved:
+
+- **Model:** ACE-Step, confirmed — and easier than expected. **ComfyUI has
+  shipped it natively since ~0.25** (`comfy_extras/nodes_ace.py`), so unlike the
+  LTX video path there are **no custom nodes to install at all**.
+- **6 GB:** **yes, comfortably.** No quantisation exists or is needed — Comfy-Org
+  publishes bf16 split files and ComfyUI streams weights. Peak ~5.9 GB for a
+  120-second track, no OOM. `--lowvram` turned out to make no measurable
+  difference (87 s/5972 MiB with it, 91 s/5904 MiB without, same seed), so the
+  plain `run_nvidia_gpu.bat` is correct.
+- **Language:** unauditioned, but it decided the default. **ACE-Step 1.5 is the
+  default because it has an explicit `language` input including `ja`**; 1.0 has
+  no way to declare one and infers it from the lyric script. 1.5 also exposes
+  `bpm`, key/scale and time signature — which matters for this doc's own
+  beat-sync goal, since specifying 150 BPM at generation beats detecting it
+  afterward. Both variants are built behind one `variant=` switch (the
+  `ltx_run.py` pattern), so 1.0 is a fallback rather than a rewrite.
+
+Correction to the assumption written below: **1.5 is the LARGER download**, 10.0
+GB against 1.0's 7.7 GB, because it needs two text encoders (a 0.6b base/lyrics
+encoder always loaded, plus a larger Qwen acting as a separate audio-code LLM).
+Its alarming-looking `memory_usage_factor` of 4.7 vs 1.0's 0.5 is **not** an OOM
+signal — the factors multiply different latent shapes, and for a 120-second
+track the attention working sets come out comparable (~282 MB vs ~207 MB).
+
+`extract_beats` duplicates the skill's `extract-beats.mjs` rather than moving it,
+at Tobias's direction — both pipelines own a copy so each stays independently
+installable.
+
+<details>
+<summary>Original plan (2026-07, superseded above)</summary>
+
+### 7a-original. Music generation MCP server (planned, not built)
 
 **Why it exists.** The anime-production skill *plays* an mp3; it has never generated one.
 Today's teaser music comes from **Suno**, which is exactly the paid-cloud dependency this
@@ -472,6 +522,8 @@ downbeats at 0.0 ms error against a 150 BPM track.
 
 **Scope guard:** generation and beat analysis only. Mixing, mastering and stem separation are
 a different product — if those appear, stop and split.
+
+</details>
 
 ---
 

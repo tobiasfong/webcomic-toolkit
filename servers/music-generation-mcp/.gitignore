@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+
+# The whole track library stays local. Two reasons, and the second is the
+# important one:
+#   1. Generated audio is large and reproducible from its recipe.
+#   2. THE RECIPES EMBED THE LYRICS. This repo is public, so committing
+#      tracks.json or a per-track .json would publish the author's unreleased
+#      song text permanently and indexably. An earlier version of this file
+#      un-ignored output/tracks.json to "keep the manifest" and would have done
+#      exactly that. Do not re-add that exception.
+output/
+*.flac
+*.mp3
+*.opus
+*.wav

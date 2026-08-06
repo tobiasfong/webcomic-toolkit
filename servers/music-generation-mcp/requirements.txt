@@ -1,0 +1,21 @@
+# Upper bound is load-bearing: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+# every server in this repo imports. An unbounded `mcp>=1.2.0` silently resolves
+# to 2.0 on a fresh install and dies at import with ModuleNotFoundError.
+# The sibling servers are all on 1.28.1; stay with them.
+mcp>=1.2.0,<2
+# ComfyUI HTTP API: submit graphs, poll /history, fetch audio.
+requests>=2.31.0
+
+# tools/analyze_reference.py — measure a reference track's bpm and key so those
+# parameters come from measurement rather than guesswork. soundfile bundles
+# libsndfile and reads MP3/FLAC/WAV/OGG directly, which is why this path needs
+# no ffmpeg. (tools/inspect_audio.py needs neither — it parses FLAC headers.)
+numpy>=1.24.0
+soundfile>=0.12.0
+
+# NOT pip-installable, and deliberately so:
+#   * ComfyUI 0.25+ — supplies ACE-Step natively (no custom nodes needed).
+#   * ACE-Step model files — see README "Models".
+#   * Node + an ffmpeg binary — ONLY for extract_beats. Generation needs
+#     neither; ComfyUI does its own audio encoding. Point the server at ffmpeg
+#     with WEBCOMIC_MUSIC_FFMPEG if it is not on PATH.
