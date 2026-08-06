@@ -455,16 +455,30 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   it flags them when it sees one.
 
   **Two things are NOT controllable, so sample and pick rather than tune:**
-  - *Vocal gender/register.* Identical `deep male vocal, baritone, low register`
-    tags produced a male vocal at 85 s and a female-sounding one at 95 s.
-  - *Half-time feel.* The same `bpm=150` request landed at a measured 73.8
-    (half-time) on some takes and 152.0 on others. The half-time takes read as
-    weightier and more deliberate — which is likely what "finally sounds like
-    regret" came from, NOT the key change credited at the time.
+  - *Vocal gender/register.* Identical `deep male vocal, baritone, low register,
+    male singer` tags produced a male vocal at 85 s and a female-sounding one at
+    95 s. Confirmed at scale: of 5 same-config variations, **one came back
+    female and one noticeably high-pitched**. Budget for roughly 1 in 5 takes
+    being unusable on register alone, and generate accordingly — no wording
+    tested fixed it.
+  - *Half-time feel.* Measured across **6 seeds at an identical config**
+    (`bpm=150`, 107 s, B minor): four came back at a measured 73.8-76 BPM
+    (half-time), two at 152.0. So half-time is the majority outcome, not a coin
+    flip — but not reliable either.
+    ⚠ I briefly credited half-time for making the winning take "finally sound
+    like regret". **That was wrong**: the author then preferred a 152.0 take as
+    well. Tempo feel varies by seed and does NOT predict which take is liked.
+    Do not build on it. (The key change was ALSO wrongly credited at the time —
+    the audio measured as D major throughout, so it cannot have been the cause
+    either. What actually fixed the mood is still unidentified; the honest
+    account is that the winning takes were found by sampling, not by a lever.)
 
   This is the same lesson as LTX's seed variance: single samples produce
-  confident conclusions that do not replicate. Once the config is musically
-  right, use `generate_variations` and choose a performance.
+  confident conclusions that do not replicate. Note that the 6-seed sweep above
+  is the ONLY claim in this section backed by a distribution — everything else
+  came from one run per configuration, and should be treated accordingly. Once
+  the config is musically right, use `generate_variations` and choose a
+  performance rather than tuning further.
 
 ## Practical
 

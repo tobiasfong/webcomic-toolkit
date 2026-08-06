@@ -30,17 +30,16 @@ it rather than let it be discovered the hard way:
 """
 
 import os
-import subprocess
 
 from mcp.server.fastmcp import FastMCP
 
 import ace_workflow as aw
 import comfy
 import tracks as tk
+from tools import beats
 
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-BEATS_SCRIPT = os.path.join(BASE, "tools", "extract-beats.mjs")
 
 mcp = FastMCP("music-generator")
 
@@ -159,9 +158,10 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
     """Beat grid + energy envelope, so video cuts land on downbeats.
 
     Pass a track_id (analyses its mp3, attaches beats.json to the record) or an
-    arbitrary audio_path. `bpm` skips tempo detection when you already know it.
-    Needs Node and an ffmpeg binary (set WEBCOMIC_MUSIC_FFMPEG); generation
-    itself needs neither.
+    arbitrary audio_path. `bpm` skips tempo detection — pass it for tracks this
+    server generated, where bpm was an INPUT and is therefore already known.
+
+    Pure Python: no Node, no ffmpeg.
     """
     if not (track_id or audio_path):
         raise ValueError("Pass either track_id or audio_path.")
@@ -177,17 +177,20 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio not found: {audio_path}")
 
-    cmd = ["node", BEATS_SCRIPT, audio_path, "--out", out_path]
-    if bpm:
-        cmd += ["--bpm", str(bpm)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=BASE)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"extract-beats failed:\n{(proc.stderr or proc.stdout)[-800:]}"
-        )
+    # A track this server made already knows its tempo — bpm was an input.
+    if bpm is None and rec is not None:
+        bpm = rec["recipe"].get("bpm")
+
+    out = beats.write(audio_path, out_path, known_bpm=bpm)
     if rec:
         tk.attach(track_id, "beats", out_path)
-    return {"beats_json": out_path, "log": proc.stdout.strip().splitlines()[-2:]}
+    return {
+        "beats_json": out_path,
+        "bpm": out["bpm"],
+        "beat_count": len(out["beats"]),
+        "downbeat_count": len(out["downbeats"]),
+        "onset_count": len(out["onsets"]),
+    }
 
 
 @mcp.tool()

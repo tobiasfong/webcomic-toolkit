@@ -140,18 +140,22 @@ good take being silently overwritten by a worse one is the expensive failure.
   statistic tells you whether you like the vocal — which is the whole reason this
   server exists.
 
-### `extract_beats` dependencies
+### `extract_beats` — pure Python, no Node and no ffmpeg
 
-Needs **Node** and an **ffmpeg** binary; generation needs neither, since ComfyUI
-does its own audio encoding. If ffmpeg is not on `PATH`, set
-`WEBCOMIC_MUSIC_FFMPEG` to its full path.
+`tools/beats.py` is a port of the anime-production skill's `extract-beats.mjs`
+onto the same `numpy` + `soundfile` path `analyze_reference.py` uses. Same
+algorithm, **same output schema**, so the JSON stays a drop-in for Remotion.
 
-`tools/extract-beats.mjs` is a deliberate **duplicate** of the anime-production
-skill's copy — §7a asked for the beat tool to live with music generation, and the
-video pipeline still needs its own so it stays independently installable. The
-analysis code is identical; fix a bug in one and port it to the other. The single
-divergence is a `--ffmpeg` flag, because the skill's copy finds ffmpeg inside
-Remotion's bundled compositor package and this server has no Remotion.
+The port exists because the `.mjs` decodes via ffmpeg, which this machine does
+not have and which the author declined to install. `soundfile` bundles
+libsndfile and reads MP3/FLAC/WAV/OGG directly, so this needs nothing that was
+not already required. The skill keeps its own `.mjs` — it finds ffmpeg inside
+Remotion's bundled compositor package — so the video pipeline is unaffected.
+Two implementations of one algorithm: fix a bug in one, port it to the other.
+
+**Pass `bpm` when you know it.** For tracks this server generated, tempo was an
+*input*, so `extract_beats` reads it from the recipe instead of detecting it —
+exact by construction. Detection is for reference tracks and outside audio.
 
 ## Environment
 

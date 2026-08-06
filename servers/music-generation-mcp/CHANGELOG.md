@@ -16,14 +16,16 @@ needed city96's third-party GGUF loaders.
 
 **"Whether 6 GB is enough. Untested. Assume quantisation will be needed, as
 with LTX-2.3 and FLUX Kontext."** No quantisation is available or needed —
-Comfy-Org publishes bf16 split files and ComfyUI streams weights under
-`--lowvram`. Feasibility on 6 GB is **not yet verified end to end**; see Open
-below.
+Comfy-Org publishes bf16 split files and ComfyUI streams weights. **Verified
+later the same day: yes, comfortably** — ~5.9 GB peak for a 120 s track, no
+OOM, and faster than real time. `--lowvram` turned out to make no measurable
+difference. See "Verified live" below.
 
 **"Language. Vocal quality in Japanese specifically must be auditioned."**
-Still to audition — but it drove the variant choice. **1.5 is the default
-because it has an explicit `language` input including `ja`**; 1.0 has no way to
-declare a language and infers it from the lyric script.
+It drove the variant choice: **1.5 is the default because it has an explicit
+`language` input including `ja`**; 1.0 has no way to declare a language and
+infers it from the lyric script. **Auditioned the same day** across six rounds
+of author feedback — see v0.2.0.
 
 ### Built
 
@@ -109,6 +111,42 @@ Four real generations ran end to end, through both the CLI driver and the MCP
   were affected) — bounded in all four at the author's direction and verified:
   bounded resolves to 1.29.0, unbounded to 2.0.0.
 
+### Open at v0.1.0 — see v0.2.0 below for what has since been resolved
+
+- Sampling defaults (`steps=12`, `cfg=1.0`, `euler`/`simple`) were never swept.
+  Still true.
+- Whether the Japanese vocals are any good — **resolved by audition**: six
+  rounds of author feedback converged on a settled recipe. See v0.2.0.
+- `ReferenceTimbreAudio` wired but never run. Still true.
+
+### v0.2.0 — same session
+
+- **`extract_beats` ported to pure Python and RUN.** `tools/beats.py` reimplements
+  the skill's `extract-beats.mjs` on the `numpy`/`soundfile` path, dropping both
+  Node and ffmpeg — the author declined to install ffmpeg, and `soundfile`
+  bundles libsndfile so nothing new was needed. Same output schema, so it stays
+  a Remotion drop-in. The `.mjs` duplicate added earlier this session is removed
+  here; the skill keeps its own copy, which finds ffmpeg inside Remotion.
+  Verified on the winning track: 268 beats, 67 downbeats, bar 1.600 s — and
+  **67 bars is exactly the budget predicted for a 107 s track**, an independent
+  confirmation of the density arithmetic in CLAUDE.md.
+- When a track was generated here, `extract_beats` now takes bpm from the recipe
+  instead of detecting it. Tempo was an input; detection can only be worse.
+- `tools/analyze_reference.py` added: measures bpm and key of any mp3/flac/wav so
+  those parameters come from measurement, not guesswork. Validated against known
+  inputs (152.0 measured vs 150 requested). It cannot separate relative
+  major/minor pairs — nothing chroma-based can — and says so when it sees one.
+  That limitation is itself what proved requesting `B minor` returns D major's
+  pitch collection.
+- **`generate_variations` run live**: 5 takes in 380 s. Combined with the
+  original, a 6-seed sweep at one config showed 4 half-time / 2 full-tempo,
+  the only distribution-backed claim in this work.
+- **Near-miss fixed before the first push:** `.gitignore` had `!output/tracks.json`
+  to preserve the library manifest — but recipes embed lyrics, and this repo is
+  public, so that would have published the author's unreleased song text. `output/`
+  is now ignored wholesale and the reason is recorded in the file. A real lyric
+  line used as a test fixture in `test_validate_live.py` was replaced too.
+
 ### Open — still not verified
 
 - **Sampling defaults are starting points, not swept settings.** `steps=12`,
@@ -116,9 +154,6 @@ Four real generations ran end to end, through both the CLI driver and the MCP
   against them. The LTX experience says defaults are often the trap
   (`strength=1.0` froze every clip for six experiments). Sweep with
   `tools/ace_run.py`.
-- **Whether the Japanese vocals are GOOD is unanswered** — the one question this
-  tooling structurally cannot answer. §7a called for auditioning them before
-  committing; two takes exist for exactly that.
 - `ReferenceTimbreAudio` is marked `is_experimental=True` in ComfyUI. Wired and
-  unit-tested; never run. It is the next lever if a vocal is close but wrong.
-- `extract_beats` has not been run — no ffmpeg is installed on this machine.
+  unit-tested; never run. It is the next lever if a vocal is close but wrong —
+  vocal register turned out not to be controllable by tag wording.
