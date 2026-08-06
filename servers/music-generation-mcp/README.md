@@ -103,8 +103,29 @@ Register with your harness (stdio):
 | `generate_variations` | Re-run a track's recipe under new seeds — the audition loop. |
 | `list_tracks` | Terse listing (id, title, duration, mp3 path). |
 | `get_track` | One track's full recipe and file paths. |
+| `approve_track` | Lock a take as canon and publish it as `FINAL_<slug>.*`. |
+| `forget_track` | Delete a take. Refuses the approved one. |
 | `extract_beats` | Beat grid + energy envelope, so video cuts land on downbeats. |
 | `check_status` | ComfyUI reachable? VRAM? Which model files are missing? |
+
+### Approving a take
+
+Track ids carry a timestamp, so auditioning cannot overwrite a good take — but
+that makes them a poor handle for downstream tools, which should not need to
+know that `full_bminor_107s_20260807_004333` is "the theme song".
+`approve_track` publishes the winner under a stable name at the project root:
+
+```
+output/rxr/FINAL_second_chance.mp3          <- point Remotion here
+output/rxr/FINAL_second_chance.flac
+output/rxr/FINAL_second_chance_beats.json
+```
+
+The `FINAL_` prefix is the same convention the panel pipeline uses, and this
+repo's standing rule is that generated attempts under `output/` may be
+bulk-deleted freely while an approved `FINAL_` never is — so the existing
+protection applies without anyone having to remember. `forget_track` enforces it
+in code as well, refusing to delete an approved take.
 
 ## Output layout
 

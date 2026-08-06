@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -112,6 +113,72 @@ def listing(project: str | None = None) -> list[dict]:
 
 def projects() -> list[str]:
     return sorted({t["project"] for t in _load()["tracks"]})
+
+
+def approve(track_id: str, slug: str | None = None) -> dict:
+    """Mark a track as the project's canon and publish it under a STABLE name.
+
+    Two jobs, and the second is the point. Track ids carry a timestamp so
+    auditioning cannot overwrite a good take — but that makes them useless as a
+    handle for downstream tools, which should not have to know that
+    `full_bminor_107s_20260807_004333` is "the theme song". This copies the
+    approved take to `FINAL_<slug>.{mp3,flac}` (plus its beat grid) at the
+    project root, so the video pipeline has one obvious target.
+
+    The `FINAL_` prefix is deliberate: it is the same convention the panel
+    pipeline uses, and the repo's standing rule is that generated attempts under
+    output/ may be bulk-deleted freely but an approved FINAL_ never is. Naming it
+    this way makes that protection apply automatically.
+    """
+    data = _load()
+    entry = next((t for t in data["tracks"] if t["id"] == track_id), None)
+    if entry is None:
+        raise ValueError(f"No such track: {track_id}")
+
+    slug = slugify(slug or entry["title"], "final")
+    dest_dir = os.path.join(OUTPUT_ROOT, slugify(entry["project"], "default"))
+    os.makedirs(dest_dir, exist_ok=True)
+
+    published: dict[str, str] = {}
+    for key in ("mp3", "flac", "beats"):
+        src = entry["files"].get(key)
+        if not src or not os.path.isfile(src):
+            continue
+        ext = "json" if key == "beats" else key
+        name = f"FINAL_{slug}_beats.json" if key == "beats" else f"FINAL_{slug}.{ext}"
+        dst = os.path.join(dest_dir, name)
+        shutil.copy2(src, dst)
+        published[key] = dst
+
+    for t in data["tracks"]:
+        t["approved"] = (t["id"] == track_id)
+    entry["published"] = published
+    _save(data)
+
+    d = track_dir(entry["project"], track_id)
+    with open(os.path.join(d, f"{track_id}.json"), "w", encoding="utf-8") as f:
+        json.dump(entry, f, indent=2, ensure_ascii=False)
+    return entry
+
+
+def forget(track_id: str) -> bool:
+    """Delete a track's folder and its manifest entry. Refuses an approved one —
+    losing the canon take to a cleanup pass is the expensive mistake."""
+    data = _load()
+    entry = next((t for t in data["tracks"] if t["id"] == track_id), None)
+    if entry is None:
+        return False
+    if entry.get("approved"):
+        raise ValueError(
+            f"{track_id} is the approved canon track. Approve a different take "
+            f"first if you really mean to remove this one."
+        )
+    d = os.path.dirname(entry["files"].get("flac") or entry["files"].get("mp3", ""))
+    if d and os.path.isdir(d):
+        shutil.rmtree(d)
+    data["tracks"] = [t for t in data["tracks"] if t["id"] != track_id]
+    _save(data)
+    return True
 
 
 def attach(track_id: str, key: str, path: str) -> dict | None:

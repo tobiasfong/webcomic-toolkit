@@ -153,6 +153,24 @@ def get_track(track_id: str) -> dict:
 
 
 @mcp.tool()
+def approve_track(track_id: str, slug: str | None = None) -> dict:
+    """Lock a take as the project's canon and publish it under a stable name.
+
+    Copies it to `FINAL_<slug>.mp3` / `.flac` (plus its beat grid) at the project
+    root, so downstream tools reference one obvious file instead of a timestamped
+    track id. Marks every other take unapproved. `forget_track` then refuses to
+    delete this one.
+    """
+    return tk.approve(track_id, slug)
+
+
+@mcp.tool()
+def forget_track(track_id: str) -> dict:
+    """Delete a take's audio and its manifest entry. Refuses the approved one."""
+    return {"forgotten": tk.forget(track_id), "track_id": track_id}
+
+
+@mcp.tool()
 def extract_beats(track_id: str | None = None, audio_path: str | None = None,
                   bpm: int | None = None) -> dict:
     """Beat grid + energy envelope, so video cuts land on downbeats.

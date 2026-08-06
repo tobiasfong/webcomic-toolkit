@@ -147,6 +147,19 @@ Four real generations ran end to end, through both the CLI driver and the MCP
   is now ignored wholesale and the reason is recorded in the file. A real lyric
   line used as a test fixture in `test_validate_live.py` was replaced too.
 
+- **`approve_track` / `forget_track` added.** Track ids carry a timestamp so
+  auditioning cannot clobber a good take, which makes them a bad handle for
+  downstream tools. `approve_track` publishes the winner as
+  `FINAL_<slug>.{mp3,flac}` + `_beats.json` at the project root — the same
+  `FINAL_` convention the panel pipeline uses, so the repo's "never delete an
+  approved FINAL_" rule covers it automatically. `forget_track` enforces that in
+  code too, refusing an approved take; the guard was tested before being relied
+  on, which matters because 22 tracks were script-deleted in this same session.
+- **RxR's theme song is settled**: seed 9242, published as
+  `FINAL_second_chance.*`. 107 s, 150 BPM, B minor, 4/4, `ja`, sectioned lyrics
+  with a blank line between every sung line. Beat grid: bar 1.600 s, 67
+  downbeats, offset 0.355 s.
+
 ### Open — still not verified
 
 - **Sampling defaults are starting points, not swept settings.** `steps=12`,
