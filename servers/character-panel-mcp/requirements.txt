@@ -1,4 +1,7 @@
-mcp>=1.2.0
+# Upper bound is load-bearing: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+# this server imports. An unbounded pin resolves to 2.0 on a fresh install and
+# dies at import with ModuleNotFoundError.
+mcp>=1.2.0,<2
 requests>=2.31.0
 # Character Bible storage, palette extraction, and compose_panel's alpha compositing.
 pillow>=10.0.0

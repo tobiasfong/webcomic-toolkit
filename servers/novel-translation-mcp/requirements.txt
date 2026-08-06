@@ -1,2 +1,5 @@
-mcp>=1.0.0
+# Upper bound is load-bearing: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+# this server imports. An unbounded pin resolves to 2.0 on a fresh install and
+# dies at import with ModuleNotFoundError.
+mcp>=1.0.0,<2
 python-docx>=1.1.0
