@@ -116,11 +116,19 @@ def main() -> int:
         check("once/hold/loop durations", plan_kinds)
 
         def pong_has_no_seam():
-            w, _ = assemble.plan([{"clip": clip, "kind": "pong"}], beats=None)
-            n = len(w[0]["frames"])
-            a = assemble._pick(w[0], w[0]["t0"] + (n - 1) / 12, 12)
-            b = assemble._pick(w[0], w[0]["t0"] + n / 12, 12)
-            assert a is not b, "ping-pong repeated the turnaround frame"
+            """The turnaround must step BACK, not replay the end frame.
+
+            Checked on synthetic indices rather than on real frames: a clip whose
+            holds are expressed as durations expands to repeated references to
+            the SAME image object, so identity comparison would fail on a
+            perfectly correct ping-pong.
+            """
+            n = 6
+            sc = {"kind": "pong", "t0": 0.0, "frames": list(range(n))}
+            got = [assemble._pick(sc, k / 12, 12) for k in range(2 * n)]
+            assert got[:n] == [0, 1, 2, 3, 4, 5], got
+            assert got[n] == 4 and got[n + 1] == 3, f"turnaround replayed: {got}"
+            assert got[2 * n - 2] == 0, got          # returns to the start
         check("ping-pong turnaround", pong_has_no_seam)
 
         check("measure", lambda: motion.measure(clip)["frames"] > 1 or

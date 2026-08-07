@@ -348,6 +348,144 @@ def _envelope(local: float, attack: int, decay: int) -> float:
     return 0.0 if t >= 1 else (1 - t) ** 1.8
 
 
+def motion_lines(src: str, dst: str, angle: float = 180.0, density: int = 90,
+                 gain: float = 1.0, length: float = 0.55, width: int = 3,
+                 color: tuple[int, int, int] = (255, 255, 255),
+                 clear: tuple[float, float, float] | None = None,
+                 start: int = 0, ramp: int = 3, fps: int = 12) -> dict:
+    """Parallel streaks travelling in one direction — the anime "he moved" cue.
+
+    Distinct from `impact`, whose lines radiate from a point of contact. These
+    are LATERAL: they sell travel across the frame.
+
+    Why it is needed: LTX deforms locally, it does not translate a subject
+    across a composition. Asked for a leap from right to left, it produced a
+    weight shift and a fluttering hem — clean, but not a leap. Anime solves this
+    the same way, with streaks rather than by drawing the body at every point
+    along the path.
+
+    `angle` is the direction of travel in degrees (180 = right-to-left).
+    `clear` is (cx, cy, radius) in frame fractions — an ellipse kept free of
+    lines so the subject is never buried by the effect meant to sell it.
+    `ramp` fades the streaks in over N frames, so they arrive rather than blink on.
+    """
+    base = read_frames(src)
+    W, H = base[0].size
+    n = len(base)
+    diag = math.hypot(W, H)
+    rad = math.radians(angle)
+    dx, dy = math.cos(rad), math.sin(rad)
+    px_, py_ = -dy, dx                                # perpendicular, for spacing
+
+    pyr.seed(13)
+    lines = [(pyr.random(), pyr.random(), pyr.random()) for _ in range(density)]
+    cx0, cy0, cr = clear if clear else (0.5, 0.5, 0.0)
+
+    out = []
+    for i, im in enumerate(base):
+        s = 0.0 if i < start else min(1.0, (i - start + 1) / max(1, ramp))
+        if s <= 0.01:
+            out.append(im)
+            continue
+        ov = Image.new("RGB", (W, H), (0, 0, 0))
+        d = ImageDraw.Draw(ov)
+        for k, (a, b, c) in enumerate(lines):
+            off = (a - 0.5) * diag * 1.4
+            mx = W / 2 + px_ * off
+            my = H / 2 + py_ * off
+            # stagger along the direction so they do not all start together
+            phase = ((i * 0.22) + b) % 1.0
+            ln = diag * length * (0.5 + c * 0.9)
+            hx = mx + dx * (phase * diag * 1.3 - diag * 0.5)
+            hy = my + dy * (phase * diag * 1.3 - diag * 0.5)
+            if cr > 0:
+                if ((hx / W - cx0) ** 2 + (hy / H - cy0) ** 2) ** 0.5 < cr:
+                    continue
+            SEG = 10
+            for g in range(SEG):
+                t0, t1 = g / SEG, (g + 1) / SEG
+                v = int(255 * gain * s * ((1 - t0) ** 1.4) * (0.35 + 0.65 * c))
+                if v < 5:
+                    continue
+                col = tuple(min(255, int(ch * v / 255)) for ch in color)
+                d.line([(hx - dx * ln * t0, hy - dy * ln * t0),
+                        (hx - dx * ln * t1, hy - dy * ln * t1)],
+                       fill=col, width=max(1, width - g // 4))
+        ov = ov.filter(ImageFilter.GaussianBlur(1.1))
+        out.append(ImageChops.screen(im, ov))
+    return _save(out, dst, fps)
+
+
+def glow(src: str, dst: str, mask_path: str | None = None,
+         key: str = "warm", period: float = 1.6, gain: float = 1.0,
+         swirl: float = 0.0, blur: float = 12.0, floor: float = 0.25,
+         fps: int = 12) -> dict:
+    """Pulse (and optionally rotate) the bright parts of a region — magic, runes.
+
+    Runes and magic circles are drawn ONCE and then have to look alive. LTX will
+    not animate them: a glowing sigil brightening is not relocation of existing
+    pixels, it is a change of value, so the model leaves it static.
+
+    The lit parts are keyed out by colour, blurred into a halo and screened back
+    on a sine. `key`: "warm" (gold/orange runes), "cool" (blue/cyan), "bright"
+    (anything luminous regardless of hue).
+
+    `swirl` rotates the halo about the region's centroid, degrees per second —
+    a slow turn reads as circulating power. Keep it small; the halo is a blurred
+    copy, and spinning it fast looks like a spinning blur, which it is.
+
+    `floor` is the dimmest the pulse goes (0 = fully dark between beats, which
+    reads as flickering rather than breathing).
+    """
+    base = read_frames(src)
+    W, H = base[0].size
+    n = len(base)
+
+    if mask_path:
+        lit = Image.open(mask_path).convert("L")
+        if lit.size != (W, H):
+            lit = lit.resize((W, H), Image.LANCZOS)
+    else:
+        px = base[0].load()
+        lit = Image.new("L", (W, H), 0)
+        lp = lit.load()
+        for y in range(H):
+            for x in range(W):
+                r, g, b = px[x, y]
+                if key == "warm":
+                    hit = r > 140 and r > b + 40 and r >= g
+                elif key == "cool":
+                    hit = b > 130 and b > r + 35
+                else:
+                    hit = (r + g + b) > 560
+                if hit:
+                    lp[x, y] = 255
+    halo = lit.filter(ImageFilter.GaussianBlur(blur))
+
+    # centroid, so a swirl turns about the sigil rather than the frame
+    import numpy as np
+    arr = np.asarray(halo, dtype=np.float32)
+    tot = arr.sum() or 1.0
+    ys, xs = np.mgrid[0:H, 0:W]
+    cx = float((arr * xs).sum() / tot)
+    cy = float((arr * ys).sum() / tot)
+
+    tint = Image.new("RGB", (W, H), (255, 236, 190) if key == "warm"
+                     else (190, 224, 255) if key == "cool" else (255, 255, 255))
+    out = []
+    for i, im in enumerate(base):
+        t = i / fps
+        s = floor + (1.0 - floor) * (0.5 + 0.5 * math.sin(2 * math.pi * t / period))
+        h = halo
+        if swirl:
+            h = halo.rotate(swirl * t, resample=Image.BILINEAR,
+                            center=(cx, cy), fillcolor=0)
+        lay = Image.composite(tint, Image.new("RGB", (W, H), (0, 0, 0)),
+                              h.point(lambda v: int(v * s * gain)))
+        out.append(ImageChops.screen(im, lay))
+    return _save(out, dst, fps)
+
+
 def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
            at: int = 2, attack: int = 1, decay: int = 9,
            color: tuple[int, int, int] = (235, 235, 235),

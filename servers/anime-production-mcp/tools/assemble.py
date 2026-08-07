@@ -44,7 +44,7 @@ import sys
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
-from .motion import read_frames
+from .motion import expand_frames
 
 KINDS = ("loop", "pong", "once", "hold")
 
@@ -83,7 +83,10 @@ def plan(scenes: list[dict], beats: dict | None = None, clip_fps: int = 12,
         kind = sc.get("kind", "loop")
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}, got {kind!r}")
-        frames = read_frames(sc["clip"])
+        # expand_frames, NOT read_frames: a clip that expresses holds as frame
+        # durations stores fewer frames than it plays, and reading the stored
+        # count drops every hold.
+        frames = expand_frames(sc["clip"], clip_fps)
         clen = len(frames) / clip_fps
         t0 = cursor
         if kind == "once":

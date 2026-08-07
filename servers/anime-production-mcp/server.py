@@ -54,6 +54,7 @@ import comfy
 import kontext_workflow as kw
 import ltx_workflow as lw
 import shots as sh
+from tools import artifacts
 from tools import assemble as asm
 from tools import effects, framing, motion, subs
 
@@ -294,6 +295,66 @@ def add_water(clip_path: str, out_path: str, mask_path: str | None = None,
 # --------------------------------------------------------------------------- #
 # framing
 # --------------------------------------------------------------------------- #
+
+@mcp.tool()
+def add_motion_lines(clip_path: str, out_path: str, angle: float = 180.0,
+                     density: int = 90, gain: float = 1.0, length: float = 0.55,
+                     clear: list[float] | None = None, start: int = 0,
+                     ramp: int = 3, fps: int = 12) -> dict:
+    """Parallel streaks travelling one way — sells travel across the frame.
+
+    Distinct from add_impact, whose lines radiate from a point of contact.
+    Needed because LTX deforms locally and will NOT translate a subject across a
+    composition: asked for a leap right-to-left it returned a weight shift and a
+    fluttering hem. Anime sells travel with streaks rather than by drawing the
+    body at every point on the path.
+
+    `angle` 180 = right-to-left. `clear` [cx, cy, r] in frame fractions keeps an
+    ellipse free of lines so the subject is not buried.
+    """
+    return effects.motion_lines(clip_path, out_path, angle, density, gain, length,
+                                clear=tuple(clear) if clear else None,
+                                start=start, ramp=ramp, fps=fps)
+
+
+@mcp.tool()
+def add_glow(clip_path: str, out_path: str, mask_path: str | None = None,
+             key: str = "warm", period: float = 1.6, gain: float = 1.0,
+             swirl: float = 0.0, floor: float = 0.25, fps: int = 12) -> dict:
+    """Pulse and optionally rotate the lit parts of a region — runes, magic.
+
+    A drawn sigil brightening is a change of VALUE, not relocation of existing
+    pixels, so LTX leaves it static. This keys the lit pixels by colour
+    (`warm`, `cool`, `bright`), blurs them into a halo and screens it back on a
+    sine. `swirl` turns the halo about its own centroid, degrees per second —
+    keep it slow, it is a blurred copy and spinning it fast just looks blurred.
+    """
+    return effects.glow(clip_path, out_path, mask_path, key, period, gain,
+                        swirl, fps=fps, floor=floor)
+
+
+@mcp.tool()
+def scan_artifacts(clip_path: str, box: list[int] | None = None,
+                   grid: bool = False) -> dict:
+    """Find where a clip's linework collapses — smears, melts, blobbed hands.
+
+    The motion score is blind to this: the highest-scoring take in testing
+    (97.75) was the one whose face dissolved. Cel art is defined by its lines,
+    and LTX does not replace lost lines, it blurs them away — so edge energy
+    falling off its running peak localises the damage, and `last_clean` is where
+    to truncate.
+
+    `grid=True` tiles the frame and reports the worst tile — use it to RANK
+    takes and to aim a contact_sheet, NOT to auto-truncate: a tile also dims
+    when the subject merely moves out of it.
+
+    ⚠ Detects LOSS OF DETAIL, not anatomy. A cleanly drawn but wrong hand
+    passes. Never read a pass as "looks good".
+    """
+    if grid:
+        return artifacts.scan_grid(clip_path)
+    return artifacts.scan(clip_path, box)
+
 
 @mcp.tool()
 def measure_frame_slot(frame_path: str) -> dict:

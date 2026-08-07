@@ -131,9 +131,14 @@ def upload_image(path: str) -> str:
     artist's Pictures folder, not in ComfyUI's input dir, and making every
     caller pre-stage files there by hand is exactly the friction this server
     exists to remove.
+
+    Ensures ComfyUI is up first. Uploading is the FIRST thing a generation does,
+    so leaving the auto-launch to submit_and_wait meant a cold ComfyUI failed
+    here with a bare connection-refused and never got the chance to start.
     """
     if not os.path.isfile(path):
         raise ComfyUIError(f"Image not found: {path}")
+    ensure_comfy_running()
     with open(path, "rb") as f:
         files = {"image": (os.path.basename(path), f, "application/octet-stream")}
         data = {"overwrite": "true", "type": "input"}

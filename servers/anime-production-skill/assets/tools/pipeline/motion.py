@@ -37,6 +37,29 @@ def read_frames(path: str, mode: str = "RGB") -> list[Image.Image]:
     return [f.convert(mode) for f in ImageSequence.Iterator(Image.open(path))]
 
 
+def expand_frames(path: str, fps: int = 12, mode: str = "RGB") -> list[Image.Image]:
+    """Frames on a UNIFORM `fps` grid, honouring each stored frame's duration.
+
+    `read_frames` returns what is STORED, which is not the timeline when a clip
+    uses durations to express holds (see build_sequence). A 13-frame file whose
+    holds sum to 23 frames must play as 23, or every hold silently vanishes and
+    the clip runs short.
+
+    Falls back to one-frame-per-stored-frame when a file carries no duration
+    metadata, which is the case for a plain uniform clip — so this is safe to
+    use everywhere in place of read_frames.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Clip not found: {path}")
+    per = 1000.0 / fps
+    out = []
+    for f in ImageSequence.Iterator(Image.open(path)):
+        img = f.convert(mode)
+        d = f.info.get("duration") or 0
+        out.extend([img] * max(1, int(round(d / per)) if d else 1))
+    return out
+
+
 def _dedupe_guard(frames: list[Image.Image]) -> list[Image.Image]:
     """Nudge byte-identical consecutive frames apart by one pixel value.
 
@@ -81,6 +104,32 @@ def retime(src: str, dst: str, fps: int = 12, pingpong: bool = False,
                    duration=durations, loop=0, quality=90)
     return {"path": dst, "frames": len(frames), "fps": fps,
             "seconds": round(len(frames) / fps, 2),
+            "kb": os.path.getsize(dst) // 1024}
+
+
+def build_sequence(steps: list, dst: str, fps: int = 12) -> dict:
+    """Write a clip from (image, hold_in_frames) pairs, using real durations.
+
+    ⚠ DO NOT BUILD HOLDS BY REPEATING FRAMES. Repeating an image and relying on
+    `_dedupe_guard` is not enough: the guard perturbs one pixel by 1/255, and a
+    LOSSY WebP encode quantises that straight back out, so libwebp merges the
+    frames anyway. Measured on a 23-frame build that came back as 13.
+
+    Expressing a hold as a DURATION is unambiguous, cannot be merged away, and
+    produces a much smaller file. `steps` is [(PIL image, frames_to_hold), ...].
+    """
+    if not steps:
+        raise ValueError("build_sequence needs at least one step")
+    per = 1000.0 / fps
+    imgs = [s[0].convert("RGB") for s in steps]
+    durs = [max(1, int(round(per * max(1, int(s[1]))))) for s in steps]
+    os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
+    imgs[0].save(dst, save_all=True, append_images=imgs[1:],
+                 duration=durs, loop=0, quality=90)
+    total = sum(durs)
+    return {"path": dst, "stored_frames": len(imgs),
+            "timeline_frames": sum(max(1, int(s[1])) for s in steps),
+            "seconds": round(total / 1000.0, 2), "fps": fps,
             "kb": os.path.getsize(dst) // 1024}
 
 
