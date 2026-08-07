@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+
+# The whole shot library stays local. Three reasons, and the last two are the
+# important ones:
+#   1. Generated clips are large and reproducible from their recipe.
+#   2. THE RECIPES EMBED THE PROMPTS, and an assembled video's config embeds
+#      CREDITS AND SUBTITLE CUES — i.e. the author's unreleased lyrics. This
+#      repo is public, so committing shots.json or a per-shot .json would
+#      publish that permanently and indexably. Do not add an exception to
+#      "keep the manifest"; the music server nearly shipped exactly that bug.
+#   3. The source illustrations are the author's own artwork for a private
+#      project. The MACHINERY is the open-source deliverable; the art is not.
+output/
+*.webp
+*.mp4
+*.mp3
+*.srt
+
+# Frames spilled while debugging an assembly run.
+_frames/
+*_preview.png

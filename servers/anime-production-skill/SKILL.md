@@ -1,20 +1,41 @@
 ---
 name: anime-production
-description: アニメ動画・アニメ広告・アニメMV・漫画/マンファ ティーザー動画の制作スキル。Anime/manhwa video production & marketing - turns finished illustrations or comic pages into vertical (9:16) YouTube Shorts-style teaser/ad/MV videos with Ken Burns motion, crossfades, particle effects, credits text, and BGM, via a self-contained Remotion pipeline. Use when: (1) user says「アニメを作って」「アニメ動画」「アニメ広告」「アニメMV」or "make an anime video / teaser / ad / marketing video / manhwa short", (2) user wants a slideshow MV of their own artwork with music, (3) user mentions「キャラクターアニメーション」「アニメ制作」or animating/promoting comic panels. Do NOT use for: 実写動画、静止画像のみの生成 (this skill animates EXISTING art; it does not generate images).
+description: アニメ動画・アニメ広告・アニメMV・漫画/マンファ ティーザー動画の制作スキル。Anime/manhwa video production & marketing - turns finished illustrations or comic pages into either vertical (9:16) YouTube Shorts with Ken Burns motion, crossfades, particle effects and a depth camera, OR landscape (16:9) music videos cut to a beat grid with real generated motion, drawn effects, a hand-drawn frame and burned-in bilingual subtitles. Use when: (1) user says「アニメを作って」「アニメ動画」「アニメ広告」「アニメMV」or "make an anime video / teaser / ad / marketing video / manhwa short", (2) user wants a slideshow MV or a music video of their own artwork, (3) user mentions「キャラクターアニメーション」「アニメ制作」or animating/promoting comic panels. Do NOT use for: 実写動画、静止画像のみの生成 (this skill animates EXISTING art; it does not generate images).
 user-invocable: true
 ---
 
 # アニメ制作スキル / Anime Production Skill
 
-Turns a folder of finished illustrations (and/or short video clips) into a
-vertical 1080×1920 anime-style teaser/MV: per-panel camera motion, crossfades,
-blurred-fit framing for any aspect ratio, ambient particle effects, credits
-text in the margin bands, and a music track with fade-out.
+Turns a folder of finished illustrations (and/or short video clips) into an
+anime-style teaser or music video.
 
 **This skill is self-contained.** Everything needed ships in `assets/`.
 Do NOT hunt for `taiyou-taiyo/...` reference content (a private path from this
 skill's original author — it does not exist publicly). Do NOT assume
 NanoBanana Pro / VOICEVOX are required (see "Scope of tools" below).
+
+## ⚑ PICK THE ENGINE FIRST — they are different products
+
+Both are supported and both work. Deciding late means building the piece twice.
+
+| | **Remotion** (§ Usage) | **Python / MCP** (§ Landscape MV) |
+|---|---|---|
+| shape | vertical 1080×1920 Short | landscape 1920×1080 YouTube video |
+| motion | Ken Burns, depth camera, crossfades | real generated motion per shot (LTX), drawn effects |
+| structure | panel durations, optional beat sync | cut to a beat grid; each shot declares a motion KIND |
+| text | overlays in the letterbox bands | burned-in bilingual captions + `.srt` |
+| stack | Node + Remotion (~800 MB `node_modules`) | Python + Pillow + ffmpeg |
+| grade | bloom / grain / vignette / audio-reactive | none |
+
+**Choose Remotion** for a Short, when the artwork should be carried by camera
+movement, when you want the depth camera or the grade stack, or when nothing
+needs to genuinely animate.
+
+**Choose the Python path** for a landscape video cut to a full song, when
+individual shots must really move, when a hand-drawn frame should hold portrait
+art inside a 16:9 canvas, or when captions must be burned in.
+
+They share the LTX section below — generated clips drop into either.
 
 ## One-time setup (agent-executable)
 
@@ -286,6 +307,89 @@ ComfyUI's core `LTXAVTextEncoderLoader`** (it reads `models/checkpoints/`, and
 Also: connector and VAE must match the checkpoint's variant *and* generation, or
 you get silent garbage; and ComfyUI caches model listings at startup, so restart
 after adding files.
+
+## Landscape MV — the Python path
+
+Assembles a 16:9 video in Pillow and pipes frames to ffmpeg. No Node, no
+Remotion. This is the path that produced the reference 1:47 teaser.
+
+Available two ways, same code either way:
+
+- **`anime-production-mcp`** — a sibling server in this repo. 20 tools, a shot
+  library with per-name approval and `FINAL_` publishing, and the seed hunt as
+  one call. Use this unless there is a reason not to.
+- **`assets/tools/pipeline/`** — the same modules as an importable package
+  (`motion`, `effects`, `framing`, `assemble`, `subs`), for driving it directly
+  without the server. They use relative imports, so keep the folder intact and
+  import it as a package. The GPU-driving half (LTX, Kontext) is not duplicated
+  here — use `assets/tools/ltx_run.py` and `kontext_edit.py`, or the server.
+
+### Shape of a run
+
+1. **Animate each shot** — `animate_shot` runs ~3 seeds, retimes each to 12 fps,
+   scores the motion, records them. Judge, then `approve_shot`.
+   Anything LTX can't do goes to `edit_frame`+`composite_patch` (eyes, mouths)
+   or a drawn effect (things that must APPEAR).
+2. **Frame portrait shots** — `frame_clip` drops each clip into a hand-drawn
+   frame's transparent slot, centred in 1920×1080. Portrait art is only ~720px
+   wide at full height in 16:9; the frame fills the rest with the artist's own
+   work rather than blur or black. Landscape shots skip this — `extract_bars`
+   keys the frame's rules out and flanks the wide image with them, so every
+   panel shares one visual language.
+   ⚠ **The alpha bounding box is NOT the slot.** Decoration drawn on
+   transparency makes the gaps between leaves count, so the bbox comes out far
+   too wide (1180px against a true 802px on the reference frame) and leaves a
+   coloured line along one edge of every panel. `measure_frame_slot` measures
+   the columns clear for the FULL height.
+3. **Assemble** — `assemble_video` with a beat grid from `music-generation-mcp`.
+
+### Scene kinds — this is most of the edit
+
+The problem: a 1.4 s clip inside a 9.6 s panel leaves 8 s of dead air, and
+putting the motion first means every panel DECAYS into stillness. So each shot
+declares what kind of motion it has, and the kind decides the timing.
+
+| kind | timing | for |
+|---|---|---|
+| `loop` | whole panel | ambient with no natural end — drifting cloth, an argument, falling snow |
+| `pong` | whole panel, forward-then-back | oscillatory motion; no jump at the turnaround |
+| `once` | **exactly its clip** | an event that can't repeat |
+| `hold` | clip, then freezes on the last frame | play the motion, then rest |
+
+**`once` gets no static hold, deliberately.** Holding a still frame *before* an
+event reads, to a viewer who doesn't know one is coming, as the video having
+frozen — genuinely, as "has it buffered?". Cut the stationary time and hand it
+to the end card. **`hold` works for the opposite reason**: the stillness comes
+*after* the motion, so the viewer has just watched something happen and
+lingering there reads as a beat, not a bug.
+
+Ping-pong a one-way event and you literally un-grow the ice. Loop a shot where a
+character lowers her head and she does it on a cycle, which looks broken.
+
+### The end card
+
+A card that holds for a minute is most of the video, and a still image that long
+reads as the file having ended. `build_card` animates the frame's own decoration
+(each leaf on its own phase), pushes each image slightly, and pulses warm
+lettering. Text staggers in ~1.1 s apart — at 6.8 s spacing the last credit line
+did not appear until 41 s in.
+
+### Subtitles
+
+One cue list drives both the burned-in captions and the `.srt`, so they cannot
+drift apart. Timings must be called against the vocal BY EAR — beat detection
+cannot supply them, because a downbeat says where the bar is, not where a sung
+line starts.
+
+Captions get a blurred glow, a dark stroke and near-white fill, because panels
+are full-bleed and background brightness changes shot to shot: dark text
+disappears on a night sky, light text on a white mat.
+
+⚠ **Burned in OR sidecar, rarely both** — players that default captions on will
+draw a second copy over the first.
+
+⚠ Keep the block ~68px off the bottom. YouTube's control bar covers roughly the
+last 60px whenever the viewer moves the mouse.
 
 ## Production guidance
 

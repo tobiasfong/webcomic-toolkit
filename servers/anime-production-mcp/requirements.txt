@@ -1,0 +1,24 @@
+# Upper bound is load-bearing: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+# every server in this repo imports. An unbounded `mcp>=1.2.0` silently resolves
+# to 2.0 on a fresh install and dies at import with ModuleNotFoundError.
+# The sibling servers are all on 1.28.1; stay with them.
+mcp>=1.2.0,<2
+# ComfyUI HTTP API: submit graphs, poll /history, fetch webp/png.
+requests>=2.31.0
+
+# Every frame operation in this server — compositing shots into the drawn frame,
+# the fluttering decoration, the drawn effects, subtitle rasterising, and piping
+# finished frames to ffmpeg — is Pillow.
+Pillow>=10.0.0
+# Motion measurement diffs whole frames; doing that in pure Python is minutes
+# per clip instead of milliseconds.
+numpy>=1.24.0
+
+# NOT pip-installable, and deliberately so:
+#   * ComfyUI — the GPU path. Auto-launched; see WEBCOMIC_ANIME_COMFY_DIR.
+#   * ComfyUI-GGUF (city96) — REQUIRED for LTX. Core's LTXAVTextEncoderLoader
+#     cannot load a .gguf text encoder; see README "Models".
+#   * LTX-2.3 and FLUX.1 Kontext model files — see README "Models".
+#   * An ffmpeg binary — ONLY for assemble_video, which pipes PNG frames into
+#     it. Everything else works without it. Point the server at one with
+#     WEBCOMIC_ANIME_FFMPEG if it is not on PATH.
