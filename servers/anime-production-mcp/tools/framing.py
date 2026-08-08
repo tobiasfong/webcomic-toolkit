@@ -18,7 +18,7 @@ from collections import deque
 
 from PIL import Image, ImageFilter, ImageSequence
 
-from .motion import read_frames, _dedupe_guard
+from .motion import expand_frames, _dedupe_guard
 
 
 # --------------------------------------------------------------------------- #
@@ -98,7 +98,7 @@ def frame_clip(src: str, dst: str, frame_path: str,
     sx0, sy0, sx1, sy1 = slot
     sw, sh = sx1 - sx0, sy1 - sy0
 
-    base_frames = read_frames(src)
+    base_frames = expand_frames(src)
     VW, VH = video_size
     fw, fh = frame.size
     pw = round(fw * VH / fh)

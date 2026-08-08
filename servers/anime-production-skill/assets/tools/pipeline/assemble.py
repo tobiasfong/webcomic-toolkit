@@ -102,6 +102,32 @@ def plan(scenes: list[dict], beats: dict | None = None, clip_fps: int = 12,
     return out, cursor
 
 
+def fit(img: Image.Image, size: tuple[int, int], mode: str = "contain",
+        background: tuple[int, int, int] = (12, 12, 14)) -> Image.Image:
+    """Place a frame on the canvas without distorting it.
+
+    ⚠ A plain resize STRETCHES. Comic panels are drawn at whatever shape the
+    page needed — in one scene they ranged from 1216x507 to 704x1216 — so
+    resizing each to 16:9 squashes faces on nearly every one. That is the kind
+    of damage nobody notices in a still and everybody notices in motion.
+
+    "contain" letterboxes onto `background`; "cover" fills and centre-crops.
+    """
+    W, H = size
+    if img.size == (W, H):
+        return img
+    s = (min(W / img.width, H / img.height) if mode == "contain"
+         else max(W / img.width, H / img.height))
+    r = img.resize((max(1, round(img.width * s)), max(1, round(img.height * s))),
+                   Image.LANCZOS)
+    if mode == "cover":
+        return r.crop(((r.width - W) // 2, (r.height - H) // 2,
+                       (r.width - W) // 2 + W, (r.height - H) // 2 + H))
+    canvas = Image.new("RGB", (W, H), background)
+    canvas.paste(r, ((W - r.width) // 2, (H - r.height) // 2))
+    return canvas
+
+
 def _pick(scene: dict, t: float, clip_fps: int) -> Image.Image:
     """Which frame of a scene's clip is showing at time t."""
     frames = scene["frames"]
@@ -240,7 +266,8 @@ def assemble(scenes: list[dict], out: str, audio: str | None = None,
              cues: list | None = None, size=(1920, 1080), fps: int = 24,
              clip_fps: int = 12, bars_loop: int = 6, hold_seconds: float = 4.0,
              duration: float | None = None, ffmpeg: str | None = None,
-             crf: int = 18, preview: float = 0.0) -> dict:
+             crf: int = 18, preview: float = 0.0, fit_mode: str = "contain",
+             background: tuple = (12, 12, 14)) -> dict:
     """Encode the whole video. Blocking; minutes for a two-minute piece."""
     exe = find_ffmpeg(ffmpeg)
     beats = None
@@ -278,13 +305,12 @@ def assemble(scenes: list[dict], out: str, audio: str | None = None,
                 t = i / fps
                 sc = next((s for s in windows if s["t0"] <= t < s["t1"]), None)
                 if sc is not None:
-                    img = _pick(sc, t, clip_fps)
-                    if img.size != tuple(size):
-                        img = img.resize(size, Image.LANCZOS)
+                    img = fit(_pick(sc, t, clip_fps), tuple(size),
+                              sc.get("fit", fit_mode), background)
                 elif card_gen is not None:
                     img = next(card_gen)
                 else:
-                    img = Image.new("RGB", size, (255, 255, 255))
+                    img = Image.new("RGB", size, background)
                 if subs is not None:
                     img = subs.draw(img, t)
                 img.save(proc.stdin, format="PNG", compress_level=1)

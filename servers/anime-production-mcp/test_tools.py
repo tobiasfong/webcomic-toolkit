@@ -96,6 +96,29 @@ def main() -> int:
         assert m.getpixel((5, 95)) == 255, "exclude removed too much"
     check("exclude punches a hole", exclusion_punches_a_hole)
 
+    print("fitting")
+
+    def fit_preserves_aspect():
+        from PIL import Image as _I
+        # a tall panel on a wide canvas must letterbox, never squash
+        tall = _I.new("RGB", (704, 1216), (200, 30, 30))
+        out = assemble.fit(tall, (1920, 1080), "contain")
+        assert out.size == (1920, 1080)
+        # the art occupies a centred column of the ORIGINAL aspect ratio
+        w = round(1080 * 704 / 1216)
+        px = out.load()
+        assert px[1920 // 2, 540] == (200, 30, 30), "art missing from centre"
+        assert px[(1920 - w) // 2 - 6, 540] != (200, 30, 30), \
+            "art bled past its aspect-correct width — it was stretched"
+    check("contain letterboxes instead of stretching", fit_preserves_aspect)
+
+    def fit_cover_crops():
+        from PIL import Image as _I
+        out = assemble.fit(_I.new("RGB", (704, 1216), (0, 90, 200)), (1920, 1080), "cover")
+        assert out.size == (1920, 1080)
+        assert out.load()[5, 5] == (0, 90, 200), "cover left background showing"
+    check("cover fills the canvas", fit_cover_crops)
+
     print("timing")
 
     if not clip:

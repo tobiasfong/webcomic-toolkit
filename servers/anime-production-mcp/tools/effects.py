@@ -35,7 +35,7 @@ import random as pyr
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageSequence
 
-from .motion import read_frames, _dedupe_guard
+from .motion import expand_frames, _dedupe_guard
 
 
 def _save(frames: list[Image.Image], dst: str, fps: int) -> dict:
@@ -120,7 +120,7 @@ def grow_layer(src: str, dst: str, layer_path: str, kmax: float = 1.13,
         raise FileNotFoundError(f"Layer PNG not found: {layer_path}")
 
     if os.path.splitext(src)[1].lower() in (".webp", ".gif"):
-        base = read_frames(src)
+        base = expand_frames(src)
     else:
         base = [Image.open(src).convert("RGB")] * frames
     n = len(base)
@@ -176,7 +176,7 @@ def streaks(src: str, dst: str, paths: list[list] | None = None,
     silently collapsed. Twinkle keeps every frame unique. (`_dedupe_guard` also
     catches this; the twinkle is what makes the shot not look dead.)
     """
-    base = read_frames(src)
+    base = expand_frames(src)
     W, H = base[0].size
     n = len(base)
     mask = region_mask((W, H), mask_path, polygons, exclude, ref_size, blur=2.0)
@@ -272,7 +272,7 @@ def water(src: str, dst: str, mask_path: str | None = None,
     the waterline still expands onto the bank. Two MinFilter passes pull the
     spawn area in far enough to prevent that.
     """
-    base = read_frames(src)
+    base = expand_frames(src)
     W, H = base[0].size
     n = len(base)
     mask = region_mask((W, H), mask_path, polygons, None, ref_size, blur=6.0)
@@ -369,7 +369,7 @@ def motion_lines(src: str, dst: str, angle: float = 180.0, density: int = 90,
     lines so the subject is never buried by the effect meant to sell it.
     `ramp` fades the streaks in over N frames, so they arrive rather than blink on.
     """
-    base = read_frames(src)
+    base = expand_frames(src)
     W, H = base[0].size
     n = len(base)
     diag = math.hypot(W, H)
@@ -437,7 +437,7 @@ def glow(src: str, dst: str, mask_path: str | None = None,
     `floor` is the dimmest the pulse goes (0 = fully dark between beats, which
     reads as flickering rather than breathing).
     """
-    base = read_frames(src)
+    base = expand_frames(src)
     W, H = base[0].size
     n = len(base)
 
@@ -501,7 +501,7 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
     The speed lines keep a CLEAR CENTRE that widens with intensity, so the
     figure is never buried by the effect that is meant to sell it.
     """
-    base = read_frames(src)
+    base = expand_frames(src)
     W, H = base[0].size
     diag = math.hypot(W, H)
     ox, oy = focal[0] * W, focal[1] * H
