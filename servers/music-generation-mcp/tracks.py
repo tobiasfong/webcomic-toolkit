@@ -201,6 +201,33 @@ def forget(track_id: str) -> bool:
     return True
 
 
+def prune() -> dict:
+    """Drop manifest entries whose audio is gone from disk.
+
+    Exists because the library is only a record of what generation produced —
+    files get deleted outside it (a manual cleanup, a stray rm), and a manifest
+    that points at missing audio makes `list_tracks` lie. Reports what it
+    removed rather than doing it silently, since a prune that quietly ate a
+    track you meant to keep is worse than a stale row.
+
+    Approved entries are pruned too if their audio is genuinely gone — the
+    delete-guard protects against `forget_track`, not against reality.
+    """
+    data = _load()
+    kept, dropped = [], []
+    for t in data["tracks"]:
+        audio = t["files"].get("flac") or t["files"].get("mp3")
+        if audio and os.path.isfile(audio):
+            kept.append(t)
+        else:
+            dropped.append({"id": t["id"], "approved": bool(t.get("approved")),
+                            "missing": audio})
+    if dropped:
+        data["tracks"] = kept
+        _save(data)
+    return {"pruned": dropped, "remaining": len(kept)}
+
+
 def attach(track_id: str, key: str, path: str) -> dict | None:
     """Attach a derived artefact (e.g. beats.json) to an existing track."""
     data = _load()

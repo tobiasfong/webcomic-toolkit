@@ -412,8 +412,67 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
 
   ### Writing a song that actually sings (learned on RxR's セカンドチャンス)
 
-  **Lyric density is the master control, and it is arithmetic.** One bar =
-  `4 * 60 / bpm` seconds. Divide the track's bars by the number of SUNG lines:
+  ### ⚠ Getting the model to sing the words you actually wrote
+
+  Learned the hard way on a 31 s haiku/tanka/chōka that took ~40 takes. Every
+  one of these beat the parameters — no seed, temperature, cfg, duration or
+  section marker fixed what these fix.
+
+  **FEED IT SONG-LENGTH LINES. This is the big one.** ACE-Step was trained on
+  sung lines of sentence length and loses its place in short poetic fragments —
+  it drops them, merges them, or invents replacements.
+
+  | lyric | avg morae/line | result |
+  |---|---|---|
+  | セカンドチャンス | 15.8 | correct |
+  | haiku 5-7-5 | 5.7 | badly wrong |
+  | tanka 5-7-5-7-7 | 6.2 | badly wrong |
+  | chōka (9 lines) | 6.1 | badly wrong |
+  | **chōka, 5-7 pairs JOINED** | **11.0** | **correct** |
+
+  The fix costs nothing: join each 5-7 pair into one line. Identical text,
+  identical order, identical meter when read — only the line breaks move. Treat
+  line breaks in the model input as PHRASING marks, not meter marks.
+
+  **Keep two versions of every lyric.** The written one for humans (kanji,
+  poetic line breaks) and a model-input one (singing-phrase line breaks,
+  ambiguous words spelled out). They are different artefacts; nobody but the
+  model sees the second.
+
+  **Some words are simply misread, and kana fixes them — but NOT plain
+  hiragana.** Confirmed failures: 転移 (read wrong; its dominant sense is
+  medical *metastasis*, not isekai transfer), 異世界, 心, ありふれた.
+  - Rewriting the WHOLE lyric in hiragana makes things WORSE. Japanese has no
+    spaces; the kanji/kana alternation IS the word-boundary cue, and
+    いせかいにてんいしたんだ is a wall the encoder has to guess through. Lines
+    went missing when this was tried.
+  - Spell out ONLY the offending word, and prefer **katakana** — it fixes the
+    reading while keeping the script contrast that marks boundaries.
+  - ありふれた-class cases are already kana, so there is no reading to fix; it
+    just fails. Untested whether katakana perturbs it usefully.
+  - **Rōmaji is expected to be worse** and was not tried: it is
+    out-of-distribution for `language="ja"`, and it destroys mora timing (きゃ
+    is one mora, `kya` is three letters; っ is a mora with no letter).
+
+  **Short total durations sing badly.** 30-31 s requests mangled lyrics
+  consistently while 62 s and 107 s did not — the model's own default is 120 s
+  and it was trained on songs, not fragments. For short video music, **generate
+  at song length and extract the window you need** (`tools/trim_audio.py
+  --start`). Cut on a downbeat and fade both edges.
+  ⚠ Do NOT over-read this: 62 s vs 93 s was one sample each and both had
+  errors. What is solid is that 31 s is bad; the rest is draw variance.
+
+  ### Lyric density
+
+  **Density is arithmetic, but count MORAE, not lines.** One bar =
+  `4 * 60 / bpm` seconds. The bars-per-line rule below was derived from one song
+  and INVERTED on short-line poetry — it rated a working 16-line lyric
+  "fragments" (4.18) and a failing tanka "good" (3.10). Morae per bar is the
+  metric that transfers: **~3.5-4.0 morae/bar** is the working range
+  (セカンドチャンス measured 3.77; a failing tanka measured 2.00).
+
+  Bars-per-line is still a useful secondary check when line lengths are
+  song-like and roughly even:
 
   | bars/line | what you hear |
   |---|---|

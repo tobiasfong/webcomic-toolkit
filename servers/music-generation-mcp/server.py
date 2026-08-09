@@ -86,6 +86,9 @@ def generate_track(
     steps: int | None = None,
     cfg: float | None = None,
     reference_audio_path: str | None = None,
+    temperature: float = 0.85,
+    lm_cfg_scale: float = 2.0,
+    generate_audio_codes: bool = True,
 ) -> dict:
     """Generate one track. Blocking; minutes on a 6 GB card.
 
@@ -104,7 +107,8 @@ def generate_track(
     params = dict(
         tags=tags, lyrics=lyrics, duration=duration, seed=seed, variant=variant,
         bpm=bpm, language=language, keyscale=keyscale, timesignature=timesignature,
-        steps=steps, cfg=cfg,
+        steps=steps, cfg=cfg, temperature=temperature, lm_cfg_scale=lm_cfg_scale,
+        generate_audio_codes=generate_audio_codes,
     )
     if reference_audio_path:
         if not os.path.isfile(reference_audio_path):
@@ -166,8 +170,18 @@ def approve_track(track_id: str, slug: str | None = None) -> dict:
 
 @mcp.tool()
 def forget_track(track_id: str) -> dict:
-    """Delete a take's audio and its manifest entry. Refuses the approved one."""
+    """Delete a take's audio and its manifest entry. Refuses an approved one."""
     return {"forgotten": tk.forget(track_id), "track_id": track_id}
+
+
+@mcp.tool()
+def prune_library() -> dict:
+    """Drop manifest entries whose audio no longer exists on disk.
+
+    Run after deleting takes outside this server; a manifest pointing at missing
+    files makes list_tracks lie. Reports exactly what it removed.
+    """
+    return tk.prune()
 
 
 @mcp.tool()

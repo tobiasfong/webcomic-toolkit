@@ -127,6 +127,18 @@ def build_graph(
     timesignature: str = "4",
     generate_audio_codes: bool = True,
     reference_audio: str | None = None,
+    # --- lyric adherence (1.5 only) ---------------------------------------
+    # These govern the autoregressive LLM that turns the lyric into audio
+    # semantic tokens. They were hardcoded to ComfyUI's node defaults for this
+    # server's first weeks, which was a mistake: `temperature` 0.85 tells that
+    # decoder to sample randomly, and randomly-sampled audio tokens are how a
+    # lyric comes back with words quietly swapped. Lower temperature = more
+    # literal. Higher lm_cfg_scale = pushed harder toward the conditioning.
+    temperature: float = 0.85,
+    lm_cfg_scale: float = 2.0,
+    top_p: float = 0.9,
+    top_k: int = 0,
+    min_p: float = 0.0,
     # sampling
     steps: int | None = None,
     cfg: float | None = None,
@@ -178,11 +190,11 @@ def build_graph(
                 "language": language,
                 "keyscale": keyscale,
                 "generate_audio_codes": codes,
-                "cfg_scale": 2.0,
-                "temperature": 0.85,
-                "top_p": 0.9,
-                "top_k": 0,
-                "min_p": 0.0,
+                "cfg_scale": float(lm_cfg_scale),
+                "temperature": float(temperature),
+                "top_p": float(top_p),
+                "top_k": int(top_k),
+                "min_p": float(min_p),
             }}
 
         # A reference timbre replaces the generated audio codes as the source of
