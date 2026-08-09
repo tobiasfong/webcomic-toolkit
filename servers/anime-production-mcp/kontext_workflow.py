@@ -8,34 +8,62 @@ prompt wording changes that. Blinks and mouth flaps therefore come from
 generated KEYFRAMES (this graph), played back by a frame player.
 
 ⚠ NEVER SHIP THE OUTPUT WHOLESALE. Kontext regenerates the WHOLE frame, so it
-can quietly restyle linework, shift colour, or alter parts nobody asked about —
-and Q3_K_S is aggressive quantisation, so that risk is higher here than with a
-full-precision model. The intended use is to composite ONLY the changed region
+can quietly restyle linework, shift colour, or alter parts nobody asked about.
+The intended use is to composite ONLY the changed region
 (the eye or mouth patch) back over the original art. `composite_patch` in
 tools/framing.py is the other half of that.
 
 Also: Kontext is BINARY. It cannot draw a half-lid. Blend an open and a closed
 composite for mid positions.
 
-⚠ HANDS: IT REPAIRS A GRIP, NOT AN OPEN HAND. Measured across nine attempts on
-one scene. Fingers wrapped around an object — a book edge, a sword hilt — give
-the model structure to infer from, and two such repairs succeeded first time.
-An OPEN hand, in shadow, forty pixels of skin with nothing to define it, failed
-seven times across three seeds, two prompt phrasings, and a tight-crop pass that
-fed it nothing but the hand at 3x scale. Every attempt returned the same blur it
-was given. There is not enough signal in the source for the model to reconstruct
-a hand that was never really drawn.
+⚠ HANDS: DO NOT PROMISE THIS REPAIRS THEM. Across one project, 2 usable
+outright out of 18 attempts.
 
-So: if the bad hand is HOLDING something, this is worth running. If it is empty
-and small, it is faster for the artist to draw it than for anyone to sit through
-four minutes a seed learning that again.
+An earlier version of this file said "it repairs a GRIP, not an open hand",
+drawn from two successes on a book edge and a sword hilt. That rule was built on
+n=2 and it did not hold: a later sword grip went 0-for-6 outright across three
+seeds a frame, with 3 of 6 usable only as a BASE the artist then hand-edited.
+The probable missing condition is SCALE — the successes filled much of the
+frame, the failure was a small hand in a wide two-shot. An OPEN hand blurred
+away remains hopeless: 0-for-7 across three seeds, two phrasings, and a
+tight-crop pass at 3x that returned the same blur it was given.
+
+So: offer the output as a starting point, say the odds out loud, and let the
+artist decide whether it beats a blank canvas. Waiting on seeds is only worth it
+when there is other work to do meanwhile.
+
+⚠ AND MASKED INPAINTING HAS NEVER BEEN TRIED. Every attempt above used this
+graph — INSTRUCTION-EDIT mode, hand it the whole frame and hope. For "this
+region is destroyed", inpainting is the right technique: mask the hand, generate
+into the hole with the surrounding arm and object as context, leave every other
+pixel untouched by construction rather than by compositing afterwards.
+SetLatentNoiseMask, VAEEncodeForInpaint, DifferentialDiffusion and
+InpaintModelConditioning all ship with ComfyUI. Before concluding that Kontext
+cannot repair hands, try the mode built for it.
 
 Nothing in this module talks to ComfyUI — it returns a dict. comfy.py submits.
 """
 
 from __future__ import annotations
 
-UNET = "flux1-kontext-dev-Q3_K_S.gguf"
+# ⚠ QUANTISATION IS A QUALITY DIAL, NOT ONLY A SIZE ONE, and this line was set
+# wrong for months. Q3_K_S is 5.2 GB for a 12B model — about 3.3 bits per weight
+# — and fine structure under hard constraints (hands, faces, text) is what
+# degrades first when you quantise that far. FLUX's reputation for hands is
+# earned at fp8/fp16. Fused fingers and extra digits out of a FLUX-based model
+# are a BIT-DEPTH symptom, not an architecture one.
+#
+# It was chosen to fit a 6 GB card, which was never the real constraint: the
+# same card runs a 14.2 GB LTX model daily, because ComfyUI offloads to system
+# RAM and streams weights. Q6_K (9.85 GB) and even Q8_0 (12.7 GB) sit inside
+# what is already demonstrated to work. Same mistake as defaulting LTX to
+# 832x576 — a limit assumed rather than measured.
+#
+# ⚠ UNMEASURED AS OF THIS CHANGE. Q6_K is near-indistinguishable from fp16 by
+# general repute, but the comparison against Q3 on real frames has NOT been run
+# here. Q3_K_S is kept on disk; switching back is this one line. Expect slower
+# generation — twice the weights to stream.
+UNET = "flux1-kontext-dev-Q6_K.gguf"        # was flux1-kontext-dev-Q3_K_S.gguf
 T5 = "t5xxl_fp8_e4m3fn.safetensors"
 CLIP_L = "clip_l.safetensors"
 VAE = "ae.safetensors"
