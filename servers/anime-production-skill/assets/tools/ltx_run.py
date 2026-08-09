@@ -7,6 +7,25 @@ Keeps every tunable at the top so OOM hunting is a one-line edit.
 Usage:
   python ltx_run.py [--image ltx_test.png] [--w 832] [--h 576] [--len 25]
                     [--steps 8] [--variant distilled|dev] [--prompt "..."]
+
+⚠ THE 832x576 DEFAULT IS A GUESS, NOT A VRAM CEILING, and it is the most
+expensive mistake in this pipeline's history: at that size a hand is ~5 latent
+pixels after the VAE's 8x compression and cannot be rendered while moving. On
+one 15-panel scene that cost 65 hand-redrawn frames. A ceiling sweep found NO
+out-of-memory point at any resolution tested on a 6 GB card.
+
+⚠ MATCH THE ARTWORK'S OWN ASPECT. There is no letterboxing here — the input is
+silently resized to whatever --w/--h say, so a mismatch is a stretch, and a
+vertical panel comes out crushed into landscape. Size from the art.
+
+⚠ RESOLUTION AND PROMPT MOVE TOGETHER. More pixels fixes anatomy but gives the
+model spare capacity, which a one-sentence prompt does not constrain — at 2.2 MP
+with one sentence it abandoned the requested action entirely. Go high only with
+a 4-8 sentence prompt; with a short one, stay near 1 MP.
+
+⚠ THE NEGATIVE PROMPT IS INERT on `distilled`: cfg 1.0 discards the negative
+branch entirely (verified pixel-identical with and without). It applies only on
+`dev` at cfg 3.0. Raise resolution instead of tuning it.
 """
 import argparse, json, time, urllib.request, urllib.error
 
@@ -98,7 +117,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--image", default="ltx_test.png")
     p.add_argument("--w", type=int, default=832)
-    p.add_argument("--h", type=int, default=576)   # >=540: below that linework mushes
+    p.add_argument("--h", type=int, default=576)   # 540 is the floor, not the target — see header
     p.add_argument("--len", dest="length", type=int, default=25)  # must be 8n+1
     p.add_argument("--steps", type=int, default=0)
     p.add_argument("--seed", type=int, default=12345)

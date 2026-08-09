@@ -230,15 +230,97 @@ LTX-2.3 locally in ComfyUI (no subscription), and **`assets/tools/ltx_run.py`**
 is a working driver — it builds the ComfyUI API graph, submits it and polls.
 Clips come back as ordinary video panels.
 
-**Verified on a 6 GB RTX 3060 Laptop.** Settled recipe — start here, don't tune:
+**Verified on a 6 GB RTX 3060 Laptop.**
+
+**Match the ARTWORK'S OWN ASPECT, and size from the art, not from a default.**
+LTX silently resizes the input to whatever you ask for — there is no
+letterboxing — so one fixed "good default" stretches every panel of a different
+shape, and a vertical panel comes out crushed into landscape.
 
 ```
---variant distilled --len 17 --strength 0.9 --fps 48   # ~65 s per take
+# 1216x832 art (1.46:1)  ->  render at 1216x832 or 1792x1216
+# 16:9 art               ->  render at 1920x1088
+# vertical 9:16 art      ->  render at 1088x1920
+# small art (864x576)    ->  UPSCALE before animating; do not shoot it small
+--variant distilled --len 17 --strength 0.9 --fps 48 --w <matched> --h <matched>
 ```
 
-`distilled` at len 17 is ~5x faster than `dev` at len 25 **with no motion
-penalty** (measured: distilled out-moved dev on the same shot). That speed is
-what makes the workflow below affordable.
+Do NOT pad the input with bars to reach a target aspect: they eat the pixel
+budget, and LTX has no concept of a border so it drifts and bleeds into them.
+Letterbox at ASSEMBLY, on a finished clip.
+
+⚠ **832x576 was never a VRAM ceiling — it was a guess**, and it is the most
+expensive mistake in this document's history. At that size a hand is ~40 px,
+which after the VAE's 8x compression is **~5 latent pixels** — not enough to
+draw fingers, so any hand that MOVES becomes mush. On one 15-panel scene it
+cost **65 hand-redrawn frames**, and the seven panels that came back clean were
+the ones that barely moved. A ceiling sweep later found **no OOM point at any
+resolution tested**, with steady-state cost of ~90-140 s a take across the whole
+range once the model is resident. The first take of a session pays the model
+load and looks much slower — never benchmark on it.
+
+### Two curves cross: resolution vs. prompt
+
+Measured on one hand-raise panel, same seed, three prompt styles, reviewed
+frame by frame:
+
+| | 1 sentence | 5-8 sentences |
+|---|---|---|
+| **1.0 MP** | fingers fused | a defect in every style tried |
+| **2.2 MP** | perfect anatomy, but **wandered off the prompt** — a spell-cast became the character styling his hair | **clean** |
+
+- **Anatomy improves with resolution.** Too few latent pixels and the model
+  cannot render what it is moving.
+- **Prompt fidelity degrades with it.** Spare capacity is spare freedom, and a
+  one-sentence prompt does not constrain it, so the model invents motion.
+
+So the two move TOGETHER. Aim high on resolution only if you will also write
+4-8 sentences; with a one-line prompt, stay near 1 MP and accept the occasional
+finger.
+
+**For image-to-video the prompt is MOTION ONLY** — do not redescribe wardrobe,
+setting or style, the drawing already fixes them. Name the camera move in the
+first sentence, lead with the largest motion, and end by saying WHAT STAYS
+STILL; that last clause is the anti-wandering one. Positive phrasing throughout.
+
+⚠ **Stay at length 17. Longer takes were tested and rejected.** Changing only
+length: 17 clean · 25 smears at frames 18-19 · 33 loses a finger at 11-13 · **49
+grows a third arm in every frame**, present from frame 0, which is a broken
+composition rather than drift. Resolution does not fix it — the length-33 damage
+landed in the same place at both sizes. (Caveat: that sweep was text-to-video.
+i2v pins frame 0 to the drawing, which would likely prevent the len-49 arm.)
+
+⚠ **AN UNUSUALLY LOW MOTION SCORE IS THE ONE RELIABLE WARNING.** LTX DECLINES an
+ask it cannot meet rather than smearing. A fast kick scored 3.6/5.8/8.2 against
+a scene typical of 11-48 and simply did not move the leg; "raise her leg a
+little higher" worked first try, same seed, same size. That is motion density,
+not resolution — do not stack simultaneous motions into 1.4 s.
+
+⚠ **The negative prompt does NOTHING on `distilled`.** It runs at cfg 1.0, and
+classifier-free guidance discards the negative branch entirely there. Verified:
+full negative vs. empty string produced **pixel-identical** output (mean abs
+diff 0.000, against ~67 between two seeds). Don't tune it — raise resolution.
+It applies only on `dev` at cfg 3.0.
+
+`distilled` at 8 steps is genuinely correct — ~5x faster than `dev` at len 25
+**with no motion penalty** (measured: distilled out-moved dev on the same shot).
+That was the one original default that held up under scrutiny.
+
+### Is LTX worth it for this shot?
+
+The same 15-panel scene, run twice. **v1** at 832x576 with one-sentence prompts:
+**65 frames redrawn by hand**, against ~45-75 drawings for the whole scene
+traditionally — so it cost MORE than drawing it, and each repair was harder than
+a fresh drawing. **v2**, per-panel sizing and 5-sentence motion-only prompts,
+nothing else changed: **6 frames redrawn, 6 trimmed, no panel truncated.**
+
+So it is worth it — but only with both levers set, and only for shots LTX can
+actually do (see the table below). Two caveats that survive v2: the seed hunt is
+load-bearing (3 seeds a panel, several rejected for tail smears — the count is
+for SELECTED takes), and **a contact sheet will not catch a bad hand that is
+small in frame.** v2's only redraws were a sword grip that read fine as stills
+and was obviously broken on playback at full size. Review motion, not just
+frames.
 
 ### The rule that decides whether a shot will work at all
 
@@ -286,6 +368,19 @@ Everything below follows from that one line:
   scores 2, that's real localized motion. If both move, it's global drift.
 - **On art with frame-wide animated FX** (glowing text, sparkles) the metric is
   meaningless — those inflate every box they touch. Judge by watching.
+- ⚠ **WHEN THE NUMBERS DISAGREE WITH THE ARTIST'S EYE, THE EYE WINS.** Not a
+  platitude — the measured record. The motion score ranked the only acceptable
+  take LAST in a config comparison, because that take had the most motion.
+  Edge-energy artifact scanning separately missed a face melting inside hair
+  (hair edges mask the change), a sword vanishing (outside the face box), eyes
+  disappearing (0.2% of the frame), and reported failure at frame 3 on a take
+  whose real damage was frames 12-17. Treat every score as a **sort order for
+  what to look at**, never a verdict. The one exception is above: an unusually
+  LOW score really does mean the model refused.
+- **Colour drift is invisible to edge-energy scanning.** A character's eyes
+  changed from blue to grey over the last five frames of a take and no scan saw
+  it — edge energy barely moves when an iris desaturates. Only the artist caught
+  it. Look at colour separately from structure.
 
 ### What LTX can't do, and what does it instead
 
@@ -294,6 +389,33 @@ Everything below follows from that one line:
   regenerates the whole frame and will quietly restyle hair or colour, so never
   ship its output wholesale. It is also **binary** — it cannot do a half-lid, so
   blend the open and closed composites for mid positions.
+- ⚠ **DO NOT PROMISE THAT KONTEXT REPAIRS HANDS.** Measured across one project:
+  **2 usable outright out of 18 attempts.** It worked twice on a hand GRIPPING
+  something (a book edge, a sword hilt) and that became a rule it did not earn —
+  on a later sword grip it went 0-for-6 outright, with 3 of 6 usable only as a
+  BASE the artist then hand-edited. The probable missing condition is SCALE: the
+  successes filled much of the frame, the failure was a small hand in a wide
+  two-shot. An open hand blurred away is hopeless (0-for-7).
+  So: offer the base, say the odds out loud, and let the artist decide whether
+  it beats a blank canvas. Waiting for seeds is only worth it if there is other
+  work to do meanwhile.
+- ⚠ **SUSPECT THE QUANTISATION BEFORE BLAMING THE MODEL.** Fused fingers and
+  extra digits from a FLUX-based model are a *bit-depth* symptom, not an
+  architecture one. `flux1-kontext-dev-Q3_K_S` is 4.9 GB for a 12B model —
+  about 3.3 bits per weight — and fine structure with hard constraints (hands,
+  faces, text) degrades first under aggressive quantisation. FLUX's reputation
+  for hands is at fp8/fp16. Note the same card happily runs a **14.2 GB** LTX
+  model via offloading, so VRAM was never the reason to pick Q3; Q6_K (9.9 GB)
+  and Q8_0 (12.7 GB) both fit inside what is already demonstrated to work.
+  UNTESTED at time of writing, but the reasoning is the same one that made
+  832x576 a mistake.
+- ⚠ **MASKED INPAINTING WAS NEVER TRIED.** Every Kontext attempt used
+  INSTRUCTION-EDIT mode: hand it the whole frame and hope. For "this region is
+  destroyed", inpainting is the right technique — mask the hand, generate into
+  the hole with the surrounding arm as context, leave every other pixel
+  untouched by construction rather than by compositing afterwards.
+  `SetLatentNoiseMask`, `VAEEncodeForInpaint`, `DifferentialDiffusion` and
+  `InpaintModelConditioning` ship with ComfyUI; no download needed.
 - **Anything that must APPEAR** (growing ice, shooting stars, speed lines) →
   draw it. Deterministic, retimeable onto musical beats, and it can't smear a
   face. `impact_preview.py` previews the speed-line/flash/shake kit.
