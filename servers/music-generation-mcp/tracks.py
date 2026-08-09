@@ -100,14 +100,21 @@ def listing(project: str | None = None) -> list[dict]:
     for t in _load()["tracks"]:
         if project and t["project"] != project:
             continue
-        out.append({
+        row = {
             "id": t["id"],
             "project": t["project"],
             "title": t["title"],
             "created": t["created"],
             "duration": t["recipe"].get("duration"),
             "mp3": t["files"].get("mp3"),
-        })
+        }
+        # Surface approval in the terse listing — it decides whether a take is
+        # protected from forget_track, so hiding it here made a wrong flag easy
+        # to miss. One word; worth the schema cost.
+        if t.get("approved"):
+            row["approved"] = True
+            row["published_as"] = (t.get("published") or {}).get("mp3")
+        out.append(row)
     return sorted(out, key=lambda r: r["created"], reverse=True)
 
 
@@ -150,8 +157,21 @@ def approve(track_id: str, slug: str | None = None) -> dict:
         shutil.copy2(src, dst)
         published[key] = dst
 
+    # Approval is NOT exclusive across the library. It was written that way
+    # first — `t["approved"] = (t["id"] == track_id)` for every track — and
+    # approving a 30 s short silently un-approved the project's full theme song,
+    # stripping the delete-guard from a finished, canon track. A project has
+    # many songs; identity is the SLUG, not "the one approved take".
+    #
+    # What is exclusive is the published name: approving a second take under an
+    # existing slug replaces those FINAL_ files, which is the intended way to
+    # supersede a take. Any prior holder of this slug is demoted, nothing else.
     for t in data["tracks"]:
-        t["approved"] = (t["id"] == track_id)
+        if t["id"] != track_id and t.get("published") and t.get("slug") == slug:
+            t["approved"] = False
+            t.pop("published", None)
+    entry["approved"] = True
+    entry["slug"] = slug
     entry["published"] = published
     _save(data)
 

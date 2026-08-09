@@ -195,20 +195,37 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio not found: {audio_path}")
 
-    # A track this server made already knows its tempo — bpm was an input.
-    if bpm is None and rec is not None:
-        bpm = rec["recipe"].get("bpm")
+    # ALWAYS measure, even when the recipe states a bpm. The requested tempo is
+    # not what the model necessarily renders: a track asked for 120 came back at
+    # a measured 117.45, and building the grid from 120 put every downbeat
+    # progressively wrong — 0.78 s adrift by the 30 s mark, close to half a bar.
+    # An earlier version of this preferred the recipe on the reasoning that
+    # "tempo was an input, so detection can only lose information". That is only
+    # true if the model obeys, and it does not reliably.
+    measured = beats.analyse(audio_path, known_bpm=None)
+    requested = bpm if bpm is not None else (rec or {}).get("recipe", {}).get("bpm")
 
-    out = beats.write(audio_path, out_path, known_bpm=bpm)
+    out = beats.write(audio_path, out_path, known_bpm=bpm)  # bpm=None -> detected
     if rec:
         tk.attach(track_id, "beats", out_path)
-    return {
+
+    result = {
         "beats_json": out_path,
         "bpm": out["bpm"],
+        "measured_bpm": measured["bpm"],
+        "requested_bpm": requested,
         "beat_count": len(out["beats"]),
         "downbeat_count": len(out["downbeats"]),
         "onset_count": len(out["onsets"]),
     }
+    if requested and abs(measured["bpm"] - requested) > 1.0:
+        drift = abs(measured["beatInterval"] - 60.0 / requested) * len(out["beats"])
+        result["warning"] = (
+            f"Rendered tempo ({measured['bpm']:.2f}) differs from the requested "
+            f"{requested}. Cutting to a {requested} BPM grid would drift ~{drift:.2f}s "
+            f"across this track. This grid uses the MEASURED tempo — verify by ear."
+        )
+    return result
 
 
 @mcp.tool()
