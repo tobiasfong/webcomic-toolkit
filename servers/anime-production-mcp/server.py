@@ -38,6 +38,13 @@ it be discovered the hard way:
     is pure waste.
   * SEEDS DO NOT TRANSFER ACROSS CONFIGS. Change length or variant and the space
     reshuffles. Re-hunt after any parameter change.
+  * RESOLUTION IS THE LEVER FOR HANDS. Default 1920x1088, fallback 1216x832 —
+    both artist-approved. 832x576 puts a hand at ~5 latent pixels and cannot
+    render one that moves; at that size, one 15-panel scene needed 65 frames
+    hand-repaired. A 6 GB card hit no OOM point anywhere in a full sweep, so
+    resolution costs almost nothing — spend it.
+  * THE NEGATIVE PROMPT DOES NOTHING on `distilled` (cfg 1.0 discards it —
+    verified pixel-identical). Do not tune it; raise resolution instead.
   * NEGATIVE INSTRUCTIONS ARE IGNORED BY BOTH MODELS. "Do not close her eyes"
     closed them; "without turning" turned. Phrase every request positively.
   * Freezing is as useful as animating. If hands go wrong, a `hold` scene that
@@ -48,6 +55,7 @@ from __future__ import annotations
 
 import os
 
+from PIL import Image
 from mcp.server.fastmcp import FastMCP
 
 import comfy
@@ -78,7 +86,8 @@ def _fetch_one(outs: dict, dest: str) -> str:
 def animate_shot(project: str, name: str, image_path: str, prompt: str,
                  seeds: list[int] | None = None, length: int = 17,
                  strength: float = 0.9, variant: str = "distilled",
-                 width: int = 832, height: int = 576, fps: float = 48.0,
+                 width: int | None = None, height: int | None = None,
+                 fps: float = 48.0,
                  measure_box: list[int] | None = None,
                  view_fps: int = 12) -> dict:
     """Animate one illustration — THE SEED HUNT, as a single call.
@@ -88,9 +97,17 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     happened"), measure its motion, and record it. Returns every take, sorted
     best-first by `maxdev`.
 
-    Defaults are the SETTLED RECIPE — distilled / length 17 / strength 0.9 /
-    fps 48, about 65 s a take. Do not tune them speculatively; `strength` is the
-    one real lever (1.0 grips the input so hard the clip FREEZES).
+    LEAVE width/height UNSET. They are derived from the artwork by
+    `lw.pick_size`, which matches the source's own aspect and then maximises
+    pixels within the card's budget — 1216x832 art becomes 1792x1216, 16:9 art
+    becomes 1920x1088. Setting them by hand is how panels ship stretched:
+    LTXVImgToVideo resizes the input to whatever it is told, silently, with no
+    letterboxing. The chosen size and any warnings come back in `size`.
+
+    Resolution is THE lever for hands — at ~5 latent pixels a moving hand cannot
+    be drawn, which cost 65 hand-repaired frames on one scene at 832x576 — and
+    it is nearly free on this card. `strength` is the other real lever (1.0
+    grips the input so hard the clip FREEZES).
 
     `prompt`: lead with the LARGEST motion that reads. Phrase positively —
     negatives are ignored by this model.
@@ -107,7 +124,17 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
         raise FileNotFoundError(f"Image not found: {image_path}")
     seeds = seeds or [1, 2, 3]
     if not 1 <= len(seeds) <= 8:
-        raise ValueError("Run 1-8 seeds at a time; ComfyUI is serial and each take costs ~65s.")
+        raise ValueError("Run 1-8 seeds at a time; ComfyUI is serial and each take costs ~2 min.")
+
+    if width is None or height is None:
+        with Image.open(image_path) as im:
+            src_w, src_h = im.size
+        size = lw.pick_size(src_w, src_h)
+        width, height = size["width"], size["height"]
+    else:
+        size = {"width": width, "height": height, "notes":
+                ["size supplied by caller — NOT checked against the artwork's "
+                 "aspect; a mismatch is a silent stretch"]}
     lw.validate(width, height, length, variant)
 
     uploaded = comfy.upload_image(image_path)
@@ -134,7 +161,7 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
 
     results.sort(key=lambda r: r["maxdev"], reverse=True)
     return {
-        "project": project, "name": name, "takes": results,
+        "project": project, "name": name, "size": size, "takes": results,
         "next": ("LOOK at the top take's `view` file (or contact_sheet it) before "
                  "approve_shot. If every seed froze, the ask is probably impossible "
                  "for LTX — check the works/fails table and consider edit_frame or "
@@ -159,6 +186,11 @@ def edit_frame(image_path: str, edit: str, out_dir: str,
 
     ⚠ Kontext is BINARY — it cannot draw a half-lid. Make mid positions by
     compositing with `blend` between 0 and 1.
+
+    ⚠ HANDS: it repairs a GRIP, not an open hand. Fingers around a book edge or
+    a sword hilt have structure to infer from and repaired first time; an open
+    hand in shadow at ~40px of skin failed seven times across three seeds, two
+    phrasings and a tight-crop pass. Draw those by hand instead.
 
     Sweep a few seeds and keep the least-drifted, not the most obedient.
     """
@@ -206,6 +238,29 @@ def measure_motion(clip_path: str, box: list[int] | None = None) -> dict:
     and use an unmoved region as a control.
     """
     return motion.measure(clip_path, tuple(box) if box else None)
+
+
+@mcp.tool()
+def cut_frames(clip: str, out_path: str, drop: list[int], fps: int = 12) -> dict:
+    """Drop specific frames from a clip and join what remains.
+
+    LTX damage arrives in a WINDOW, not at the tail — measured at 1920x1088,
+    length 25 was clean but for frames 18-19 and length 33 clean but for 11-13.
+    Truncating from the end throws those takes away; this removes just the bad
+    frames. `drop` is indices into the uniform frame grid, matching what you
+    counted on a `contact_sheet`.
+
+    ⚠ CHECK THE `seams` REPORT, DO NOT ASSUME THE CUT IS FREE. Each seam's
+    `ratio` is the jump at the join against the clip's own median frame-to-frame
+    change. Under ~2x it is invisible; above ~4x it reads as a skip. Counter-
+    intuitively a SLOW clip is where a cut shows most, because the elision is
+    large relative to everything around it: on a real length-33 take, dropping
+    3 of 33 frames produced a 5.2x jump and was rejected. A clean shorter take
+    beats a longer one with a pop in it.
+    """
+    if not os.path.isfile(clip):
+        raise FileNotFoundError(f"Clip not found: {clip}")
+    return motion.cut_frames(clip, out_path, drop, fps=fps)
 
 
 @mcp.tool()

@@ -490,8 +490,20 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
            at: int = 2, attack: int = 1, decay: int = 9,
            color: tuple[int, int, int] = (235, 235, 235),
            lines: float = 1.0, flash: float = 1.0, shake: float = 1.0,
-           margin: int = 18, fps: int = 12) -> dict:
+           margin: int = 18, fps: int = 12,
+           blur: float = 1.6, count: int = 84, taper: float = 1.3) -> dict:
     """Speed lines, a flash and camera shake, centred on `focal` (x,y fractions).
+
+    ⚠ THE DEFAULTS DRAW A RADIAL GLOW, NOT MANGA LINES, and the difference
+    surprised the artist. The lines are real — `count` of them, converging on
+    `focal` — but `blur=1.6` softens their edges and `taper=1.3` dims each one
+    toward the centre, so together they read as light rather than ink.
+
+    For inked manga speed lines: blur ~0.3, count ~180, taper ~0.45. That is
+    crisper, denser, and bright along most of each line's length. Keep `lines`
+    near 1.0 when you do — the clear centre SHRINKS as intensity rises, so
+    crisp-and-dense plus high intensity buries the figure the effect exists to
+    sell. That is how v1's version ended up looking like rain.
 
     ⚠ Shake uses OVERSCAN, never a circular offset. Offsetting wraps, so pixels
     pushed off one edge reappear on the other as a black seam. Every frame is
@@ -508,13 +520,14 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
     M = margin
 
     pyr.seed(7)
-    rnd = [(pyr.random(), pyr.random(), pyr.random(), pyr.random()) for _ in range(84)]
+    rnd = [(pyr.random(), pyr.random(), pyr.random(), pyr.random())
+           for _ in range(count)]
 
     def speedlines(s: float) -> Image.Image:
         ov = Image.new("RGB", (W, H), (0, 0, 0))
         d = ImageDraw.Draw(ov)
         for i, (ra, ri, rl, rt) in enumerate(rnd):
-            ang = (i / 84) * math.tau + ra * 0.06
+            ang = (i / count) * math.tau + ra * 0.06
             inner = diag * (0.14 + ri * 0.16) * (1 - s * 0.35)
             ln = diag * (0.35 + rl * 0.5)
             th = max(1, int((2.5 + rt * 13 * s) * 0.5))
@@ -522,12 +535,12 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
             x1, y1 = x0 + math.cos(ang) * ln, y0 + math.sin(ang) * ln
             for k in range(8):
                 t0, t1 = k / 8, (k + 1) / 8
-                v = tuple(min(255, int(c * s * (t0 ** 1.3))) for c in color)
+                v = tuple(min(255, int(c * s * (t0 ** taper))) for c in color)
                 if max(v) < 5:
                     continue
                 d.line([(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0),
                         (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)], fill=v, width=th)
-        return ov.filter(ImageFilter.GaussianBlur(1.6))
+        return ov.filter(ImageFilter.GaussianBlur(blur)) if blur > 0 else ov
 
     out = []
     for i, im in enumerate(base):

@@ -17,6 +17,19 @@ tools/framing.py is the other half of that.
 Also: Kontext is BINARY. It cannot draw a half-lid. Blend an open and a closed
 composite for mid positions.
 
+⚠ HANDS: IT REPAIRS A GRIP, NOT AN OPEN HAND. Measured across nine attempts on
+one scene. Fingers wrapped around an object — a book edge, a sword hilt — give
+the model structure to infer from, and two such repairs succeeded first time.
+An OPEN hand, in shadow, forty pixels of skin with nothing to define it, failed
+seven times across three seeds, two prompt phrasings, and a tight-crop pass that
+fed it nothing but the hand at 3x scale. Every attempt returned the same blur it
+was given. There is not enough signal in the source for the model to reconstruct
+a hand that was never really drawn.
+
+So: if the bad hand is HOLDING something, this is worth running. If it is empty
+and small, it is faster for the artist to draw it than for anyone to sit through
+four minutes a seed learning that again.
+
 Nothing in this module talks to ComfyUI — it returns a dict. comfy.py submits.
 """
 
