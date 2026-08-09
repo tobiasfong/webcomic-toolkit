@@ -1,5 +1,43 @@
 # Changelog — music-generation-mcp
 
+## v0.3.1 — 2026-08-10
+
+### `extract_beats` no longer trusts either tempo source alone
+
+Both obvious rules have now failed in production, in opposite directions:
+
+| case | measured | requested | which was right |
+|---|---|---|---|
+| model ignored the request | 117.45 | 120 | **measured** — a 120 grid drifts 0.78 s by 30 s |
+| detector picked a harmonic | 161.50 | 120 | **requested** — 161.5 is 120 x 4/3 |
+
+The second one was caught one command before it shipped: a 31 s track measured
+161.50 BPM, but envelope autocorrelation put the strongest peak at exactly
+120.00 — the requested value. Autocorrelation peaks at *every* harmonic of the
+true period, so half-time, double-time and 3-against-4 are all real peaks and
+choosing among them is a guess.
+
+`_reconcile_bpm` now decides by RATIO: ~1 means agreement; a simple harmonic
+(2, 3, 1/2, 1/3, 3/2, 2/3, 4/3, 3/4) means the detector picked the wrong peak
+and the request wins; anything else means the model did not honour the request
+and the measurement wins. The result gains `bpm_basis` naming the source used.
+
+`bpm` is consequently no longer an override — detection always runs and the two
+are reconciled. This is a behaviour change for callers that passed `bpm` to
+force a grid.
+
+⚠ Knock-on: the "half-time feel" finding in CLAUDE.md (four of six seeds
+measuring 73.8-76 against a requested 150) matches this pattern exactly — 73.8
+is half of 152. It is probably a detection artefact rather than a rendering.
+Not re-verified; those tracks were deleted. Flagged in place, not deleted.
+
+### Docs
+
+`requirements.txt` and the README still told a fresh installer that
+`extract_beats` needs Node and an ffmpeg binary, and documented a
+`WEBCOMIC_MUSIC_FFMPEG` variable that no code reads — stale since the
+pure-Python port. Both corrected; the env var is gone.
+
 ## v0.1.0 — 2026-08-06
 
 First cut. Implements `ARCHITECTURE.md` §7a, which had been sitting as

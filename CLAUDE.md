@@ -513,6 +513,31 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   It cannot separate relative major/minor pairs (nothing chroma-based can) and
   it flags them when it sees one.
 
+  **A measured tempo that is a HARMONIC of the requested one is a detection
+  error, not a rendering.** Autocorrelation peaks at every harmonic of the true
+  period, so half-time, double-time and the 3-against-4 subdivisions are all
+  real peaks and choosing between them is a guess. Measured on the 31 s isekai
+  chōka: the detector returned **161.50 BPM** for a track asked for 120, while
+  envelope autocorrelation put the strongest peak at exactly **120.00** —
+  161.5 is 120 x 4/3, a weaker peak it latched onto. That grid would have been
+  simply wrong, not slightly off.
+
+  So neither source is authoritative:
+
+  | case | measured | requested | truth |
+  |---|---|---|---|
+  | model ignored the request | 117.45 | 120 | **measured** — a 120 grid drifts 0.78 s by 30 s |
+  | detector picked a harmonic | 161.50 | 120 | **requested** — ratio is 4/3 |
+
+  The discriminator is the RATIO. Close to 1 → agreement. Close to a simple
+  harmonic (2, 3, 1/2, 1/3, 3/2, 2/3, 4/3, 3/4) → the detector is wrong, trust
+  the request. Anything else → the model is wrong, trust the measurement.
+  `extract_beats` does this automatically and reports `bpm_basis`; do the same by
+  hand when using `analyze_reference.py`, which does not.
+
+  ⚠ Both simpler rules were committed to this file at some point and both were
+  wrong. Do not replace the above with either one.
+
   **Two things are NOT controllable, so sample and pick rather than tune:**
   - *Vocal gender/register.* Identical `deep male vocal, baritone, low register,
     male singer` tags produced a male vocal at 85 s and a female-sounding one at
@@ -524,6 +549,13 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
     (`bpm=150`, 107 s, B minor): four came back at a measured 73.8-76 BPM
     (half-time), two at 152.0. So half-time is the majority outcome, not a coin
     flip — but not reliable either.
+    ⚠⚠ **This whole observation is now in doubt, and probably wrong.** 73.8-76 is
+    almost exactly HALF of 152 — precisely the harmonic-confusion pattern
+    documented above. Those four takes may never have been in half-time at all;
+    the detector may simply have picked the 1/2 peak. The reconciliation rule
+    resolves 73.8-against-150 to 150. Nothing was re-verified because those
+    tracks have since been deleted, so this stands as unresolved rather than
+    corrected — do not cite the 4-of-6 figure as evidence of anything.
     ⚠ I briefly credited half-time for making the winning take "finally sound
     like regret". **That was wrong**: the author then preferred a 152.0 take as
     well. Tempo feel varies by seed and does NOT predict which take is liked.

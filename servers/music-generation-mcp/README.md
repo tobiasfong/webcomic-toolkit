@@ -188,7 +188,9 @@ exact by construction. Detection is for reference tracks and outside audio.
 | `WEBCOMIC_MUSIC_AUTOLAUNCH` | `1` | Set `0` to require ComfyUI already running. |
 | `WEBCOMIC_MUSIC_TIMEOUT` | `1800` | Seconds to wait for one generation. |
 | `WEBCOMIC_MUSIC_OUTPUT` | `./output` | Track library root. |
-| `WEBCOMIC_MUSIC_FFMPEG` | — | ffmpeg path for `extract_beats`. |
+
+There is no ffmpeg setting. `extract_beats` reads audio through `soundfile`, so
+there is no binary to point at.
 
 ## Integration
 

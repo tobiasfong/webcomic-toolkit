@@ -184,14 +184,64 @@ def prune_library() -> dict:
     return tk.prune()
 
 
+# Ratios a tempo detector confuses a tempo WITH. Autocorrelation peaks at every
+# harmonic of the true period, so half-time, double-time and the 3-against-4
+# subdivisions are all genuine peaks — picking between them is a guess, and the
+# guess is sometimes wrong.
+_HARMONICS = (2.0, 3.0, 1 / 2, 1 / 3, 3 / 2, 2 / 3, 4 / 3, 3 / 4)
+
+
+def _reconcile_bpm(measured: float, requested: float | None,
+                   tol: float = 0.03) -> tuple[float, str, str | None]:
+    """Decide which tempo to build the grid from, and say why.
+
+    This function exists because BOTH obvious rules have now failed in practice,
+    in opposite directions:
+
+      * "trust the requested bpm" — a track asked for 120 rendered at 117.45, and
+        a 120 grid drifted 0.78 s by the 30 s mark, close to half a bar.
+      * "always measure" — a track asked for 120 rendered AT 120, but the
+        detector returned 161.50 (= 120 x 4/3, a real but weaker autocorrelation
+        peak) and would have produced a grid that was simply wrong.
+
+    So neither source is authoritative alone. The discriminator is the RATIO: a
+    measurement close to a simple harmonic of the request is the detector
+    picking the wrong peak, and the request wins. Anything else is the model not
+    honouring the request, and the measurement wins.
+    """
+    if not requested or measured <= 0:
+        return measured, "measured", None
+    ratio = measured / requested
+    if abs(ratio - 1.0) <= tol:
+        return measured, "measured", None
+    for h in _HARMONICS:
+        if abs(ratio - h) <= tol * h:
+            return float(requested), "requested", (
+                f"Detector reported {measured:.2f} BPM, which is ~{h:.4g}x the "
+                f"requested {requested}. That ratio is a harmonic, so this is the "
+                f"detector picking the wrong autocorrelation peak rather than the "
+                f"model changing tempo. Grid built from the REQUESTED {requested}."
+            )
+    drift = abs(60.0 / measured - 60.0 / requested)
+    return measured, "measured", (
+        f"Rendered tempo ({measured:.2f}) differs from the requested {requested} "
+        f"and is not a harmonic of it, so the model did not honour the request. "
+        f"Grid built from the MEASURED tempo; a {requested} grid would slip "
+        f"~{drift:.4f}s per beat. Verify by ear."
+    )
+
+
 @mcp.tool()
 def extract_beats(track_id: str | None = None, audio_path: str | None = None,
                   bpm: int | None = None) -> dict:
     """Beat grid + energy envelope, so video cuts land on downbeats.
 
     Pass a track_id (analyses its mp3, attaches beats.json to the record) or an
-    arbitrary audio_path. `bpm` skips tempo detection — pass it for tracks this
-    server generated, where bpm was an INPUT and is therefore already known.
+    arbitrary audio_path. `bpm` is the EXPECTED tempo, not an override: detection
+    still runs, and the two are reconciled (a measurement that is a harmonic of
+    the expectation means the detector picked the wrong peak). For a generated
+    track the recipe's bpm is used automatically. `bpm_basis` in the result says
+    which source the grid was actually built from.
 
     Pure Python: no Node, no ffmpeg.
     """
@@ -209,36 +259,28 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio not found: {audio_path}")
 
-    # ALWAYS measure, even when the recipe states a bpm. The requested tempo is
-    # not what the model necessarily renders: a track asked for 120 came back at
-    # a measured 117.45, and building the grid from 120 put every downbeat
-    # progressively wrong — 0.78 s adrift by the 30 s mark, close to half a bar.
-    # An earlier version of this preferred the recipe on the reasoning that
-    # "tempo was an input, so detection can only lose information". That is only
-    # true if the model obeys, and it does not reliably.
+    # Measure ALWAYS, then reconcile against what was asked for — see
+    # _reconcile_bpm for why neither source can be trusted on its own.
     measured = beats.analyse(audio_path, known_bpm=None)
     requested = bpm if bpm is not None else (rec or {}).get("recipe", {}).get("bpm")
+    grid_bpm, basis, note = _reconcile_bpm(measured["bpm"], requested)
 
-    out = beats.write(audio_path, out_path, known_bpm=bpm)  # bpm=None -> detected
+    out = beats.write(audio_path, out_path, known_bpm=grid_bpm)
     if rec:
         tk.attach(track_id, "beats", out_path)
 
     result = {
         "beats_json": out_path,
         "bpm": out["bpm"],
+        "bpm_basis": basis,          # which source the grid was built from
         "measured_bpm": measured["bpm"],
         "requested_bpm": requested,
         "beat_count": len(out["beats"]),
         "downbeat_count": len(out["downbeats"]),
         "onset_count": len(out["onsets"]),
     }
-    if requested and abs(measured["bpm"] - requested) > 1.0:
-        drift = abs(measured["beatInterval"] - 60.0 / requested) * len(out["beats"])
-        result["warning"] = (
-            f"Rendered tempo ({measured['bpm']:.2f}) differs from the requested "
-            f"{requested}. Cutting to a {requested} BPM grid would drift ~{drift:.2f}s "
-            f"across this track. This grid uses the MEASURED tempo — verify by ear."
-        )
+    if note:
+        result["warning"] = note
     return result
 
 

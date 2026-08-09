@@ -16,6 +16,9 @@ soundfile>=0.12.0
 # NOT pip-installable, and deliberately so:
 #   * ComfyUI 0.25+ — supplies ACE-Step natively (no custom nodes needed).
 #   * ACE-Step model files — see README "Models".
-#   * Node + an ffmpeg binary — ONLY for extract_beats. Generation needs
-#     neither; ComfyUI does its own audio encoding. Point the server at ffmpeg
-#     with WEBCOMIC_MUSIC_FFMPEG if it is not on PATH.
+#
+# Nothing else. In particular NOT Node and NOT ffmpeg: extract_beats used to
+# shell out to a .mjs that decoded via ffmpeg, but it is a pure-Python port now
+# (tools/beats.py, on the numpy + soundfile above). This list asked for both for
+# one commit after that stopped being true, which is worth more than a typo —
+# it sends someone installing a binary they will never use.
