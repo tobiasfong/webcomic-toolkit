@@ -332,10 +332,18 @@ If you already run that server, this step is done.
 FLUX only. Roughly 11 GB total, all of it fitting a 6 GB card via GGUF
 quantisation and ComfyUI's model offloading.
 
+⚠ **Q6_K, not a low quant.** The Q3_K_S files these used to name were deleted
+2026-08-10. VRAM is not the reason to quantise low — ComfyUI streams weights
+from system RAM, and this 6 GB card runs a 14.2 GB model routinely. Measured:
+Kontext repair of a damaged hand went from 0-of-6 frames usable at Q3_K_S to
+3-of-3 at Q6_K. Plain generation showed no difference either way, but Q6 was
+also faster there (225 s vs 339 s) and used less VRAM, so there is no case for
+the smaller file.
+
 | Role | File | → Folder |
 |------|------|----------|
-| Base FLUX (txt2img) | `flux1-dev-Q3_K_S.gguf` | `unet/` |
-| FLUX Kontext (identity/editing) | `flux1-kontext-dev-Q3_K_S.gguf` | `unet/` |
+| Base FLUX (txt2img) | `flux1-dev-Q6_K.gguf` | `unet/` |
+| FLUX Kontext (identity/editing) | `flux1-kontext-dev-Q6_K.gguf` | `unet/` |
 | Text encoder | `t5xxl_fp8_e4m3fn.safetensors` | `clip/` |
 | Text encoder | `clip_l.safetensors` | `clip/` |
 | VAE | `ae.safetensors` | `vae/` |
@@ -492,8 +500,8 @@ personal, often commissioned/licensed art, and shouldn't be redistributed.
 
 **What's real:** `model="flux_manwha"` works anywhere a model name is accepted
 (`generate_character_concept`, `generate_character_pose`, `generate_reference_sheet`)
-— a GGUF-quantized FLUX.1-dev (`flux1-dev-Q3_K_S.gguf`, ~5 GB, fits the same 6 GB
-VRAM budget) with a manhwa-style LoRA, genuinely better hand anatomy than SDXL once
+— a GGUF-quantized FLUX.1-dev (`flux1-dev-Q6_K.gguf`, ~9.9 GB; ComfyUI streams it
+from system RAM, so it runs fine on 6 GB VRAM) with a manhwa-style LoRA, genuinely better hand anatomy than SDXL once
 `detail_fix=True` is on (hand-only pass, `denoise=0.7` — no face pass, that wasn't
 tested for FLUX), and the same 3D-mannequin `pose_ref_path` mechanism for back
 views, now ~2/3-seed reliable on FLUX's ControlNet too (an alpha-quality community
@@ -533,7 +541,7 @@ them after a whole sheet is built:
    asking this tool to rotate a figure produced a chimera in testing (see its
    docstring).
 
-Models involved: `flux1-dev-Q3_K_S.gguf` and `flux1-kontext-dev-Q3_K_S.gguf`
+Models involved: `flux1-dev-Q6_K.gguf` and `flux1-kontext-dev-Q6_K.gguf`
 (both `models/unet/`, both from `QuantStack`/`city96`'s GGUF repos on
 HuggingFace), `manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safetensors`
 (both `models/loras/`), and `flux_controlnet_union_alpha.safetensors`

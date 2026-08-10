@@ -18,15 +18,28 @@ Usage:
 
 ⚠ VERIFY EVERY RESULT AGAINST THE ORIGINAL. Kontext regenerates the WHOLE
 frame, so it can quietly restyle linework, shift colour, or alter parts of the
-image you never asked about — and Q3_K_S is aggressive quantisation, so that
-risk is higher here than with a full-precision model. The intended use is to
-composite ONLY the changed region (the eye or mouth patch) back over the
-original art, never to ship the regenerated frame wholesale.
+image you never asked about. The intended use is to composite ONLY the changed
+region (the eye or mouth patch) back over the original art, never to ship the
+regenerated frame wholesale.
+
+⚠ RUN Q6_K, NOT A LOW QUANT. Measured 2026-08-10 on six damaged frames at three
+seeds each, identical prompt and region: `Q3_K_S` (~3.3 bits/weight) produced
+ZERO usable repairs in 18 attempts, while `Q6_K` produced a usable take for
+EVERY frame it was given. Same ~233 s per edit, 5127 MiB of 6144 peak VRAM.
+
+Bit depth bites hardest exactly here, because repair reconstructs destroyed
+structure from corrupted pixels — the edge of what the model can do. (Ordinary
+generation showed NO difference between the two, so this is specific to repair.)
+And VRAM is not the reason to quantise low: ComfyUI streams weights from system
+RAM, and the card this was measured on runs a 14.2 GB model routinely.
+
+Still expect to discard takes — about a third of Q6 output is unusable, fused
+fingers included. Run three seeds; only one has to land.
 """
 import argparse, json, os, time, urllib.request, urllib.error
 
 HOST = "http://127.0.0.1:8188"
-UNET = "flux1-kontext-dev-Q3_K_S.gguf"
+UNET = "flux1-kontext-dev-Q6_K.gguf"
 T5   = "t5xxl_fp8_e4m3fn.safetensors"
 CLIP_L = "clip_l.safetensors"
 VAE  = "ae.safetensors"

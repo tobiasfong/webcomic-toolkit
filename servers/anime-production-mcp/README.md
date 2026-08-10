@@ -294,7 +294,7 @@ ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) into `custom_nodes` first.
 | `ltx-2.3-22b-distilled_embeddings_connectors.safetensors` | `models/text_encoders/` |
 | `ltx-2.3-22b-distilled_video_vae.safetensors` | `models/vae/` |
 | `gemma-3-12b-it-Q3_K_M.gguf` | `models/text_encoders/` |
-| `flux1-kontext-dev-Q3_K_S.gguf` | `models/unet/` |
+| `flux1-kontext-dev-Q6_K.gguf` | `models/unet/` |
 | `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors`, `ae.safetensors` | `models/text_encoders/`, `models/vae/` |
 
 ⚠ **The text encoder goes in `models/text_encoders/`, never

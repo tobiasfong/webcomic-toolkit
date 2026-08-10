@@ -389,26 +389,32 @@ Everything below follows from that one line:
   regenerates the whole frame and will quietly restyle hair or colour, so never
   ship its output wholesale. It is also **binary** — it cannot do a half-lid, so
   blend the open and closed composites for mid positions.
-- ⚠ **DO NOT PROMISE THAT KONTEXT REPAIRS HANDS.** Measured across one project:
-  **2 usable outright out of 18 attempts.** It worked twice on a hand GRIPPING
-  something (a book edge, a sword hilt) and that became a rule it did not earn —
-  on a later sword grip it went 0-for-6 outright, with 3 of 6 usable only as a
-  BASE the artist then hand-edited. The probable missing condition is SCALE: the
-  successes filled much of the frame, the failure was a small hand in a wide
-  two-shot. An open hand blurred away is hopeless (0-for-7).
-  So: offer the base, say the odds out loud, and let the artist decide whether
-  it beats a blank canvas. Waiting for seeds is only worth it if there is other
-  work to do meanwhile.
-- ⚠ **SUSPECT THE QUANTISATION BEFORE BLAMING THE MODEL.** Fused fingers and
-  extra digits from a FLUX-based model are a *bit-depth* symptom, not an
-  architecture one. `flux1-kontext-dev-Q3_K_S` is 4.9 GB for a 12B model —
-  about 3.3 bits per weight — and fine structure with hard constraints (hands,
-  faces, text) degrades first under aggressive quantisation. FLUX's reputation
-  for hands is at fp8/fp16. Note the same card happily runs a **14.2 GB** LTX
-  model via offloading, so VRAM was never the reason to pick Q3; Q6_K (9.9 GB)
-  and Q8_0 (12.7 GB) both fit inside what is already demonstrated to work.
-  UNTESTED at time of writing, but the reasoning is the same one that made
-  832x576 a mistake.
+- ⚠ **KONTEXT REPAIRS HANDS AT Q6_K — AND DID NOT AT Q3_K_S. RUN Q6.** This was
+  the single biggest quality lever found in the whole project. Same six damaged
+  frames, three seeds each, identical prompt and region:
+
+  | | usable takes | frames rescued |
+  |---|---|---|
+  | `Q3_K_S` (~3.3 bits/weight) | 0 of 18 | **0 of 6** |
+  | `Q6_K` (~6.3 bits/weight) | 5 of 9 | **every frame attempted** |
+
+  Same ~233 s per edit, 5127 MiB of 6144 peak VRAM. **VRAM was never the reason
+  to quantise low** — ComfyUI streams weights from system RAM and this 6 GB card
+  runs a 14.2 GB LTX model routinely. `Q3_K_S` has been deleted.
+
+  Expect to discard takes anyway — about a third of Q6 output is unusable, fused
+  fingers included. Run three seeds; only one has to land, and the grade that
+  matters is COST: "draw one line" and "redraw the hand" are different jobs.
+
+  ⚠ Bit depth bites for REPAIR, not for generation. The same Q3→Q6 swap on
+  ordinary panel generation produced **identical output** — no quality change,
+  no character drift. Repair reconstructs destroyed structure from corrupted
+  pixels, which sits at the edge of what the model can do; free generation has
+  headroom. So do not promise Q6 will improve generated art. It will not.
+
+  Retired with this: the old rule that Kontext "repairs a GRIP, not an open
+  hand". It was built on two successes, contradicted at Q3, and says nothing
+  about Q6 — the open-hand case is untested now, not known-hopeless.
 - ⚠ **MASKED INPAINTING WAS NEVER TRIED.** Every Kontext attempt used
   INSTRUCTION-EDIT mode: hand it the whole frame and hope. For "this region is
   destroyed", inpainting is the right technique — mask the hand, generate into
