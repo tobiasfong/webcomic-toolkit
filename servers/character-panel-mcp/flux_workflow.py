@@ -238,10 +238,23 @@ FLUX_TURNAROUND_PROMPT = (
 # the face and hands. The prompt and the canvas were asking for different
 # pictures and the canvas won.
 #
-# 2048x1024 is 2.10 MP against the old 1.97, deliberately close: aspect is the
-# only variable changed, so if the two-row tiling stops, the cause is known.
-# Five figures now get ~410px of width each at ~900px tall after margins.
-FLUX_TURNAROUND_WIDTH = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_WIDTH", "2048"))
+# 2048x1024 fixed the tiling. 2560x1024 then fixed OVERLAP, which is a separate
+# problem: the LoRA draws seven-plus figures whatever the width, so at 2048 they
+# were packed until they touched and merged into shared silhouettes. Measured on
+# the same character, same seed, same prompt — counting connected runs of ink:
+#
+#   2048 wide  ->  THREE runs for seven figures. Figures 1-3 were one mass and
+#                  5-7 another; cutting between them sliced a robe in half and
+#                  one profile lost its whole back.
+#   2560 wide  ->  EIGHT runs for nine figures, gaps of 3-33px. Every figure is
+#                  its own connected component and crops cleanly.
+#
+# Extra width buys MORE FIGURES, not wider ones — the LoRA scales its layout to
+# fill the canvas. That is fine: the surplus is discarded, and separability is
+# what actually matters, since a merged pair cannot be cropped apart at all.
+# Costs ~21% more time (508 s vs 420 s). VRAM is not a factor here; ComfyUI
+# streams weights (see CLAUDE.md).
+FLUX_TURNAROUND_WIDTH = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_WIDTH", "2560"))
 FLUX_TURNAROUND_HEIGHT = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_HEIGHT", "1024"))
 
 

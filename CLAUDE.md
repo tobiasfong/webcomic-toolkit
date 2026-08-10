@@ -241,6 +241,34 @@ as lying on his *side*.
   overrides it. Asking for a close-up off a full-length reference returns
   full-length. The fix is to crop the reference to the framing you want,
   enlarge it, and condition on that.
+- **Crop the reference TIGHT before a turnaround sheet, and state the
+  drift-prone details in `extra_prompt`.** Measured 2026-08-10 on the same
+  character, three runs:
+
+  | reference | seed | identity | back view | costume |
+  |---|---|---|---|---|
+  | raw concept, 0.68 aspect | 6001 | held, but TWO strangers inserted | none in 8 panels | drifted |
+  | tight crop, 0.44 aspect | 6101 | face changed | yes | drifted badly |
+  | **tight crop + `extra_prompt`** | **6001** | **holds throughout** | **two** | **correct** |
+
+  A panel in a five-figure row on a 2048x1024 sheet is about 410x1024 — aspect
+  **0.40**. A raw txt2img concept is 832x1216, aspect 0.68, with the figure
+  filling only ~61% of the width. Crop to the figure's bbox and the aspect lands
+  near 0.44, and the sheet stops inventing extra people and starts producing
+  genuine back views. Same rule as the framing bullet above, applied one level
+  up: the reference's SHAPE is inherited, not just its zoom.
+
+  Note the middle row: at a different seed the tight crop lost the face
+  entirely. That was seed variance, not the crop — the same crop at the original
+  seed held identity fine. **One sample cannot separate a setting from a seed**,
+  which is the same trap the LTX section documents. Change one thing at a time
+  and keep the seed fixed.
+
+  `extra_prompt` is the documented fix for anything the reference cannot show or
+  keeps losing — glasses, a full-length hem, an emblem on the BACK that a
+  front-view reference has no way to display. Patching a bad sheet afterwards
+  reliably fails; stating the requirement upfront works.
+
 - **The reference carries POSE bias too.** Check what it actually shows before
   blaming the prompt — a "back turnaround" whose head is turned to
   three-quarter will keep producing a visible face.
