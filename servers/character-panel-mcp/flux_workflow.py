@@ -157,8 +157,20 @@ FLUX_HAND_DETAIL_PROMPT = os.environ.get(
 # Same T5/CLIP-L/VAE as the base model above — Kontext dev is a direct
 # conversion of the same base architecture, confirmed by not needing separate
 # text-encoder/VAE downloads.
+#
+# Q6_K, 2026-08-10. This is the ONE place bit depth was measured to matter:
+# repairing a damaged hand went 0-of-6 frames usable at Q3_K_S to 3-of-3 at
+# Q6_K (see "Model quantisation" in the repo's CLAUDE.md). Kontext repair
+# reconstructs destroyed structure from corrupted pixels, which is right at the
+# edge of the model's capability, and 3.3 bits per weight is not enough.
+# Generation is a much easier ask and showed no difference — do not read this as
+# a general "more bits are better".
+#
+# This server was MISSED by commit 8d497da, which moved only
+# anime-production-mcp; the constant still named Q3_K_S after that file was
+# deleted, so every Kontext call here would have failed on a missing model.
 FLUX_KONTEXT_MODEL = {
-    "unet": "flux1-kontext-dev-Q3_K_S.gguf",
+    "unet": "flux1-kontext-dev-Q6_K.gguf",
     "clip1": "t5xxl_fp8_e4m3fn.safetensors",
     "clip2": "clip_l.safetensors",
     "vae": "ae.safetensors",
