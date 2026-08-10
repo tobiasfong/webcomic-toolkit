@@ -202,18 +202,47 @@ FLUX_TURNAROUND_LORA_STRENGTH = float(
 # produce a duplicate front view instead of a genuine 3/4 angle) — if that
 # happens, a plain reroll with a new seed at the same settings resolved it
 # for free, cheaper than fighting the prompt further.
+# ⚠ THIS IS THE LORA AUTHOR'S RECOMMENDED PROMPT. Use it verbatim; do not
+# "improve" it. Set by the author 2026-08-10 after two rewrites went the other
+# way, and the reasoning is worth keeping so it is not undone a third time.
+#
+# It looks wrong: it says "5 full-body poses" and then enumerates SIX (front,
+# 3/4 left, left profile, back view, right profile, 3/4 right). The obvious fix
+# is to make the count agree — that was tried, on the theory that a total
+# disagreeing with its own enumeration reads as a request for more than either
+# number, which is exactly how CLAUDE.md explains the three-legged figure.
+#
+# But the mismatch is in the string the LoRA was TRAINED on, so matching it
+# beats correcting it. A prompt this LoRA has seen is worth more than a
+# self-consistent one it has not. The same logic retired an added block of
+# proportion guards ("do not compress, squash, shorten...") — they were local
+# additions, and they did not prevent a squat figure in panel 8 of the
+# 2026-08-10 run anyway.
+#
+# ⚠ Back-view reliability is NOT established. One confirmed clean back view,
+# one confirmed miss (ten panels, zero backs). Inspect and reroll; the prompt
+# guarantees nothing here.
 FLUX_TURNAROUND_PROMPT = (
-    "create a turnaround sheet of this character, 5 full-body poses on pure white "
-    "background: front view, 3/4 left, left profile, back view, right profile, 3/4 right "
-    "— evenly spaced in a clean horizontal row, consistent lighting and style, no "
-    "background noise, no shadows, same proportions and detailing across all views. "
-    "Maintain scale and proportion — do not compress, squash, or shorten the figure "
-    "vertically to fit the frame. Preserve the character's exact body proportions from "
-    "the reference image in every one of the five poses — do not draw the figure "
-    "shorter, stumpier, or more squat in any panel than in the reference."
+    "create turnaround sheet of this exact character, 5 full-body poses on pure "
+    "white background: front view, 3/4 left, left profile, back view, right "
+    "profile, 3/4 right — evenly spaced in a clean horizontal row, consistent "
+    "lighting and style, no background noise, no shadows, same proportions and "
+    "detailing across all views"
 )
-FLUX_TURNAROUND_WIDTH = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_WIDTH", "1536"))
-FLUX_TURNAROUND_HEIGHT = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_HEIGHT", "1280"))
+# 2:1, and the ratio is the point — the prompt asks for five full-body poses
+# "evenly spaced in a clean horizontal row", and the canvas has to be able to
+# HOLD that picture. At the previous 1536x1280 (1.2:1, nearly square) one row of
+# five would give each figure ~300px of width against 1280px of height, which is
+# not a drawable arrangement, so the model tiled into TWO rows of five instead —
+# ten figures nobody asked for, each about 300x600 and correspondingly mushy in
+# the face and hands. The prompt and the canvas were asking for different
+# pictures and the canvas won.
+#
+# 2048x1024 is 2.10 MP against the old 1.97, deliberately close: aspect is the
+# only variable changed, so if the two-row tiling stops, the cause is known.
+# Five figures now get ~410px of width each at ~900px tall after margins.
+FLUX_TURNAROUND_WIDTH = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_WIDTH", "2048"))
+FLUX_TURNAROUND_HEIGHT = int(os.environ.get("WEBCOMIC_CHAR_FLUX_TURNAROUND_HEIGHT", "1024"))
 
 
 def _submit_and_wait(graph: dict, output_node: str = "12", timeout: int = 300) -> bytes:

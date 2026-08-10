@@ -845,10 +845,22 @@ def edit_character_image(
     canvas_height: int | None = None,
     matte: bool = False,
     matte_tol: float | None = None,
+    mask_box: tuple[int, int, int, int] | None = None,
+    mask_feather: int = 32,
 ) -> str:
     """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
     image with a plain-English instruction, via FLUX Kontext dev as a pure
     image editor (no LoRA).
+
+    mask_box: (x0, y0, x1, y1) in the SOURCE image's pixel coordinates. Only
+    that rectangle is denoised; everything outside it is carried through
+    untouched. WITHOUT it this re-renders the WHOLE canvas at denoise=1.0 and
+    no wording protects anything — a costume pass repainted a raised kicking
+    leg as a continuation of the sleeve three times running, because the model
+    was free to redecide every pixel. On a multi-panel turnaround sheet an
+    unmasked edit re-decides every panel, including the ones you liked. Fence
+    the edit; don't ask the prompt to be careful. Mutually exclusive with
+    canvas_width/canvas_height.
 
     canvas_width / canvas_height: explicit output panel size, e.g. a
     landscape action panel (1600x900) from a portrait character reference.
@@ -901,7 +913,9 @@ def edit_character_image(
     try:
         edited_path = flux_workflow.edit_image(
             image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
-            canvas_width=canvas_width, canvas_height=canvas_height)
+            canvas_width=canvas_width, canvas_height=canvas_height,
+            mask_box=tuple(mask_box) if mask_box else None,
+            mask_feather=mask_feather)
     except comfy.ComfyUIError as e:
         return f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     matte_note = ""
