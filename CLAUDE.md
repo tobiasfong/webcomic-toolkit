@@ -58,9 +58,35 @@ The three occasions, for pattern recognition:
 **Before concluding a model "can't do" something, check its bit depth and check
 whether the limit you are respecting was ever measured.**
 
-⚠ STILL AT Q4_K_M AND UNTESTED: **LTX-2.3**, ~4.8 bits. Higher quants exist but
-it is a 22B model, so Q6 would be ~21 GB against the 14.2 GB in use — well past
-anything demonstrated here. Do not assume it works; measure it.
+### LTX-2.3 stays at Q4_K_M — a decision, not an oversight
+
+Deliberately deferred 2026-08-10. Do not "upgrade" it without working through
+the order below first.
+
+Sizes, for reference: in use `Q4_K_M` 14.2 GB (~4.85 bits) · `Q5_K_M` 15.9 GB ·
+`Q6_K` 17.8 GB · `Q8_0` 22.8 GB. Add the Gemma-3-12B encoder (6.0 GB) that
+loads alongside, and Q6 means **~23.8 GB of weights against 31.9 GB of system
+RAM** — it should run, since ComfyUI streams from RAM, but expect paging and
+slower takes. That is a different risk profile from the FLUX upgrade, which was
+~15 GB total and comfortable.
+
+Three reasons to leave it alone unless something forces the issue:
+
+1. **The evidence points away from a benefit.** Bit depth mattered for Kontext
+   REPAIR (reconstruction from corrupted pixels) and did NOTHING for FLUX
+   generation. LTX animating a clean 1216x832 source is generation-shaped — it
+   has good input and headroom.
+2. **LTX's remaining failures are drift-shaped, not precision-shaped.** Tail
+   degradation and the occasional bad hand at length 17. Drift is not something
+   more bits fix.
+3. **Cheaper techniques are untried.** `LTXVAddGuide` pins a final frame and
+   attacks drift directly — that comes first.
+
+ORDER OF ESCALATION, agreed with the author: run the series at Q4_K_M · if
+quality is a problem, try LTXVAddGuide and prompt/resolution work · only if
+those fail, test Q6_K — and test it on p07 of the murim scene, where Q4's
+sword-hand deformation across f11-f16 is a known, reproducible failure to
+compare against.
 
 ## The one rule
 
