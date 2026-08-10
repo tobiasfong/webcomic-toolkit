@@ -16,21 +16,24 @@ tools/framing.py is the other half of that.
 Also: Kontext is BINARY. It cannot draw a half-lid. Blend an open and a closed
 composite for mid positions.
 
-⚠ HANDS: DO NOT PROMISE THIS REPAIRS THEM. Across one project, 2 usable
-outright out of 18 attempts.
+⚠ HANDS: IT REPAIRS THEM AT Q6, AND DID NOT AT Q3. This file previously said
+"do not promise this repairs hands", which was correct for the model it was
+measured on and wrong about the tool.
 
-An earlier version of this file said "it repairs a GRIP, not an open hand",
-drawn from two successes on a book edge and a sword hilt. That rule was built on
-n=2 and it did not hold: a later sword grip went 0-for-6 outright across three
-seeds a frame, with 3 of 6 usable only as a BASE the artist then hand-edited.
-The probable missing condition is SCALE — the successes filled much of the
-frame, the failure was a small hand in a wide two-shot. An OPEN hand blurred
-away remains hopeless: 0-for-7 across three seeds, two phrasings, and a
-tight-crop pass at 3x that returned the same blur it was given.
+Same six damaged frames, three seeds each, identical prompt and box:
 
-So: offer the output as a starting point, say the odds out loud, and let the
-artist decide whether it beats a blank canvas. Waiting on seeds is only worth it
-when there is other work to do meanwhile.
+    Q3_K_S   0 of 18 takes usable outright, 0 of 6 frames rescued
+    Q6_K     every frame produced at least one usable take
+             (of 9 takes: 1 good, 4 needing one line drawn, 1 heavy, 3 discard)
+
+Run THREE SEEDS and expect to discard some — a third of Q6 takes are still bad,
+fused fingers included. That is fine; only one has to land. The grade that
+matters is not pass/fail but COST: "one line drawn" and "full manual redraw" are
+different jobs, and Q6 moved most outcomes into the first.
+
+Prior finding that did NOT survive: "repairs a GRIP, not an open hand", built on
+n=2 and later contradicted at Q3. Whether an open hand blurred to nothing is
+recoverable at Q6 is UNTESTED — 0-for-7 at Q3 says nothing about Q6 now.
 
 ⚠ AND MASKED INPAINTING HAS NEVER BEEN TRIED. Every attempt above used this
 graph — INSTRUCTION-EDIT mode, hand it the whole frame and hope. For "this
@@ -59,10 +62,11 @@ from __future__ import annotations
 # what is already demonstrated to work. Same mistake as defaulting LTX to
 # 832x576 — a limit assumed rather than measured.
 #
-# ⚠ UNMEASURED AS OF THIS CHANGE. Q6_K is near-indistinguishable from fp16 by
-# general repute, but the comparison against Q3 on real frames has NOT been run
-# here. Q3_K_S is kept on disk; switching back is this one line. Expect slower
-# generation — twice the weights to stream.
+# MEASURED 2026-08-10, and decisively: on six damaged frames at three seeds
+# each, Q3_K_S produced ZERO usable repairs in 18 attempts while Q6_K produced a
+# usable take for EVERY frame it was given. Same time per edit (~233 s), 5127
+# MiB of 6144 peak. Q3_K_S has since been deleted; re-download from
+# QuantStack/FLUX.1-Kontext-dev-GGUF if you ever need it.
 UNET = "flux1-kontext-dev-Q6_K.gguf"        # was flux1-kontext-dev-Q3_K_S.gguf
 T5 = "t5xxl_fp8_e4m3fn.safetensors"
 CLIP_L = "clip_l.safetensors"

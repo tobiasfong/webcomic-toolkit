@@ -31,6 +31,12 @@ Q3-era panels and character sheets are NOT compromised and do not need
 regenerating. If sheets get regenerated for a new series, that is a story
 decision, not a technical migration.
 
+The Q3_K_S files have been DELETED (2026-08-10) — 10.5 GB reclaimed, and there
+is no measured case where they are preferable. Reverting means re-downloading:
+`flux1-dev-Q3_K_S.gguf` from city96/FLUX.1-dev-gguf, `flux1-kontext-dev-Q3_K_S`
+from QuantStack/FLUX.1-Kontext-dev-GGUF. Do not "fall back to Q3" casually;
+nothing here suggests you would want to.
+
 Q6 was adopted for generation anyway because it costs nothing: **225 s against
 Q3's 339 s, and 5482 MiB peak VRAM against 5892** — faster and lighter, with
 LoRA and ControlNet both active at 832x1216. Low K-quants are more expensive to

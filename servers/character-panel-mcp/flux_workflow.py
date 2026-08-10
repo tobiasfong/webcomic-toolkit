@@ -75,7 +75,8 @@ from comfy import (
 # pixels sits at the edge of the model's capability. Free generation has
 # headroom. Q3-era panels and character sheets are not compromised.
 #
-# Q3_K_S is still on disk; reverting is this one line.
+# Q3_K_S has been DELETED — re-download from city96/FLUX.1-dev-gguf if you
+# ever genuinely need it, which nothing measured so far suggests.
 FLUX_MODELS = {
     "flux_manwha": {
         "unet": "flux1-dev-Q6_K.gguf",
