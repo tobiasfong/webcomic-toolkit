@@ -63,9 +63,22 @@ from comfy import (
 )
 
 # --- Base FLUX model (Stage 1-3, validated 2026-07-21/22) -------------------
+# Q6_K, settled 2026-08-10. See "Model quantisation" at the top of the repo's
+# CLAUDE.md. Short version: measured against Q3_K_S at 832x1216 with this LoRA
+# and a canny ControlNet, output was IDENTICAL — no quality change, no character
+# drift — but Q6 ran in 225 s against 339 s and peaked at 5482 MiB against 5892.
+# Faster and lighter, so it was adopted for free rather than for quality.
+#
+# ⚠ Do NOT expect Q6 to improve generated panels; it does not. Bit depth only
+# bites when the task is hard — Kontext REPAIR of a destroyed hand went from
+# 0-of-6 usable at Q3 to 3-of-3 at Q6, because reconstruction from corrupted
+# pixels sits at the edge of the model's capability. Free generation has
+# headroom. Q3-era panels and character sheets are not compromised.
+#
+# Q3_K_S is still on disk; reverting is this one line.
 FLUX_MODELS = {
     "flux_manwha": {
-        "unet": "flux1-dev-Q3_K_S.gguf",
+        "unet": "flux1-dev-Q6_K.gguf",
         "clip1": "t5xxl_fp8_e4m3fn.safetensors",
         "clip2": "clip_l.safetensors",
         "vae": "ae.safetensors",

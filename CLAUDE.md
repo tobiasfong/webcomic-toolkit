@@ -3,6 +3,59 @@
 Read this before generating or editing any character art. These rules exist
 because each one was broken in practice and cost real time.
 
+## Model quantisation — settled 2026-08-10
+
+**Everything runs Q6_K. Both FLUX models are on disk and both are configured.**
+
+| | model | why |
+|---|---|---|
+| Kontext | `flux1-kontext-dev-Q6_K.gguf` | decisive quality win, see below |
+| generation | `flux1-dev-Q6_K.gguf` | no quality change, but faster and lighter |
+
+⚠ **WHERE BIT DEPTH ACTUALLY MATTERS, measured on both:**
+
+| task | Q3_K_S -> Q6_K |
+|---|---|
+| Kontext REPAIR of a damaged hand | 0 of 6 frames usable -> **3 of 3 usable** |
+| Panel GENERATION, same seed and prompt | **identical — no visible difference, no character drift** |
+
+The rule that explains both: **quantisation error surfaces when the task is
+HARD.** Kontext repair reconstructs destroyed structure from corrupted pixels,
+right at the edge of the model's capability, and 3.3 bits per weight is not
+enough — hands came back as fused blobs. Generation from a good prompt with a
+LoRA and ControlNet is a much easier ask, the model has headroom, and the extra
+precision buys nothing you can see.
+
+So: **do not expect Q6 to improve generated panels. It will not.** Existing
+Q3-era panels and character sheets are NOT compromised and do not need
+regenerating. If sheets get regenerated for a new series, that is a story
+decision, not a technical migration.
+
+Q6 was adopted for generation anyway because it costs nothing: **225 s against
+Q3's 339 s, and 5482 MiB peak VRAM against 5892** — faster and lighter, with
+LoRA and ControlNet both active at 832x1216. Low K-quants are more expensive to
+unpack per operation, which is the likely reason the bigger file is quicker.
+
+⚠ **VRAM IS NOT THE CONSTRAINT ON THIS CARD, and assuming it is has cost real
+work three times now.** ComfyUI offloads to system RAM and streams weights: this
+6 GB card runs a **14.2 GB** LTX model daily. Online guidance that Q6 "needs
+12 GB VRAM" describes holding weights resident, which is not what happens here.
+The three occasions, for pattern recognition:
+
+- LTX defaulted to `832x576` "for the 6 GB card" — cost 65 hand-redrawn frames
+  on one scene. A later ceiling sweep found no out-of-memory point at ANY
+  resolution tested.
+- Kontext at `Q3_K_S` — produced nothing usable across 18 repair attempts.
+- Generation at `Q3_K_S` — harmless as it turned out, but chosen for the same
+  bad reason.
+
+**Before concluding a model "can't do" something, check its bit depth and check
+whether the limit you are respecting was ever measured.**
+
+⚠ STILL AT Q4_K_M AND UNTESTED: **LTX-2.3**, ~4.8 bits. Higher quants exist but
+it is a 22B model, so Q6 would be ~21 GB against the 14.2 GB in use — well past
+anything demonstrated here. Do not assume it works; measure it.
+
 ## The one rule
 
 **Character appearance is data, not something you write.** It lives in
