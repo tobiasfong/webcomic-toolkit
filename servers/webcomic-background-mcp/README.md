@@ -31,8 +31,8 @@ generation backend is up.
 > `character_path` mode are gone — see CHANGELOG for the reasoning, but in
 > short: the sibling character-panel server generates figures with FLUX, and
 > SD1.5 plates under FLUX figures look pasted together. **You will need FLUX**;
-> `setup_models.py` fetches it. If VRAM is tight use a smaller GGUF quantisation
-> (Q3_K_S is the default, Q2 exists) — there is deliberately no lower-quality
+> `setup_models.py` fetches it. If disk is tight a smaller GGUF quantisation
+> works (Q6_K is the default, Q3/Q2 exist) — there is deliberately no lower-quality
 > fallback path. Note FLUX.1-dev's licence covers the *model* (non-commercial)
 > but permits commercial use of generated *outputs*.
 >
@@ -161,21 +161,24 @@ That fetches the stack below. Or place them manually under `ComfyUI/models/`:
 
 | Role | File | → Folder | Source |
 |------|------|----------|--------|
-| **FLUX.1-dev unet** (the renderer) | `flux1-dev-Q3_K_S.gguf` | `unet/` | [city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf) |
+| **FLUX.1-dev unet** (the renderer) | `flux1-dev-Q6_K.gguf` | `unet/` | [city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf) |
 | **Text encoders** (FLUX uses two) | `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors` | `clip/` | [comfyanonymous/flux_text_encoders](https://huggingface.co/comfyanonymous/flux_text_encoders) |
 | **VAE** | `ae.safetensors` | `vae/` | [black-forest-labs/FLUX.1-schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell) |
 | **ControlNet** (composition / sketch) | `flux_controlnet_union_pro2.safetensors` | `controlnet/` | [Shakker-Labs Union Pro 2.0](https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0) |
 | **Style LoRA** (the manhwa look) | `manwha_style.safetensors` | `loras/` | [Civitai](https://civitai.com/models/793264) |
-| FLUX Kontext (for `edit_background`) | `flux1-kontext-dev-Q3_K_S.gguf` | `unet/` | [QuantStack/FLUX.1-Kontext-dev-GGUF](https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF) |
+| FLUX Kontext (for `edit_background`) | `flux1-kontext-dev-Q6_K.gguf` | `unet/` | [QuantStack/FLUX.1-Kontext-dev-GGUF](https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF) |
 
 > **You need the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) custom
 > node** — ComfyUI's stock loader cannot read `.gguf`. Install it before running
 > `setup_models.py`.
 
-> **VRAM.** `Q3_K_S` (~5 GB) is chosen so FLUX fits a 6 GB card, and is what this
-> project is developed on. On 8 GB+ substitute `Q4_K_S` from the same repo for
-> better quality; below 6 GB, smaller quants (Q2) exist. **There is no SD1.5
-> fallback** — see v2.0.0 in the CHANGELOG for why.
+> **Quantisation.** `Q6_K` (~9.85 GB) is what this project is developed on — on a
+> 6 GB card. The unet does *not* have to fit in VRAM: ComfyUI streams weights
+> from system RAM, so the earlier "Q3_K_S so FLUX fits 6 GB" reasoning was wrong.
+> Q6 buys nothing for plain generation; it was adopted because bit depth
+> measurably matters for **Kontext editing** (a hand repair went 0-of-6 usable
+> frames at Q3_K_S to 3-of-3 at Q6_K). **There is no SD1.5 fallback** — see
+> v2.0.0 in the CHANGELOG for why.
 
 > **Style LoRA strength matters.** `manwha_style` is applied at **1.5**, not the
 > usual 1.0 — below that it loses the fight against ControlNet conditioning and
@@ -287,7 +290,7 @@ supply the *style*; your library supplies the *structure*.
 | `WEBCOMIC_BG_AUTOLAUNCH` | `1` | Set `0` to require a manually-started ComfyUI |
 
 > Model definitions live in `FLUX_MODELS` in `flux_workflow.py`. Add entries there
-> to register another FLUX quantisation (e.g. a Q4_K_S unet on a larger card).
+> to register another FLUX quantisation (e.g. a smaller unet on a slower disk).
 
 ## Troubleshooting
 
@@ -297,8 +300,8 @@ These are the real snags hit while building it:
   it's on a different port. Start it; set `COMFY_URL` if needed.
 - **`UnetLoaderGGUF` not found** — the [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)
   custom node isn't installed. FLUX's `.gguf` files can't be read without it.
-- **Out of memory** — drop to a smaller quantisation (Q2) or lower `width`/`height`.
-  Q3_K_S at 896x672 is about the ceiling on a 6 GB card.
+- **Out of memory** — lower `width`/`height` first; that, not the unet size, is
+  what fills VRAM. 896x672 is about the ceiling on a 6 GB card.
 - **Stray people/figures in open scenes** — FLUX barely honours negative prompts at
   `cfg=1.0`, so `extra_negative` helps less than you'd expect. Describe the scene so
   completely there's no room for a figure (e.g. fill the floor with pews) — that

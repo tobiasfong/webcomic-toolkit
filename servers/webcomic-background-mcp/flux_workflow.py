@@ -103,8 +103,8 @@ def _unique_out_path(out_dir: str, stem: str) -> str:
 FLUX_MODELS = {
     "flux_manwha": {
         "unet": "flux1-dev-Q6_K.gguf",
-        "clip1": "t5xxl_fp8_e4m3fn.safetensors",  # Q4_K_S — 6 GB VRAM budget
-        "clip2": "clip_l.safetensors",            # (RTX 3060 *Laptop*)
+        "clip1": "t5xxl_fp8_e4m3fn.safetensors",  # fp8 text encoder
+        "clip2": "clip_l.safetensors",
         "vae": "ae.safetensors",
     },
 }
@@ -508,7 +508,10 @@ def hires_pass(image_path: str, prompt: str, negative: str,
 # mask rather than asking nicely in the prompt.
 
 FLUX_KONTEXT_MODEL = {
-    "unet": "flux1-kontext-dev-Q3_K_S.gguf",
+    # Q6_K, not Q3_K_S. Bit depth measurably matters for Kontext (unlike plain
+    # generation): repairing a damaged hand went 0-of-6 usable frames at Q3_K_S
+    # to 3-of-3 at Q6_K. Q3 was deleted 2026-08-10.
+    "unet": "flux1-kontext-dev-Q6_K.gguf",
     "clip1": "t5xxl_fp8_e4m3fn.safetensors",
     "clip2": "clip_l.safetensors",
     "vae": "ae.safetensors",

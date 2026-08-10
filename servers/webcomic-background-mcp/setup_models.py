@@ -17,10 +17,13 @@ Downloads (skips anything already present):
   - ControlNet Union Pro 2 -> models/controlnet  composition / sketch control
   - manwha_style LoRA      -> models/loras       the manhwa aesthetic
 
-VRAM: these are the Q3_K_S quantisations (~5 GB each), chosen so FLUX fits a
-6 GB card. On 8 GB+ you can substitute Q4_K_S for better quality; below 6 GB,
-smaller quants (Q2) exist on the same repo. You need ONE of the dev unets to
-generate; Kontext is only needed for edit_background.
+Disk/VRAM: these are the Q6_K quantisations (~9.85 GB each). They do NOT need
+to fit in VRAM — ComfyUI streams unet weights from system RAM, so VRAM was
+never the constraint, and the old "Q3_K_S so FLUX fits a 6 GB card" reasoning
+was wrong (see CLAUDE.md, quantisation). Q6 buys nothing for plain generation;
+it was adopted because bit depth measurably matters for Kontext editing.
+You need ONE of the dev unets to generate; Kontext is only needed for
+edit_background.
 
 Requires a ComfyUI-GGUF custom node install (city96/ComfyUI-GGUF) — the stock
 loader cannot read .gguf.
@@ -35,10 +38,10 @@ import urllib.request
 # flux_workflow.py's FLUX_MODELS registry, so downloads land under the names
 # the tool expects.
 MODELS = [
-    ("unet", "flux1-dev-Q3_K_S.gguf",
-     "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q3_K_S.gguf"),
-    ("unet", "flux1-kontext-dev-Q3_K_S.gguf",                    # for edit_background
-     "https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF/resolve/main/flux1-kontext-dev-Q3_K_S.gguf"),
+    ("unet", "flux1-dev-Q6_K.gguf",
+     "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q6_K.gguf"),
+    ("unet", "flux1-kontext-dev-Q6_K.gguf",                      # for edit_background
+     "https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF/resolve/main/flux1-kontext-dev-Q6_K.gguf"),
     ("clip", "t5xxl_fp8_e4m3fn.safetensors",
      "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"),
     ("clip", "clip_l.safetensors",
