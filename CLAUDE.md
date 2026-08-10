@@ -269,6 +269,41 @@ as lying on his *side*.
   front-view reference has no way to display. Patching a bad sheet afterwards
   reliably fails; stating the requirement upfront works.
 
+- **When a sheet's panels disagree with EACH OTHER, generate one view at a time
+  instead.** A turnaround is a single generation across one canvas, and nothing
+  ties panel 2's costume to panel 1's — consistency is emergent, and it only
+  emerges when the reference is winning against the LoRA's own priors. When it
+  is not, each panel resolves independently onto a different nearby archetype,
+  and you get five variations rather than one character five times.
+
+  Every character shows some of this; the normal workflow is to keep the three
+  to five panels that agree and bin the rest. The question is the HIT RATE. One
+  character in eleven dropped to roughly two usable panels per sheet and stayed
+  there across **sixteen sheets** — every LoRA strength, both guidance values,
+  four resolutions, and a dozen prompt rewrites.
+
+  What finally worked: `create a [back|side profile|three-quarter] view of this
+  exact character, one single full-body figure ...` at **832x1216, one figure
+  per canvas**, keeping the turnaround LoRA (it is what supplies the rotation —
+  plain Kontext will not rotate a viewpoint) and stacking `manwha_style`
+  alongside it. One figure cannot be internally inconsistent, and each view is
+  independently rerollable. Her back view — the panel sixteen sheets had failed
+  to produce — came out clean on the first single-view attempt.
+
+  Costs: the views will not match each other perfectly, and **facing direction
+  still ignores instruction**, so opposite profiles cannot be requested — mirror
+  one at composite time. Reach for this when a character's hit rate collapses,
+  not as the default; sheets are cheaper when they work.
+
+- **Beware the design that sits inside the LoRA's prior.** The character who
+  failed wore a two-piece outfit (fitted top, long skirt) — the only one in the
+  cast not in a full-length wrapped robe. Run with no `extra_prompt` at all she
+  came back in a crop top, jeans and trainers; other rolls produced a school
+  sailor uniform, laced combat boots and a mini skirt. A robed silhouette has no
+  modern analogue for the prior to pull toward, which is why every robed
+  character worked first or second time. If a design maps onto common anime
+  character-sheet wardrobe, expect to fight for it.
+
 - **The reference carries POSE bias too.** Check what it actually shows before
   blaming the prompt — a "back turnaround" whose head is turned to
   three-quarter will keep producing a visible face.
@@ -692,5 +727,34 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   unbounded → 2.0.0. Existing venvs are unaffected; this bites new installs only.
 - ComfyUI runs prompts **serially**. Submit one job at a time; stacked jobs burn
   their timeouts waiting in queue.
+
+  ⚠ This bit hard on 2026-08-11 and the failure looks like something else
+  entirely. `_submit_and_wait` measures wall-clock **from submission**, so its
+  timeout counts QUEUE WAITING as well as rendering. Two scripts were in flight,
+  each submitting sequentially; every job in the second script sat behind the
+  first script's work, blew its 600 s, and raised `Timed out after 600s`.
+
+  ComfyUI rendered all of them perfectly. The *clients* gave up. So the symptom
+  is "my renders vanished" — finished images that never reach the destination
+  folder, while the job log shows nothing wrong until it exits.
+
+  **Nothing is ever actually lost:** ComfyUI writes its own copy of every render
+  to `ComfyUI/output/` under the graph's `filename_prefix`, whatever the client
+  does. Recover by timestamp. Three renders were rescued this way in one night.
+
+  Two habits that turn a 30-second check into a 20-minute stall, both self-
+  inflicted the same night:
+  - **Never pipe a background job through `tail` or `grep`.** Both buffer until
+    the process exits, so the log stays empty while the job runs — and a `grep`
+    filter silently discarded an error return that would have flagged a broken
+    edit immediately. Write the full log; filter when reading it.
+  - **Poll `ComfyUI/output/` directly, not the job log.** The output directory is
+    ground truth and updates the moment a render finishes.
+
+- **Chaining jobs on a log marker breaks silently if the upstream job is
+  killed.** A downstream script that waits for `"=== upstream done ==="` will
+  wait forever when that marker never prints, giving no error and no output —
+  one sat idle for twenty minutes before anyone noticed. Prefer launching
+  directly and letting ComfyUI's own serial queue order the work.
 - Use the repo venv: `servers/character-panel-mcp/.venv/Scripts/python.exe`.
 - ~15 min per ControlNet generation, ~8 min per Kontext edit on a 6 GB card.
