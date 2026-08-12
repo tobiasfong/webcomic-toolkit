@@ -8,6 +8,77 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [Unreleased] — transparent panel figures
+
+Panel figures can now come out on a **transparent background**, so they never
+fight a plate from the background server. Generate the figure as usual, then cut
+it out with `matte_image()` — ~5 s, and it works on art that already exists
+(locked panels, approved concept panels, hand-drawn work).
+
+### LayerDiffuse native alpha was built, measured, and REMOVED — do not rebuild it
+
+A full working implementation of FLUX LayerDiffuse (`layerlora` + a
+`TransparentVAEDecode` node over ComfyUI's own VAE, keeping Kontext identity
+conditioning) was built and validated on 2026-08-13, then deleted the same day.
+Recording it so the 1.6 GB of weights don't get re-downloaded on the same hunch.
+
+It worked. It was still the wrong tool:
+
+- **It leaves a white edge.** Comparing the 2 px rim just inside the silhouette
+  against the figure's interior: RMBG −28.7 (lands on the dark lineart) against
+  LayerDiffuse −11.5 (cuts outside it). On cel-shaded art with hard lineart the
+  matte must land *on* the line.
+- **It changes the drawing.** `layerlora` is another LoRA competing with
+  `manwha_style` — mean abs diff 9.459 against strength 0.0 at a fixed seed. You
+  would be accepting different art in exchange for alpha. Matting alters nothing.
+- **Its supposed advantage was never real.** It was framed as "identity *and*
+  alpha in one pass", but matting is a post-process and does not compete with
+  identity conditioning at all. Generate normally with full Kontext identity,
+  then matte.
+
+Two findings from that work worth keeping:
+
+- **The white edge was NOT the decoder's fault**, which took the author pointing
+  out that a halo is a *trimming* artefact — a natively transparent generation
+  trims nothing, so the fringe must have been inherited as content. It was: the
+  grey-field reference the route required was itself built by colour-threshold
+  trimming (rim 192.9 against a 130 fill), i.e. the very technique documented
+  here as unable to separate pale fabric from a pale field. Rebuilding that
+  reference with RMBG instead dropped its rim to **124.8**, at the fill.
+- **Colour-threshold trimming cannot be tuned out of it.** Hysteresis with a
+  bounded reach moved the reference rim only 192.9 → 184.7, and the generated
+  edge only −11.5 → −13.9. Unbounded hysteresis flooded the white robe (13.9% of
+  the image at threshold 210, 44.5% at 170) because light lineart does not
+  enclose it.
+
+The obvious follow-up — generating from the RMBG-built reference to see whether
+the route's edge would then match — was **never measured**; the route was deleted
+while that run was in flight. It would not have changed the decision (the LoRA
+alters the drawing either way, and matting never competed with identity
+conditioning), but the number does not exist, so do not cite one.
+
+### Added
+
+- **`matte_image()`** — learned matting (ComfyUI-RMBG, RMBG-2.0). Cuts an
+  existing image out onto transparency in ~5 s: locked panels, approved concept
+  panels, hand-drawn work. Measured on a white robe with white boots on a white
+  field — the case colour keying provably destroys — 46.6% transparent / 51.1%
+  opaque / 2.3% soft edge, corners exactly 0.0000, boots and hair intact.
+  Requires ComfyUI-RMBG (see README Step 3) — no model change on our side.
+
+### Notes, each measured rather than assumed
+
+- **`cutout.py` colour keying is superseded for figures.** It cannot separate
+  pale fabric from a pale backdrop by construction — hence `pale_figure_risk`,
+  and the clamp at 110 when the measured tolerance wanted 173–187.
+- **ComfyUI-RMBG's auto-downloader is broken against `huggingface_hub` 1.x**
+  ("Cannot send a request, as the client has been closed"), and the error
+  surfaces only in ComfyUI's `/history` — the client just reports no image.
+  Place weights manually; do not downgrade the hub, ComfyUI depends on it.
+- **Reproducibility**: decoding the same latent is bit-exact (0.0000), but
+  re-sampling the same seed is not (~0.64/255 across runs) — ordinary GPU
+  nondeterminism, not a pipeline fault.
+
 ## [Unreleased] — FLUX-only: the SD1.5/SDXL path is retired
 
 **Breaking.** This server now runs on FLUX exclusively. The SD path had been

@@ -754,3 +754,63 @@ def generate_turnaround_sheet(
     }
     data = _submit_and_wait(g, "12", timeout)
     return _save(data, out_dir, f"turnaround_{seed}")
+
+
+# ---------------------------------------------------------------------------
+# Transparent panel figures
+# ---------------------------------------------------------------------------
+# Generate the figure as usual, then cut it out with matte_image() -- learned
+# matting, ~5 s, and it works on art that ALREADY EXISTS (locked panels,
+# approved concept panels, hand-drawn work).
+#
+# A FLUX LayerDiffuse route that generated native alpha directly was built,
+# measured and REMOVED on 2026-08-13; see the CHANGELOG before rebuilding it.
+# Short version: its alpha cut outside the lineart (rim-vs-body -11.5 against
+# RMBG's -28.7), and its LoRA competed with manwha_style so it changed the
+# drawing. Matting is a post-process and never competed with identity
+# conditioning, so the route had no advantage to trade for that.
+#
+# cutout.py's colour keying is superseded for figures: it cannot separate pale
+# fabric from a pale backdrop by construction, which is why it carries
+# pale_figure_risk and clamps at 110 when the measured tolerance wanted 173-187.
+
+
+def matte_image(image_path: str, out_dir: str, model: str = "RMBG-2.0",
+                sensitivity: float = 1.0, process_res: int = 1024,
+                mask_blur: int = 0, mask_offset: int = 0,
+                refine_foreground: bool = True, timeout: int = 300) -> str:
+    """Cut an EXISTING image out onto transparency with a learned matting model.
+
+    The only route that works on art already made -- locked panels, approved
+    concept panels, anything the author drew. ~4 s.
+
+    Validated on the case colour keying provably fails: a white robe with white
+    boots on a white field came back with both intact, corners exactly 0.0000
+    and 2.3% soft-edge pixels.
+
+    refine_foreground: Fast Foreground Colour Estimation, which is what
+    suppresses halos on light subjects. Leave it on.
+
+    Needs ComfyUI-RMBG's weights placed MANUALLY -- its auto-downloader fails
+    against huggingface_hub 1.x with "Cannot send a request, as the client has
+    been closed", and that error surfaces only in ComfyUI's /history, not to the
+    client (which just reports no image). Repo ids and target folders are in
+    custom_nodes/ComfyUI-RMBG/py/AILab_RMBG.py's AVAILABLE_MODELS; everything
+    lands under ComfyUI/models/RMBG/<cache_dir>/.
+    """
+    ensure_comfy_running()
+    uploaded = _upload_image(image_path)
+    g = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
+        "2": {"class_type": "RMBG",
+              "inputs": {"image": ["1", 0], "model": model,
+                         "sensitivity": sensitivity, "process_res": process_res,
+                         "mask_blur": mask_blur, "mask_offset": mask_offset,
+                         "invert_output": False, "refine_foreground": refine_foreground,
+                         "background": "Alpha", "background_color": "#222222"}},
+        "3": {"class_type": "SaveImage",
+              "inputs": {"images": ["2", 0], "filename_prefix": "flux_matte"}},
+    }
+    data = _submit_and_wait(g, "3", timeout)
+    stem = os.path.splitext(os.path.basename(image_path))[0]
+    return _save(data, out_dir, stem + "_rgba")

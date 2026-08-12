@@ -350,6 +350,12 @@ the smaller file.
 | Manhwa style LoRA | `manwha_style.safetensors` | `loras/` |
 | Turnaround-sheet LoRA | `kontext-turnaround-sheet-v1.safetensors` | `loras/` |
 
+> **Transparent figures need no extra weights here.** A FLUX LayerDiffuse route
+> (`layerlora` + a `TransparentVAE` decoder, 1.6 GB) was built and measured on
+> 2026-08-13 and then removed — it left a white edge and altered the drawing.
+> See the CHANGELOG before re-downloading anything on that hunch. Transparency
+> comes from `matte_image()` instead (Step 3).
+
 See **Step 9** for where these come from and the settings that matter
 (`manwha_style` at strength **1.5** — 1.0 loses the fight against ControlNet
 conditioning).
@@ -404,6 +410,36 @@ relaxed `weights_only` restrictions (a PyTorch 2.6+ safety feature) — add
 `face_yolov8m.pt` and `hand_yolov8s.pt`, one per line, to
 `ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt` (create it if the
 first ComfyUI launch after installing hasn't already created an empty one).
+
+**`matte_image()` needs ComfyUI-RMBG** (optional — only if you want transparent
+figures; nothing else depends on it).
+
+Clone it, and install only these dependencies, not
+its full `requirements.txt` — the rest is SAM/SAM2/SAM3 and GroundingDINO
+text-prompted segmentation, which this server never uses and which drags in
+`groundingdino-py`, `onnxruntime-gpu` and `decord`:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/1038lab/ComfyUI-RMBG.git
+<ComfyUI's python> -m pip install timm PyMatting
+```
+
+⚠ **RMBG's auto-downloader is broken against `huggingface_hub` 1.x** — it fails
+with *"Cannot send a request, as the client has been closed"*, and that error
+appears **only in ComfyUI's `/history`**, never to the client, which just reports
+that no image was produced. Do **not** downgrade the hub; ComfyUI depends on it.
+Place the weights by hand instead — for the default `RMBG-2.0`, four files from
+[1038lab/RMBG-2.0](https://huggingface.co/1038lab/RMBG-2.0) (~885 MB) into
+`ComfyUI/models/RMBG/RMBG-2.0/`:
+
+| File | → Folder |
+|------|----------|
+| `config.json`, `model.safetensors`, `birefnet.py`, `BiRefNet_config.py` | `models/RMBG/RMBG-2.0/` |
+
+Other models' repo ids and target folders are in
+`custom_nodes/ComfyUI-RMBG/py/AILab_RMBG.py` (`AVAILABLE_MODELS`) and
+`AILab_BiRefNet.py` (`MODEL_CONFIG`); all land under `models/RMBG/<cache_dir>/`.
 
 Restart ComfyUI so it loads the new nodes.
 
@@ -548,6 +584,49 @@ HuggingFace), `manwha_style.safetensors` and `kontext-turnaround-sheet-v1.safete
 (`models/controlnet/`, InstantX's community FLUX ControlNet). No setup script
 for these yet — fetched by hand during the investigation; see `flux_workflow.py`'s
 module docstring for the exact filenames each constant expects.
+
+## Transparent figures
+
+Panel figures come out on a transparent background so they never fight a plate
+from the background server.
+
+### Use `matte_image()` — this is the route
+
+Generate the figure however you normally would, then cut it out:
+
+```python
+import flux_workflow as F
+
+F.matte_image("output/<project>/_scene1/FINAL_p01_arrival.png",
+              out_dir="output/<project>/_figures")
+```
+
+~5 s, works on **anything that already exists** — locked panels, approved
+concept panels, hand-drawn art — and needs no change to how figures are made.
+
+**It lands on the lineart**, which is what matters on cel-shaded art. Measured as
+the brightness of the 2 px rim just inside the silhouette against the figure's
+interior, RMBG scores **−28.7** — it keeps the dark line at the edge.
+
+### Why there is no "generate with alpha directly" option
+
+A full FLUX LayerDiffuse implementation was built and measured on 2026-08-13
+(`layerlora` + a `TransparentVAE` decoder node, keeping Kontext identity
+conditioning) and then **removed**. Do not rebuild it without reading the
+CHANGELOG — it worked, and was still the wrong tool:
+
+- It scored **−11.5** on that same rim measure against RMBG's −28.7: its alpha
+  cuts *outside* the lineart, leaving a white fringe.
+- `layerlora` is another LoRA competing with `manwha_style`, so it **changes the
+  drawing** — mean abs diff 9.459 against strength 0.0 at a fixed seed.
+- Its selling point ("identity *and* alpha in one pass") was never real. Matting
+  is a post-process and does not compete with identity conditioning, so you can
+  generate normally with full Kontext identity and matte afterwards.
+
+`tools/cutout.py`'s colour keying is superseded for figures: it cannot separate
+pale fabric from a pale backdrop by construction, which is why it carries a
+`pale_figure_risk` flag and clamps tolerance at 110 when the measured value
+wanted 173–187.
 
 ## Configuration (env vars)
 
