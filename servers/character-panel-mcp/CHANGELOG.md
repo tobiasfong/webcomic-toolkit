@@ -27,6 +27,18 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
   for `compose_panel`. `comfy.matte()` never returns the un-matted path — it
   raises with a message naming both remedies.
 
+### Added
+
+- **`check_bible.py` can record provenance as irrecoverable.** A `ref_sources`
+  value of `"irrecoverable: <why>"` is reported as a `NOTE` and does not fail the
+  run. The check was written to catch provenance nobody ever looked for; a ref
+  whose source render is genuinely not on disk is a different case, and forcing
+  it through the failure path meant one project could never go green — at which
+  point the gate stops being run at all, which is the outcome the check exists to
+  prevent. The alternative on offer was writing a plausible path to silence it,
+  and a wrong provenance is worse than a missing one because the next person
+  believes it. `check_project()` now returns `(problems, notices)`.
+
 ### Notes
 
 - **Do not "clean up" a matte by keying on brightness.** Brightness cannot

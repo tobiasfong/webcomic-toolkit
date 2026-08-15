@@ -130,6 +130,12 @@ crop from that character's approved `*_sheet_FINAL.png`, and its origin must be
 recorded in `ref_sources`. Never register a one-off render or a story panel as
 the primary.
 
+If a ref predates that rule and the source render is genuinely not on disk, look
+for it first, then record `"irrecoverable: <what you searched, when>"` instead of
+a path. The check reports that as a NOTE and stays green. Do not write a
+plausible-looking path to silence it — a wrong provenance is worse than a missing
+one, because the next person believes it.
+
 What happened when this was broken: a character's primary ref was a stray render
 with the hair styled differently and the frame cropped above the ankles, so her
 footwear did not appear in it at all. Her approved sheet had a full turnaround

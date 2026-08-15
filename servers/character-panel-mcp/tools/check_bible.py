@@ -16,6 +16,11 @@ Every check here corresponds to something that actually went wrong:
     not trace back to an approved *_FINAL sheet
   * an empty description, which forces whoever is prompting to invent one
 
+Provenance that was searched for and genuinely could not be found is recorded as
+"irrecoverable: <why>" and reported as a NOTE rather than a failure. That is a
+different thing from provenance nobody ever looked for, and the distinction is
+worth keeping: a gate that can never go green is a gate people stop running.
+
 Exit code is non-zero if anything fails, so this can gate a run.
 
     python check_bible.py [--project <project>] [--all]
@@ -33,12 +38,14 @@ def _resolve(rel: str) -> str:
     return os.path.join(CHARS, rel.replace("/", os.sep))
 
 
-def check_project(project: str) -> list[str]:
-    """Return a list of problems; empty means the bible is trustworthy."""
+def check_project(project: str) -> tuple[list[str], list[str]]:
+    """Return (problems, notices). No problems means the bible is trustworthy;
+    notices are things a human already adjudicated and should still see."""
     problems: list[str] = []
+    notices: list[str] = []
     manifest = os.path.join(CHARS, project, "characters.json")
     if not os.path.isfile(manifest):
-        return [f"{project}: no characters.json"]
+        return [f"{project}: no characters.json"], notices
 
     data = json.load(open(manifest, encoding="utf-8"))
     for cid, entry in data.items():
@@ -75,6 +82,15 @@ def check_project(project: str) -> list[str]:
                 problems.append(
                     f"{tag}: primary ref {primary} has no ref_sources entry — "
                     "cannot tell which approved art it came from")
+            elif src.split(":", 1)[0].strip().lower() == "irrecoverable":
+                # Somebody went looking and the source render was not on disk.
+                # That is not the failure this check exists to catch -- that one
+                # is provenance nobody ever checked. Keep it loud on every run,
+                # but do not let it hold the gate shut for the whole project.
+                why = src.split(":", 1)[1].strip() if ":" in src else ""
+                notices.append(
+                    f"{tag}: primary ref {primary} provenance marked irrecoverable"
+                    + (f" — {why}" if why else ""))
             else:
                 if not os.path.isfile(os.path.join(HERE, src.replace("/", os.sep))):
                     problems.append(f"{tag}: primary ref provenance missing on disk: {src}")
@@ -87,7 +103,7 @@ def check_project(project: str) -> list[str]:
             if not os.path.isfile(os.path.join(HERE, panel.replace("/", os.sep))):
                 problems.append(f"{tag}: canon panel missing on disk: {panel}")
 
-    return problems
+    return problems, notices
 
 
 def main() -> None:
@@ -102,14 +118,16 @@ def main() -> None:
 
     failed = False
     for proj in projects:
-        problems = check_project(proj)
+        problems, notices = check_project(proj)
         if problems:
             failed = True
             print(f"FAIL {proj}")
-            for p in problems:
-                print(f"  - {p}")
         else:
             print(f"ok   {proj}")
+        for p in problems:
+            print(f"  - {p}")
+        for n in notices:
+            print(f"  NOTE {n}")
     sys.exit(1 if failed else 0)
 
 

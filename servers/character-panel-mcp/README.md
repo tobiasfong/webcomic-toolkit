@@ -106,7 +106,10 @@ is that the tiers were a way to approximate what Kontext does directly.
 reference is missing, if an unregistered image is lurking in a character folder,
 or if the primary reference can't be traced back to an approved sheet. That check
 exists because a silently wrong reference once propagated a character's wrong
-hair colour through a run of finished panels before anyone noticed.
+hair colour through a run of finished panels before anyone noticed. Provenance
+that was searched for and genuinely lost is recorded as `"irrecoverable: <why>"`
+and reported as a NOTE instead — the check is meant to catch provenance nobody
+looked for, and a gate that can never go green is a gate nobody runs.
 
 **Cross-cutting fix: `detail_fix`.** Hallucinated hands are a resolution problem
 (too few pixels in a full-body frame), not a prompt problem — a detect-and-repair
