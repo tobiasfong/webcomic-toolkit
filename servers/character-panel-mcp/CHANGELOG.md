@@ -8,6 +8,43 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [Unreleased] — matting actually mattes
+
+### Fixed
+
+- **`comfy.matte()` could not run on a machine behind SSL interception, and the
+  failure did not look like a matting failure.** It called `rembg.remove()` with
+  no session, which defaults to **u2net** — a model trained on photographs that
+  rembg downloads from GitHub on first use. That download raised
+  `requests.exceptions.SSLError` from inside rembg. Now it prefers ComfyUI-RMBG
+  (RMBG-2.0) when that node is installed and falls back to rembg with
+  **`isnet-anime`**, which suits drawn/cel-shaded art far better than u2net and
+  was already on disk. Override with `WEBCOMIC_CHAR_REMBG_MODEL`.
+- **`matte=True` could hand back an un-matted RGB image.** Both call sites
+  (`generate_character_pose`, `generate_reference_sheet`) caught only
+  `comfy.ComfyUIError`, so the `SSLError` above escaped the handler entirely.
+  Both now catch broadly and say plainly that the image is RGB and **not** ready
+  for `compose_panel`. `comfy.matte()` never returns the un-matted path — it
+  raises with a message naming both remedies.
+
+### Notes
+
+- **Do not "clean up" a matte by keying on brightness.** Brightness cannot
+  distinguish a white shirt from a white backdrop. A scratchpad script that did
+  so deleted a character's white shirt entirely (65,026 px, 24% of the figure)
+  and punched 32,592 px of holes through a mid-grey t-shirt. Size-based guards
+  do not help — a genuine leg gap and a false positive on a garment were both
+  ~6% of the figure. A learned matte makes the whole class of cleanup pass
+  unnecessary: it keeps white garments AND cuts backdrop trapped inside the
+  silhouette. Verified on two characters — a white shirt (18,307 white px kept,
+  406,392 cut) and a white robe with white boots (23,780 kept, 156,080 cut).
+- **`generate_character_concept` returns RGB by design** and its docstring now
+  says so. "Matting-ready backdrop" means clean enough to matte later, not
+  already matted; the chosen concept gets cropped into a reference, which wants
+  the backdrop intact.
+- **To check a matte, composite it over solid magenta.** Holes and missing
+  garments are invisible against white and unmistakable against magenta.
+
 ## [Unreleased] — transparent panel figures
 
 Panel figures can now come out on a **transparent background**, so they never

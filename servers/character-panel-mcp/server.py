@@ -255,6 +255,12 @@ def generate_character_concept(
     §8b.6): a writer with a story but no reference art. Pure txt2img, n distinct
     seeds, the same clean backdrop as every other tier (matting-ready).
 
+    Output is RGB, NOT matted, and deliberately so: concepts are candidates to
+    look at and choose between, and the chosen one gets cropped into a reference
+    (`crop_reference`), which wants the backdrop intact. "Matting-ready" above
+    means the backdrop is clean enough TO matte later, not that it has been.
+    If you need a cutout from a concept, run it through `comfy.matte()` yourself.
+
     **Defaults to FLUX** (`flux_manwha`), unlike the SD1.5-defaulting tools
     around it. Concept genesis is pure text-to-image with no identity to
     preserve — nothing here depends on the SD tier stack — so it gets FLUX's
@@ -488,8 +494,17 @@ def generate_character_pose(
                 f"{tier_note} — curate before use.")
     try:
         matted_path = comfy.matte(raw_path)
-    except comfy.ComfyUIError as e:
-        return f"Pose generated but matting failed: {e}\n  raw render: {raw_path}"
+    except Exception as e:
+        # Deliberately broad. comfy.matte() raises ComfyUIError for the failures
+        # it anticipates, but its backends raise their own: rembg downloads its
+        # model on first use and that surfaced as requests.SSLError, which sailed
+        # through a `except ComfyUIError` clause. Whatever goes wrong, the caller
+        # must be TOLD the image is not matted — this path used to be where an
+        # un-matted RGB render got handed back and only discovered at composite
+        # time.
+        return (f"Pose generated but MATTING FAILED — this image is RGB, not RGBA, "
+                f"and is NOT ready for compose_panel: {type(e).__name__}: {e}\n"
+                f"  raw render: {raw_path}")
     return (f"Pose generated: {matted_path}\n"
             f"  raw render (with backdrop): {raw_path}\n"
             f"{tier_note} — curate before compose_panel. "
@@ -701,8 +716,10 @@ def generate_reference_sheet(
             try:
                 view_path = comfy.matte(raw_path)
                 lines.append(f"• {view}: {view_path}")
-            except comfy.ComfyUIError as e:
-                lines.append(f"• {view}: generated but matting failed ({e}) — raw: {raw_path}")
+            except Exception as e:
+                # broad on purpose — see the note in generate_character_pose
+                lines.append(f"• {view}: generated but MATTING FAILED, still RGB "
+                             f"({type(e).__name__}: {e}) — raw: {raw_path}")
         else:
             lines.append(f"• {view}: {view_path}")
         ok_paths.append(view_path)
