@@ -9,6 +9,47 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [2.1.0] — 2026-08-10
+
+**Default weights moved from `Q3_K_S` to `Q6_K`. The Q3 files were deleted, so
+an existing install pointing at them will fail on a missing model.**
+
+### Changed
+- **FLUX and Kontext now load `Q6_K` GGUF weights.** `flux_workflow.py` and
+  `setup_models.py` both reference the new files. If you installed before this
+  release, re-run `setup_models.py` or fetch `flux1-dev-Q6_K.gguf` and
+  `flux1-kontext-dev-Q6_K.gguf` by hand — the `Q3_K_S` files this server used to
+  load are gone from the repo's model set.
+- **Do not expect better plates from this.** Q6 was adopted for the sibling
+  servers, where bit depth measurably matters: repairing a damaged hand with
+  Kontext went from 0-of-6 usable frames at `Q3_K_S` to 3-of-3 at `Q6_K`. The
+  same swap was measured for *generation* at 832x1216 — same seed, same prompt,
+  same LoRA and canny ControlNet — and the output was identical. No quality
+  change, no character drift.
+
+  The rule that reconciles those two results: **quantisation error surfaces when
+  the task is hard.** Kontext repair rebuilds destroyed structure out of
+  corrupted pixels, at the edge of what the model can do, and 3.3 bits per
+  weight is not enough there. Free generation with a good prompt and a
+  ControlNet has headroom, so the extra precision buys nothing visible. Plates
+  generated at Q3 are not compromised and do not need regenerating.
+
+### Fixed
+- **`edit_background` would have failed outright.** The Kontext block still
+  loaded `flux1-kontext-dev-Q3_K_S.gguf` after that file was deleted. Only the
+  generation path had been migrated; the edit path was missed.
+- **`mcp` is pinned to `<2`.** mcp 2.0.0 removed `mcp.server.fastmcp`, which this
+  server imports, so an unbounded requirement resolved straight to it and died at
+  import. Existing virtualenvs predate 2.0.0, so only fresh installs were hit.
+- **Character-plate sizing via `match_canvas_to`** was restored after the v2.0.0
+  removal of the SD1.5 inpaint path took it out along with `character_path`.
+
+### Documentation
+- **The "Q3 so FLUX fits a 6 GB card" reasoning was wrong and is corrected.**
+  ComfyUI streams unet weights from system RAM, so VRAM was never the constraint
+  on quantisation — disk is. The out-of-memory troubleshooting entry now points
+  at `width`/`height`, which is what actually fills VRAM.
+
 ## [2.0.0] — 2026-08-01
 
 **BREAKING: Stable Diffusion 1.5 has been removed. FLUX.1-dev is required.**
