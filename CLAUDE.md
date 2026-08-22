@@ -275,6 +275,118 @@ as lying on his *side*.
   front-view reference has no way to display. Patching a bad sheet afterwards
   reliably fails; stating the requirement upfront works.
 
+  ⚠ **A "lean" extra_prompt naming only the losses DOES NOT WORK. Tested and
+  falsified 2026-08-21, same day it was proposed.** The reasoning was: hair,
+  eyes, silhouette and sash held across two sheets while the boots and back view
+  failed, so restate only the failures. That inference was WRONG — those details
+  held *because the full description was present*. There was never a run without
+  it to justify calling them self-sustaining.
+
+  Run with a lean prompt (boots geometry plus a back-view push, nothing else),
+  the character came back in a **white t-shirt, denim shorts and slouchy
+  boots, with short bobbed hair** — every trace of the design gone. That is the
+  same collapse this file already records for running with NO extra_prompt at
+  all. Naming only the losses is functionally the same as naming nothing: the
+  prior fills every clause you leave out.
+
+  So `extra_prompt` carries the WHOLE costume and identity description, every
+  time, and the drift-prone details get stated *in addition* — not instead.
+  The cost of a redundant clause is far smaller than the cost of an absent one.
+
+- **⭐ WHEN A SHEET KEEPS LOSING ONE DETAIL: regenerate it with that detail
+  corrected in `extra_prompt`, and consider conditioning on a render THIS STACK
+  made itself.** Settled 2026-08-21 after six failed sheets.
+
+  One character's knee-high smooth boots came back as LACED COMBAT BOOTS in
+  every sheet conditioned on `ref_tight` (cropped from her FLUX-dev concept) —
+  through four seeds, geometry wording, a stacked style LoRA and a full
+  description. Her concept SHOWS the correct boots, so a correct reference was
+  never sufficient on its own.
+
+  The sheet that fixed it changed TWO things together, and they cannot be
+  separated from one run:
+    1. the boots were restated in `extra_prompt` as "exactly as shown: ...
+       completely smooth unbroken uppers, flat soles with no heel" — the same
+       shape of fix that corrected another character's costume; and
+    2. the reference became `profile_6303`, a single view produced by the
+       sheet's OWN stack (Kontext + turnaround LoRA + `manwha_style`) rather
+       than by FLUX-dev.
+
+  Result: correct boots in every panel, plus two genuine opposite-facing side
+  profiles — an angle three single views had refused outright.
+
+  The author's reading is that (1) is the operative fix, and it matches the
+  earlier precedent. (2) has a plausible mechanism — a reference the sheet
+  generator itself drew is in-distribution, so ReferenceLatent conditions more
+  strongly — but it is UNTESTED ALONE. Try the corrected `extra_prompt` first;
+  reach for the self-produced reference only if that is not enough, and if you
+  do run them separately, record which one carried it.
+
+  Either way the useful pattern is: **fix a stubborn detail once in a single
+  view, then regenerate the sheet.** Single views render faithfully; sheets
+  rotate.
+
+- **Single views rotate to 180° but NOT to 90°.** Back views come out reliably.
+  A side profile does not: three attempts on the same character collapsed to a
+  near-front view with a slight turn — asking for "side profile view", then for
+  geometry ("one shoulder directly behind the other, one eye and one ear
+  visible, nose and chin in silhouette"), then in image space ("the toes
+  pointing toward the left of the image"). None moved it. Profiles come from
+  SHEETS; back views come from single views.
+
+- **The turnaround LoRA cannot rotate an OBJECT.** Given a cropped pair of boots
+  as its reference it invented an entire middle-aged man in a shirt and tie and
+  put work boots on him, across nine panels. Its prior demands a character; hand
+  it an object and it manufactures a person to wear it. Do not try to turn
+  props, weapons or costume pieces this way.
+
+- **Never write "soft" — or any negation — into a prompt you want sharp.**
+  A standalone boot render came back blurred three times. The cause was in the
+  prompt the whole time: it said "soft matte fabric" (asking for softness
+  outright) and "no blur, no depth of field" (naming blur, which summons it, per
+  the negation rule above). Replacing both with positives — "crisp black
+  outlines and hard-edged flat color, every edge in sharp focus" — fixed it in
+  one run. Two wrong diagnoses were chased first, the matting stage and the
+  style LoRA's strength; neither was at fault.
+
+- **⚠ NEVER answer "the model will not turn this character" with "draw it
+  yourself."** This server is for everyone, not just artists — anyone who can
+  draw a back view on demand does not need a character generator. That answer is
+  a failure of the tool, not a fallback for it. A prior session recorded the
+  opposite, wrongly attributed to the author; see ARCHITECTURE.md's retraction.
+  Related and equally binding: a character sheet WITHOUT a genuine back view is
+  incomplete — do not propose dropping it.
+
+- **When cropping a panel out of a wide sheet, a top-band-only gap search
+  under-crops the bottom of the figure.** Splitting panels by column gaps in
+  just the head/shoulder band (needed because trailing hems and pooled robes
+  merge across the WHOLE canvas at floor level, defeating a full-height gap
+  search) finds boundaries that are correct up top but too narrow lower down,
+  where sleeves flare, hems drape forward, and hanging hands extend past the
+  shoulder-width column. Cut into one floor-length figure three times in one sitting:
+  a forward-draping hem, a dangling hand, and a full second figure accidentally
+  merged in. Two floor-length figures can genuinely touch at the hem with no
+  clean vertical gap between them at all — check a specific row band for an
+  all-white column before assuming one exists.
+
+  Verify a crop by looking at the actual saved file at real resolution before
+  calling it done, not by trusting the code that produced it.
+
+- **A crop-aspect theory of back-view success was tested in-session on
+  2026-08-21 and FALSIFIED before it was ever written down here.** Five
+  characters' first sheets seemed to fit a pattern: 0.47, 0.49 and 0.58 aspect
+  all produced a back view, while 0.68 and 0.31 did not. Rerolling the two
+  failures disproved it. One reroll used the IDENTICAL 0.68
+  crop — the trim logic found the same bounding box — and only the seed
+  changed; it then produced a clean back view. Same aspect, opposite outcome.
+  The other reroll changed both the aspect (0.31 -> 0.48) and the
+  seed together, so it cannot rescue the theory either — it is confounded.
+
+  Conclusion: **whether a sheet produces a genuine back view is seed-dependent,
+  not aspect-dependent.** If a sheet lacks one, reroll with a new seed (same
+  stack: manwha_style stacked, full description in extra_prompt) rather than
+  reshaping the reference crop first.
+
 - **When a sheet's panels disagree with EACH OTHER, generate one view at a time
   instead.** A turnaround is a single generation across one canvas, and nothing
   ties panel 2's costume to panel 1's — consistency is emergent, and it only
@@ -322,6 +434,35 @@ as lying on his *side*.
   came out facing the sheet's direction, and a requested 35° turn produced a
   square-on figure twice. Mirror at composite time instead — and remember a
   mirror flips asymmetric costume detail, which must be repainted.
+- **WHICH SIDE an asymmetric costume detail lands on is not steerable either —
+  MIRROR THE IMAGE.** Settled 2026-08-22 on a character's back view, whose
+  shoulder embroidery came out on the wrong side.
+
+  Two attempts failed. Stating the side in the prompt did nothing, in image
+  space ("the shoulder at the LEFT side of the image") as well as
+  anatomically — the reroll put the embroidery back on the same shoulder and
+  moved an unrelated dangling sash to the other hand instead. Then Kontext was
+  asked to move it, which looked safe because an emblem RECOLOR had worked on
+  another character. It did not move: measured over the upper body, the blue
+  pixel count fell 33840 -> 24812 and the mean x slid from 453 to 412 against a
+  figure centre of 408, i.e. the marking diffused toward the spine and partly
+  dissolved rather than relocating. A recolor changes a surface in place; a MOVE
+  has to reconstruct plain fabric where the emblem was, which is the
+  invent-what-lies-underneath problem that always fails.
+
+  A horizontal flip fixes it exactly, instantly and for free. The usual
+  objection — a mirror flips asymmetric costume detail — is not a cost here,
+  it is the entire mechanism. On a back view the crossed collar barely reads,
+  so there is nothing else to repaint.
+
+  Check the side numerically rather than by eye: mask the emblem colour, take
+  its mean x over the upper body, compare against the figure's bbox centre.
+
+  ⚠ Note which way the author is reading "left". On a figure seen from behind,
+  the character's own left shoulder appears on the VIEWER'S RIGHT. Measure where
+  the emblem actually is before acting — on this render it was already on his
+  anatomical left, which established that the author meant image space. Either
+  way "move it to the other shoulder" is unambiguous, so prefer that wording.
 - A "failed" render often contains USABLE ART. An object rendered correctly but
   detached from the body can be harvested and composited; a duplicated limb on
   an otherwise good frame is a cleanup, not a dead end.
@@ -724,6 +865,43 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   came from one run per configuration, and should be treated accordingly. Once
   the config is musically right, use `generate_variations` and choose a
   performance rather than tuning further.
+
+## ⚠ Token economy: DO NOT READ THE RENDERS
+
+The whole point of ComfyUI on the GPU is that images are cheap. They stop being
+cheap the moment Claude looks at them.
+
+**Measured 2026-08-22.** One session read 768 distinct images; two earlier
+sessions that produced a comparable amount of art read **zero** and **one**.
+Transcript sizes: **827 MB** against 3 MB and 1 MB. 91.7% of the big one was
+image payload. It burned a 5-hour Max-plan limit in under 2 hours; the earlier
+sessions did a full day of concepts and turnaround sheets with limit to spare.
+
+Why it compounds: image tokens are roughly `width x height / 750`, so a
+2560x1024 sheet is ~3,500 tokens — but the first read is the cheap part.
+**Images persist in context and are re-sent on every subsequent turn.** In that
+session a single image appeared **112 times** across 1,583 total occurrences,
+so late turns were carrying an enormous payload before any work happened.
+
+### The rules
+
+1. **Default to NOT looking. The author reviews the renders; act on his verdict.**
+   He is faster at it and it costs nothing. In the session above he caught the
+   wrong boots, the short arms, the missing topknots and a wrongly deleted file
+   — Claude's own review mostly duplicated his at great expense.
+2. **If you must look, DOWNSCALE FIRST.** "Is there a back view?" is answerable
+   at 800x320 for ~340 tokens instead of ~3,500. Only go full resolution when
+   the question genuinely needs pixels (a hand's digit count, a lineart edge).
+3. **One composite, never N crops.** A single numbered contact strip beats eight
+   panel reads. Do not read the strip AND the individual panels.
+4. **Never re-read an image already in context.**
+5. **Prefer numeric checks, which are free** — alpha coverage, bbox, aspect,
+   image size, mean saturation, pixel diffs. ⚠ But they mislead on their own:
+   an arm-proportion check "passed" numerically while the author could see the
+   arms were stubby, because the canvas had been truncated and the
+   normalization was wrong. Use numbers to filter, his eye to judge.
+6. **When a session has read many images, COMPACT OR START FRESH.** The cost is
+   already sunk into context and every further turn pays it again.
 
 ## Practical
 

@@ -1102,7 +1102,11 @@ generation core.
 **Why this exists:** the first real end-to-end use of Concept Genesis (Tobias's
 own RxR characters) exposed two failures that survived every tuning attempt on
 the SD1.5 stack: distorted full-body anatomy ("spider legs") and no genuine back
-views. Tobias's call: test SDXL, specifically the Midjourney Manga Art Style
+views. ⚠ SUPERSEDED 2026-08-21 — the SDXL prototype below was replaced by FLUX; the
+server is FLUX-only now and `model="mj_manga_sdxl"` no longer exists. Kept for
+the reasoning, not as a live path.
+
+Tobias's call: test SDXL, specifically the Midjourney Manga Art Style
 SDXL LoRA (civitai.com/models/185798) — the exact LoRA `webcomic-background-mcp`
 v1.7.0 had rejected purely for being SDXL-only. Prototype scoped to
 `character-panel-mcp` alone; the background server stays untouched until this
@@ -1137,13 +1141,39 @@ on/off, direction-ambiguous (Bleach reference) and direction-distinctive
   both directions and REVERSED by the data — keypoints-on produced the only
   back-body geometry. Recorded because the reversal is the finding.
 
-**Interim practical answer** (Tobias's own realization mid-campaign): real back
-views already exist in concept sheets — Avery's God/Speed sheets have them —
-and `crop_reference` → `register_character` ingests them today. Artists draw
-one back view per character; it becomes canon. Generation is not the only door.
+**⚠ RETRACTED AND CORRECTED 2026-08-21 — this paragraph inverted the author's
+meaning.** It used to read "artists draw one back view per character; it becomes
+canon. Generation is not the only door," attributed to Tobias.
 
-**The 3D posable mannequin (Tobias's proposal) — ✅ SHIPPED / VALIDATED
-2026-07-19:** re-applies the ecosystem's proven mesh-to-ControlNet pattern
+What he actually said, and the context: a prior session had proposed shipping
+character sheets WITHOUT a back view, because Kontext turnaround kept failing to
+produce one. He rejected that, and the reason was that **a real artist's concept
+sheet always contains a genuine back view, so a sheet without one is
+incomplete** — a standard the tool has to meet, stated as non-negotiable.
+
+That is a REQUIREMENT. It was recorded as a WORKAROUND: "artists supply their
+own back views," which quietly removes the very requirement he was insisting on.
+A quality bar became a data source.
+
+Two things stand from this, both binding:
+
+1. **A character sheet without a genuine back view is incomplete.** Do not
+   propose dropping the back view, and do not treat a set lacking one as done.
+2. **Never answer "the model will not turn this character" with "draw it
+   yourself."** This server is for everyone, not just artists — someone who can
+   draw a back view on demand has no need of a character generator. That answer
+   is a failure of the tool, not a fallback for it.
+
+Ingesting existing back views via `crop_reference` → `register_character` remains
+a legitimate path when such art happens to exist. It is not a solution to the
+generation problem and must never be offered as one.
+
+**The 3D posable mannequin (Tobias's proposal) — ⚠ TRIED, TESTED, AND FAILED.**
+The "SHIPPED / VALIDATED" verdict below was written from the build succeeding,
+not from the output being good enough. Confirmed by the author 2026-08-21: the
+mannequin/ControlNet direction path does NOT work in practice and is not a live
+option. Do not re-propose it — it has been suggested and rejected more than once
+because this verdict read as a success. Originally recorded 2026-07-19 as: re-applies the ecosystem's proven mesh-to-ControlNet pattern
 (citygen.py cities → sketches; props.py parametric bicycle → Canny) to a
 low-poly posable humanoid, `character-panel-mcp/mannequin.py`. Key technical
 insight, confirmed correct: the failure lived partly in *extracting* skeletons
