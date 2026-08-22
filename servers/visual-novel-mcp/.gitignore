@@ -1,0 +1,4 @@
+# project registry holds local paths and project names — never publish (repo is public)
+projects.json
+__pycache__/
+.venv/

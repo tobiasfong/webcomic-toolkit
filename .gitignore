@@ -13,3 +13,7 @@ vrm_depth_*.png
 
 # private backups of the author's character bibles — never publish (repo is public)
 _private_backups/
+
+# visual novel game trees and story state — scripts carry character and world
+# names, which must never reach the public repo
+vn/
