@@ -136,6 +136,26 @@ a path. The check reports that as a NOTE and stays green. Do not write a
 plausible-looking path to silence it — a wrong provenance is worse than a missing
 one, because the next person believes it.
 
+`ref_sources` accepts exactly three shapes, and inventing a fourth breaks the
+checker rather than the data:
+
+| shape | when |
+|---|---|
+| `path/to/file.png` | the normal case |
+| `irrecoverable: <what you searched, when>` | the source is genuinely gone |
+| `path/to/file.png (<how the provenance was established>)` | the path resolves, but somebody re-verified it and the reasoning is worth keeping |
+
+The parenthetical is validated by splitting on the first `" ("` — the path in
+front of it is still checked on disk, and a missing file still FAILS, narrative
+or not. Use the third form when a source was reconstructed rather than found:
+record what you compared (dimensions, saturation, hashes) so the next person can
+tell verification from assumption.
+
+⚠ Added 2026-08-22 after a session appended prose to a bare path and broke
+`check_bible`, which resolved the whole string as a filename. The prose was
+right and the format was wrong; the fix was to teach the checker the shape, not
+to delete the evidence.
+
 What happened when this was broken: a character's primary ref was a stray render
 with the hair styled differently and the frame cropped above the ankles, so her
 footwear did not appear in it at all. Her approved sheet had a full turnaround

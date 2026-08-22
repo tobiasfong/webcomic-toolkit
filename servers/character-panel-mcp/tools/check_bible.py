@@ -92,12 +92,31 @@ def check_project(project: str) -> tuple[list[str], list[str]]:
                     f"{tag}: primary ref {primary} provenance marked irrecoverable"
                     + (f" — {why}" if why else ""))
             else:
-                if not os.path.isfile(os.path.join(HERE, src.replace("/", os.sep))):
-                    problems.append(f"{tag}: primary ref provenance missing on disk: {src}")
-                if "_concepts" not in src:
+                # Two accepted shapes: a bare path, or a path followed by a
+                # parenthetical explaining how the provenance was established.
+                # The narrative form exists because re-verifying a source by
+                # CONTENT (dimensions, grading) is worth recording -- silently
+                # dropping it to satisfy the checker would lose exactly the
+                # evidence that makes the path trustworthy. Resolve the whole
+                # string first, so a filename that genuinely contains " (" is
+                # not broken by the split.
+                path = src
+                note = ""
+                if not os.path.isfile(os.path.join(HERE, path.replace("/", os.sep))):
+                    head, sep, tail = src.partition(" (")
+                    if sep:
+                        path, note = head.strip(), tail.rstrip().rstrip(")").strip()
+
+                if not os.path.isfile(os.path.join(HERE, path.replace("/", os.sep))):
+                    problems.append(f"{tag}: primary ref provenance missing on disk: {path}")
+                if "_concepts" not in path:
                     problems.append(
                         f"{tag}: primary ref does not trace to an approved sheet "
-                        f"(got {src}) — approved art lives under _concepts/")
+                        f"(got {path}) — approved art lives under _concepts/")
+                if note:
+                    # Loud on every run: the path resolves, but somebody had a
+                    # reason to annotate where it came from.
+                    notices.append(f"{tag}: primary ref {primary} provenance note — {note}")
 
         for panel in entry.get("canon_panels", {}):
             if not os.path.isfile(os.path.join(HERE, panel.replace("/", os.sep))):
