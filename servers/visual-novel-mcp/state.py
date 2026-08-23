@@ -21,7 +21,7 @@ cannot express:
       "updated": "..."
     }
   },
-  "flags": { "met_cheon_ma": {"meaning": "...", "added": "..."} },
+  "flags": { "met_the_master": {"meaning": "...", "added": "..."} },
   "notes": [ {"note": "...", "scene": "s01_awakening"|null, "added": "..."} ]
 }
 
