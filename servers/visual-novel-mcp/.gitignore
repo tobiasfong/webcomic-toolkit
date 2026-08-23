@@ -9,3 +9,10 @@ __pycache__/
 *.doc
 *.odt
 script_drafts/
+
+# Word autosave/lock files. These are COPIES OF THE SCRIPT with a .tmp name,
+# so *.docx alone does not protect them -- one was found staged for commit.
+~WRL*.tmp
+~$*
+*.tmp
+*.wbk

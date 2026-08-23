@@ -185,6 +185,116 @@ attribute bleed — in a live test, her glasses landed on him and his long hair 
 her. For multi-character panels: generate each figure solo from its own sheet,
 then composite with `tools/cutout.py` + `tools/place_cutout.py`.
 
+### A full SCENE with the character's likeness — `edit_image()` UNMASKED
+
+Settled 2026-08-23, building a landscape throne CG for the visual novel.
+
+`generate()` has no identity input, and a Kontext EDIT cannot restructure — so
+"a big pose change with the likeness held" looks impossible from those two
+rules. It is not. **`edit_image()` without a `mask_box` is not an edit**: it
+starts from `EmptySD3LatentImage` at `denoise 1.0` and injects the reference
+through `ReferenceLatent`, so every pixel is generated with an identity bias and
+there is nothing underneath to preserve. That is the same mechanism as the back
+views. Pass `canvas_width`/`canvas_height` for a landscape frame from a portrait
+reference; the reference is still encoded at its own scale for conditioning.
+
+STANDING -> SEATED WORKED first time, with the throne hall, the lighting and the
+low camera all generated around him, and the likeness held across six renders.
+Do not assume a big silhouette change needs a redesign of the approach.
+
+⚠ **What did NOT work, after 4 seeds x 2 wordings x 2 references: a
+SELF-CONTACT pose.** "Head resting on his hand, elbow on the armrest" came back
+with the hand on the armrest every single time. What the failures teach:
+
+| change | result |
+|---|---|
+| more per-limb detail ("knuckles pressed into his cheek", "the classic bored king pose") | a SEASHELL appeared against the cheek, hand still down — it placed an OBJECT rather than routing the arm, the same family as the three-legged figure |
+| reference cropped to head-and-shoulders, to strip the arms-down pose bias | pose and likeness came back IDENTICAL; only the robe changed (lost the jacket) |
+| three fresh seeds | thrones and robes varied a lot — one came back a European throne — but not one hand reached the cheek |
+
+So the ordering is: **a reference modulates SURFACE detail (robe, costume); the
+seed decides COMPOSITION (throne, framing, drape); and a limb that must touch
+the body is reachable by neither.** Wording is the weakest lever of the three,
+and adding limb detail actively backfires.
+
+This is the same shape as the rule that a mouth cannot be animated: a small,
+high-frequency articulation against the body's own surface. If a CG needs
+self-contact, budget for the author to paint the arm, and reach that conclusion
+by MEASURING — one sample is not evidence, and he should never be handed a
+manual job the tool was not fairly asked to do first.
+
+### An EFFECT the scene needs — draw it, do not prompt it
+
+Settled 2026-08-23 on a spellcasting CG. WHERE an element sits is not
+steerable: "a magic circle directly in front of him, between him and the
+viewer" put the seal off to one side twice, exactly like a shoulder emblem
+refusing to change shoulders. And fine repeated detail — a band of runes —
+comes back as texture, because that is what diffusion does to small repeated
+marks.
+
+So a geometric effect gets CONSTRUCTED: `tools/magic_circle.py` draws concentric
+rings, an evenly spaced rune band and a {points/skip} star polygon to RGBA at
+any size, with a proper bloom. Exact placement, exact scale, legible runes,
+re-usable for every spell in the series, and `--color` separates one magic
+system from another for free. This is the same principle as lettering a plaque
+deterministically rather than asking Kontext for hanzi.
+
+**Generating the plate that RECEIVES an effect — three rules:**
+
+1. Do NOT negate the effect. "no magic circle" summons one, like every other
+   negation here.
+2. DROP THE PHRASE THAT CARRIES IT. "casting a spell" is what puts a seal in
+   frame; describe the BODY instead ("both arms raised, palms turned forward").
+   Removing the noun is not enough if the verb implies it.
+3. MOTIVATE ITS LIGHTING ANYWAY, or the composite reads as pasted. State a
+   light source in front of the figure, below eye level and outside the frame,
+   throwing light UP onto the face and the front of the costume. That is what
+   the effect would do, and it is stated without drawing one — so the author's
+   layer lands in light that already agrees with it.
+
+Bloom, for anything that must read as LIGHT rather than as a blurred copy: a
+white-hot CORE with the hue surviving only in the halo, SEVERAL blur radii
+summed rather than one, and ADDITIVE accumulation. All three, or it looks
+painted. `add_glow` in the anime-production server is the moving-picture
+equivalent and pulses a sigil over a clip; it does nothing for a still.
+
+### A CHILDISH face is a RESOLUTION problem, and CROPPING THE OUTPUT is a fix
+
+Seven renders on one sword CG, 2026-08-23.
+
+**A full figure in a 896-tall frame gives the head ~90 px, and at that size the
+model falls back to a rounded generic face that reads CHILDISH with an oversized
+head.** It is not the style LoRA — the same LoRA at the same 1.5 produces mature
+faces in 832x1216 portrait concepts, where the head is large. Give the face
+pixels and it matures. Asking in words ("mature adult face", "eight heads tall")
+does nothing; this is the same ordering as always, with wording weakest.
+
+**Framing comes from the REFERENCE's crop, but it is a BIAS, not a dictate, and
+cropping too tight costs costume.** Measured on the same character:
+
+| reference | aspect | result |
+|---|---|---|
+| full body | 0.50 | "MEDIUM SHOT" in the prompt ignored entirely; full body returned |
+| head-to-mid-thigh | 0.86 | worked — face large and mature |
+| head-to-hip | 1.11 | composition went WIDER again, and with the skirt no longer visible in the reference the model invented TROUSERS for legs it still had to draw |
+
+So crop the reference to the framing you want, keep it PORTRAIT, and make sure
+every garment that must appear is still visible in it. A near-square reference
+stops tightening the shot.
+
+**When anatomy fails at the edge of frame, CROP THE OUTPUT.** One thigh came out
+thicker than the other — relative limb thickness is not promptable, and per-limb
+detail backfires (see the seashell and the three-legged figure). A deterministic
+16:9 crop across the mid-thigh removed the problem in seconds, cost nothing, and
+risked none of the face that six renders had bought. Check what the crop must
+KEEP before promising it: a blade sweeping to the far edge and a hip-level cut
+could not both fit, and that trade is worth naming rather than discovering.
+
+⚠ Pose wording did not take either: "legs close together and straight" returned
+a wide braced stance. Do not credit a prompt clause for an improvement without a
+controlled comparison — what actually helped between two of these runs is still
+unidentified.
+
 ## The multi-character panel workflow
 
 Run this in order for any panel with two or more characters. Every step exists
@@ -448,8 +558,14 @@ as lying on his *side*.
 - **Expression must be set at generation time.** It is not a safe edit: two
   masked passes at 780px of face failed to turn a grin into alarm. Avoid
   "mouth open, eyes wide" — that describes laughing as well as shock. Say
-  what the features DO ("corners pulled down, brows raised and pinched") and
-  negate the wrong read explicitly.
+  what the features DO ("corners pulled down, brows raised and pinched").
+  ⚠ CORRECTED 2026-08-23: this rule used to end "and negate the wrong read
+  explicitly", which contradicts the no-negation rule above it and lost. A
+  threatening face prompted with "not amused, not pleased and not smiling"
+  came back SMILING. Name muscle actions only the wanted expression can
+  make — a sneer needs a raised upper lip, fury needs flared nostrils and a
+  clenched jaw — and the wrong read becomes unsatisfiable without ever
+  being mentioned. That worked first try on the same shot.
 - **Facing direction and body angle never respond to instruction.** Every solo
   came out facing the sheet's direction, and a requested 35° turn produced a
   square-on figure twice. Mirror at composite time instead — and remember a
