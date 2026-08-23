@@ -100,7 +100,8 @@ def _copy_into_game(src: str, game_dir: str, rel_dest: str) -> str:
 
 def register_character(manifest: dict, game_dir: str, character: str, body_path: str,
                        tag: str | None = None, target_height: float | None = None,
-                       mirror_ok: bool = True, notes: str = "") -> dict:
+                       mirror_ok: bool = True, notes: str = "",
+                       height_cm: float | None = None) -> dict:
     if not os.path.isfile(body_path):
         raise SpriteError(f"Body PNG not found: {body_path}")
     w, h = png_size(body_path)
@@ -115,6 +116,14 @@ def register_character(manifest: dict, game_dir: str, character: str, body_path:
     })
     if target_height is not None:
         entry["target_height"] = target_height
+    if height_cm is not None:
+        entry["height_cm"] = height_cm
+        # First character with a height defines the reference, so absolute
+        # sizing stays stable as the cast grows; only ratios matter after.
+        manifest.setdefault("scale", {
+            "ref_height_cm": height_cm,
+            "ref_screen_fraction": target_height or entry.get("target_height") or 0.85,
+        })
     return entry
 
 
@@ -158,6 +167,25 @@ def _pad_patch(game_dir: str, character: str, expression: str,
     return out_rel
 
 
+def screen_fraction(manifest: dict, entry: dict) -> float | None:
+    """How much of the screen height this character's figure should occupy.
+
+    Preferred: derived from `height_cm` against the manifest's `scale`
+    reference, so relative heights across the cast are correct by
+    construction and a new character only needs a height. Falls back to an
+    explicit `target_height` for entries registered before heights existed.
+
+    NOTE: the figure is measured to its ALPHA BBOX, which includes hair. A
+    tall hairstyle (a high topknot) therefore eats into the body height and
+    makes that character read slightly short. Adjust their height_cm down a
+    little if it shows.
+    """
+    scale = manifest.get("scale")
+    if scale and entry.get("height_cm"):
+        return scale["ref_screen_fraction"] * entry["height_cm"] / scale["ref_height_cm"]
+    return entry.get("target_height")
+
+
 def emit(manifest: dict, game_dir: str) -> dict:
     """Write sprites_generated.rpy (layeredimage per character) and the padded
     expression layers. Returns what was written."""
@@ -173,8 +201,9 @@ def emit(manifest: dict, game_dir: str) -> dict:
             continue
         tag = entry["tag"]
         zoom = None
-        if entry.get("target_height"):
-            zoom = round(screen_h * entry["target_height"] / entry["body_size"][1], 4)
+        frac = screen_fraction(manifest, entry)
+        if frac:
+            zoom = round(screen_h * frac / entry["body_size"][1], 4)
         # The `at` clause must go INSIDE the block — `layeredimage <tag> at ...:`
         # is a syntax error ("expected ':' not found"), confirmed by renpy lint
         # 8.5.3 on 2026-08-22. Do not move this back onto the header line.

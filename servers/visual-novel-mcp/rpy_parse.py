@@ -278,11 +278,26 @@ def scan_file(path: str) -> FileScan:
     return scan
 
 
+# Ren'Py's stock GUI/engine files, copied verbatim from the SDK template into
+# every project. They are never story, and scanning them buries real findings:
+# screens.rpy's screen-language locals (prefix_, who, main_menu) read as
+# undocumented story flags, and testcases.rpy's labels read as unreachable.
+# script.rpy is deliberately NOT here — it is the entry point the author edits.
+STOCK_FILES = {
+    "gui.rpy", "guisupport.rpy", "options.rpy", "screens.rpy", "testcases.rpy",
+}
+
+# Generated translation files under game/tl/ are copies of every dialogue line
+# and label in the game. Scanning them would report the whole script as
+# duplicate labels the moment a second language is generated.
+SKIP_DIRS = {"saves", "cache", "tl"}
+
+
 def scan_game(game_dir: str) -> list[FileScan]:
     scans = []
     for root, dirs, files in os.walk(game_dir):
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "saves" and d != "cache"]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS]
         for fname in sorted(files):
-            if fname.endswith(".rpy"):
+            if fname.endswith(".rpy") and fname not in STOCK_FILES:
                 scans.append(scan_file(os.path.join(root, fname)))
     return scans

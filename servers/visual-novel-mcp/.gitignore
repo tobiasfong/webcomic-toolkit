@@ -2,3 +2,10 @@
 projects.json
 __pycache__/
 .venv/
+
+# the author's script drafts live here for convenience — story prose carries
+# character and world names and must never reach the public repo
+*.docx
+*.doc
+*.odt
+script_drafts/

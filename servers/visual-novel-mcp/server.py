@@ -433,15 +433,19 @@ def forget_scene(scene_id: str, delete_file: bool = False,
 @mcp.tool()
 def register_sprite(character: str, body_path: str, tag: str | None = None,
                     target_height: float | None = None, mirror_ok: bool = True,
-                    notes: str = "", project: str | None = None) -> dict:
+                    notes: str = "", height_cm: float | None = None,
+                    project: str | None = None) -> dict:
     """Register a character's matted body PNG (copied into the game tree).
-    `target_height` = body height as a fraction of the 1080p screen; emit
-    computes the zoom from it. Set mirror_ok=False for asymmetric costumes."""
+    PREFER `height_cm` — relative cast heights then come out right by
+    construction, and the first one registered fixes the screen reference.
+    `target_height` (fraction of screen) is the fallback for characters with
+    no canonical height. Set mirror_ok=False for asymmetric costumes."""
     slug, entry = _resolve(project)
     manifest = sprites_module.load(entry["state_dir"])
     rec = sprites_module.register_character(
         manifest, entry["game_dir"], character, body_path,
         tag=tag, target_height=target_height, mirror_ok=mirror_ok, notes=notes,
+        height_cm=height_cm,
     )
     sprites_module.save(entry["state_dir"], manifest)
     return {"project": slug, "character": character, "record": rec,
