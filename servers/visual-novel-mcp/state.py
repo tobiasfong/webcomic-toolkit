@@ -15,7 +15,7 @@ cannot express:
       "status": "planned|drafted|reviewed|approved",
       "file": "scenes/s01_awakening.rpy",   # relative to game_dir; null while planned
       "label": "s01_awakening",             # entry label; defaults to the scene id
-      "location": "...", "characters": ["jeon_jung_seong", ...],
+      "location": "...", "characters": ["<character_id>", ...],
       "after": ["s00_prologue"],            # advisory ordering, used before a script
                                             # exists; once drafted the graph wins
       "updated": "..."

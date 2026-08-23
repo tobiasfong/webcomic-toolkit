@@ -18,9 +18,9 @@ sprites.json:
   "schema": 1,
   "screen_height": 1080,
   "characters": {
-    "jeon_jung_seong": {
-      "tag": "jeon",                       # the Ren'Py image tag
-      "body": "images/sprites/jeon_jung_seong/body.png",   # relative to game_dir
+    "<character_id>": {
+      "tag": "pc",                       # the Ren'Py image tag
+      "body": "images/sprites/<character_id>/body.png",   # relative to game_dir
       "target_height": 0.85,               # body height as fraction of screen
       "mirror_ok": true,                   # false when costume detail is asymmetric
       "notes": "...",
