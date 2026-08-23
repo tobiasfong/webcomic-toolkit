@@ -21,7 +21,7 @@ Storage (mirrors how a novel grows in one file):
 A location entry:
   {
     "name":        "Saint Selena Cathedral district",
-    "canonical":   "starry_knight/saint_selena_district.png",  (relative to WORLD_ROOT)
+    "canonical":   "example_comic/market_district.png",  (relative to WORLD_ROOT)
     "description": "Grimdark gothic cathedral, twin spires, fog",
     "palette":     ["#2b3a4a", "#8a9bb0", "#d4c9a8"],
     "tags":        ["exterior", "cathedral", "hive"],

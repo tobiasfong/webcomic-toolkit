@@ -73,7 +73,7 @@ def generate_background(
 
     Projects: `project` namespaces the World Builder canon and the output folder so
     you can work on several comics from one server without their locations colliding
-    (e.g. "starry_knight" vs "rxr"). References (sketch library) are shared, not
+    (e.g. "comic_a" vs "comic_b"). References (sketch library) are shared, not
     namespaced. Defaults to WEBCOMIC_BG_PROJECT or "default".
 
     World Builder: pass `location` (an id registered via register_location in the
@@ -111,12 +111,12 @@ def generate_background(
         seed: Fixed seed for reproducibility; omit for a random one.
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
-        project: Which comic's canon/output to use (e.g. "starry_knight", "rxr").
+        project: Which comic's canon/output to use (e.g. "comic_a", "comic_b").
         lora: Style LoRA filename in models/loras. Known options: "ManhwaUltimate
             .safetensors" (trigger "fantasy-style" — gothic/western manhwa, the
             default aesthetic) or "NijiV5Style.safetensors" (trigger "midjourney"
             — strong East-Asian architectural bias, pagodas/lanterns; good for
-            RxR-style settings, but it will override a gothic/western ControlNet
+            illustration-style settings, but it will override a gothic/western ControlNet
             sketch's composition, so don't use it for Starry Knight/hive scenes).
             Remember to include the trigger word in your prompt. Omit for the
             server default (WEBCOMIC_BG_LORA env); pass "" to force the LoRA off.
@@ -496,7 +496,7 @@ def register_location(
             this is your authorial canon, so be specific.
         tags: Optional labels, e.g. ["exterior", "slum", "hive"].
         panel: Where it first appears, e.g. "ch1_p27" (free-form, for your records).
-        project: Which comic this location belongs to (e.g. "starry_knight", "rxr").
+        project: Which comic this location belongs to (e.g. "comic_a", "comic_b").
             Ids only need to be unique within a project. Defaults to "default".
 
     Returns:

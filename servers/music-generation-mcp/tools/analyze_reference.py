@@ -3,7 +3,7 @@
 analyze_reference.py — measure a reference track's tempo and key.
 
 Why this exists: the model's `bpm` and `keyscale` inputs were being set from
-guesswork. The first RxR takes were generated in D major because "uplifting
+guesswork. The first takes were generated in D major because "uplifting
 anime OP" sounded right before anyone understood the song — and it took two
 rounds of listening to discover the song wanted a minor key. Measuring a
 reference the author already likes replaces that guess with a number.

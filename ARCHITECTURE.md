@@ -382,11 +382,11 @@ digital studio with generative capabilities," not a chatbot bolted on the side.
 {
   "schema": 1,
   "name": "A Starry Knight",
-  "slug": "starry_knight",
+  "slug": "example_comic",
   "language": { "source": "en", "targets": ["ja"] },
   "kind": "webtoon",
   "tools": {
-    "background": { "project": "starry_knight" },
+    "background": { "project": "example_comic" },
     "lettering":  { "font_en": "", "font_ja": "", "vertical_ja": true },
     "video":      { "music": "", "credits": { "story": "Tanaka Tomoyuki" } },
     "publish":    { "title": "", "author": "Tanaka Tomoyuki", "formats": ["epub", "cbz"] }
@@ -413,7 +413,7 @@ Tools:
 **Format guidance:** target **EPUB (fixed-layout) + CBZ + PDF**. Skip MOBI — Amazon deprecated it; KDP ingests EPUB. (Tobias floated "EPub or Mobi"; EPUB covers Kindle now.)
 
 **Input formats (novel path):** the primary real-world input is a **Microsoft Word `.docx`
-manuscript + JPEG illustrations** (this is Tobias's actual RxR workflow). Parse with
+manuscript + JPEG illustrations** (this is Tobias's actual novel workflow). Parse with
 `python-docx`, map heading styles → chapters, preserve italics/bold, and support illustration
 placement markers. Also accept markdown. Target output: technically publish-ready (passes
 `epubcheck`, correct metadata/TOC/cover) — with the honest caveat that *editorial*
@@ -445,7 +445,7 @@ Packaging only.
 `get_track`, `extract_beats`, `check_status`), 29 offline graph tests passing,
 every graph validated against a live ComfyUI `/prompt` schema check, and **five
 real generations run end to end** — including two 120-second Japanese vocal
-takes of RxR's セカンドチャンス. The one thing still open is whether those
+takes of his theme song. The one thing still open is whether those
 vocals are any *good*, which is a listening question, not a build one. See that
 server's CHANGELOG for the full report.
 
@@ -493,7 +493,7 @@ installable.
 **Why it exists.** The anime-production skill *plays* an mp3; it has never generated one.
 Today's teaser music comes from **Suno**, which is exactly the paid-cloud dependency this
 ecosystem exists to avoid (same category as Kling for video, meshy.ai for props). Tobias also
-dislikes the vocal on the current RxR track and wants it redone. Local generation closes the
+dislikes the vocal on the current theme track and wants it redone. Local generation closes the
 last outsourced step in the video pipeline.
 
 **Responsibility:** generate BGM and full theme songs locally, on the same 6 GB RTX 3060 as
@@ -506,7 +506,7 @@ the other GPU servers, and hand back an mp3/wav the Remotion pipeline can drop s
 - **Whether 6 GB is enough.** Untested. Assume quantisation will be needed, as with
   LTX-2.3 (GGUF Q4_K_M) and FLUX Kontext (Q3_K_S). If it will not fit, the fallback is
   instrumental-only BGM locally and vocals stay a manual step.
-- **Language.** RxR's track is Japanese. Vocal quality in Japanese specifically must be
+- **Language.** His track is Japanese. Vocal quality in Japanese specifically must be
   auditioned before committing — most open models are trained English-heavy.
 
 **Likely tools (sketch, not a contract):**
@@ -579,11 +579,11 @@ original plan below:
 <details>
 <summary>Original MVP plan (for reference — mostly superseded by what actually shipped above)</summary>
 
-**Why out of order:** Tobias hit a real, dated problem translating his RxR web novel (EN↔JP,
+**Why out of order:** Tobias hit a real, dated problem translating his web novel (EN↔JP,
 50k+ English words / ~120k JP characters — normal for this novel length) by hand in chat:
 every session-resume re-reads/re-explains the full manuscript, burning 20-30% of a 5-hour
 
-**Why out of order:** Tobias hit a real, dated problem translating his RxR web novel (EN↔JP,
+**Why out of order:** Tobias hit a real, dated problem translating his web novel (EN↔JP,
 50k+ English words / ~120k JP characters — normal for this novel length) by hand in chat:
 every session-resume re-reads/re-explains the full manuscript, burning 20-30% of a 5-hour
 usage window before real translation work starts. This is the exact shape of problem his own
@@ -1090,8 +1090,7 @@ generation core.
    friend sheet with `crop_reference`, register the crops, run one Tier-2 pose — but
    do this WITH Tobias reviewing, not as an automated check, and never commit his art
    (it's `characters/`-gitignored anyway; keep it that way).
-5b. **On-ramp 3 test, if Tobias supplies a drawing**: register one of his own RxR or
-   Starry Knight character illustrations as ref #1 and run `generate_reference_sheet`
+5b. **On-ramp 3 test, if Tobias supplies a drawing**: register one of his own character illustrations as ref #1 and run `generate_reference_sheet`
    for a back view — the single most useful view for his concept-homework use case.
    Same rules: he reviews, nothing committed.
 6. Report explicitly what was and wasn't live-exercised. Update this section's status
@@ -1100,7 +1099,7 @@ generation core.
 ### 8b.7 SDXL prototype + the back-view campaign — ✅ SHIPPED / 📋 DOCUMENTED 2026-07-19
 
 **Why this exists:** the first real end-to-end use of Concept Genesis (Tobias's
-own RxR characters) exposed two failures that survived every tuning attempt on
+own characters) exposed two failures that survived every tuning attempt on
 the SD1.5 stack: distorted full-body anatomy ("spider legs") and no genuine back
 views. ⚠ SUPERSEDED 2026-08-21 — the SDXL prototype below was replaced by FLUX; the
 server is FLUX-only now and `model="mj_manga_sdxl"` no longer exists. Kept for

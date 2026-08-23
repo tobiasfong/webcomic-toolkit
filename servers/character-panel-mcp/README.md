@@ -202,7 +202,7 @@ will drift and need retries. This is exactly what curation is for — and once y
 accumulated ~10-20 curated views, the bible holds the strongest version
 of what you approved.
 
-**Real-world tuning note (2026-07-19, from an actual test against RxR art):**
+**Real-world tuning note (2026-07-19, from an actual test against hand-drawn art):**
 `generate_reference_sheet`'s original defaults (`ip_adapter_weight=0.8`,
 `ref_denoise=0.7`) let a busy source illustration (dynamic pose, VFX) dominate every
 view regardless of the requested angle or the clean-backdrop prompt — every "view"
@@ -481,7 +481,7 @@ After adding it, **fully quit and relaunch the client** (see Troubleshooting).
 
 **Already have reference art?**
 1. Register a character: *"Register these three images of Aria as a character named
-   'aria' in project 'starry_knight'."*
+   'hero' in project 'example_comic'."*
 
 **No art yet?**
 1. *"Generate 4 character concepts: gaunt young man, long nose, manic grin,

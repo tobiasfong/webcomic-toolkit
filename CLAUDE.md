@@ -725,7 +725,7 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   statistic tells you whether the vocal is any good, which is the entire reason
   this server exists.
 
-  ### Writing a song that actually sings (learned on RxR's セカンドチャンス)
+  ### Writing a song that actually sings (learned on a 120 s Japanese vocal track)
 
   ### ⚠ Getting the model to sing the words you actually wrote
 
@@ -739,7 +739,7 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
 
   | lyric | avg morae/line | result |
   |---|---|---|
-  | セカンドチャンス | 15.8 | correct |
+  | the working song | 15.8 | correct |
   | haiku 5-7-5 | 5.7 | badly wrong |
   | tanka 5-7-5-7-7 | 6.2 | badly wrong |
   | chōka (9 lines) | 6.1 | badly wrong |
@@ -784,7 +784,7 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   and INVERTED on short-line poetry — it rated a working 16-line lyric
   "fragments" (4.18) and a failing tanka "good" (3.10). Morae per bar is the
   metric that transfers: **~3.5-4.0 morae/bar** is the working range
-  (セカンドチャンス measured 3.77; a failing tanka measured 2.00).
+  (the working song measured 3.77; a failing tanka measured 2.00).
 
   Bars-per-line is still a useful secondary check when line lengths are
   song-like and roughly even:

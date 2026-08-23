@@ -116,9 +116,9 @@ know that `full_bminor_107s_20260807_004333` is "the theme song".
 `approve_track` publishes the winner under a stable name at the project root:
 
 ```
-output/rxr/FINAL_second_chance.mp3          <- point Remotion here
-output/rxr/FINAL_second_chance.flac
-output/rxr/FINAL_second_chance_beats.json
+output/<project>/FINAL_theme.mp3          <- point Remotion here
+output/<project>/FINAL_theme.flac
+output/<project>/FINAL_theme_beats.json
 ```
 
 The `FINAL_` prefix is the same convention the panel pipeline uses, and this

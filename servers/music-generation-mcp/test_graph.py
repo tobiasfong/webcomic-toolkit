@@ -101,11 +101,11 @@ def main() -> int:
         ok &= check("graph serialises to JSON", False, str(e))
 
     # --- track ids -----------------------------------------------------------
-    a = tk.new_track_id("rxr", "セカンドチャンス")
+    a = tk.new_track_id("demo", "テストソング")
     ok &= check("non-ASCII title still yields a usable id", bool(a) and " " not in a, a)
     ok &= check("slugify strips punctuation",
-                tk.slugify("Second Chance! (v2)") == "second_chance_v2",
-                tk.slugify("Second Chance! (v2)"))
+                tk.slugify("Test Song! (v2)") == "test_song_v2",
+                tk.slugify("Test Song! (v2)"))
 
     print("\nALL PASS" if ok else "\nFAILURES ABOVE")
     return 0 if ok else 1

@@ -120,8 +120,8 @@ Four real generations ran end to end, through both the CLI driver and the MCP
 | run | duration | wall time | peak VRAM |
 |---|---|---|---|
 | lo-fi instrumental smoke test | 20 s | 21 s | ~5.65 GB |
-| セカンドチャンス, male vocal, ja | 120 s | 105 s | — |
-| セカンドチャンス, female vocal, ja | 120 s | 93 s | — |
+| the theme song, male vocal, ja | 120 s | 105 s | — |
+| the theme song, female vocal, ja | 120 s | 93 s | — |
 | A/B re-run, male, `--lowvram` | 120 s | 87 s | 5972 MiB |
 | A/B re-run, male, plain launcher | 120 s | 91 s | 5904 MiB |
 
@@ -193,8 +193,8 @@ Four real generations ran end to end, through both the CLI driver and the MCP
   approved FINAL_" rule covers it automatically. `forget_track` enforces that in
   code too, refusing an approved take; the guard was tested before being relied
   on, which matters because 22 tracks were script-deleted in this same session.
-- **RxR's theme song is settled**: seed 9242, published as
-  `FINAL_second_chance.*`. 107 s, 150 BPM, B minor, 4/4, `ja`, sectioned lyrics
+- **The theme song is settled**: seed 9242, published as
+  `FINAL_theme.*`. 107 s, 150 BPM, B minor, 4/4, `ja`, sectioned lyrics
   with a blank line between every sung line. Beat grid: bar 1.600 s, 67
   downbeats, offset 0.355 s.
 

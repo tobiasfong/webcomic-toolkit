@@ -540,7 +540,7 @@ DEFAULT_SHEET_VIEWS = [
     "close-up portrait, head and shoulders only, head turned three-quarters, determined expression",
 ]
 
-# Real-world tuning (2026-07-19, against actual RxR art — see CHANGELOG): the
+# Real-world tuning (2026-07-19, against actual hand-drawn art — see CHANGELOG): the
 # original defaults (ip_adapter_weight=0.8, ref_denoise=0.7) let a busy source
 # illustration's own composition (VFX, specific pose) dominate every view
 # regardless of what the text prompt asked for — every "view" came out as a

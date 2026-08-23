@@ -29,7 +29,7 @@ A character entry:
     "abilities":   "short free-text summary of powers/skills/equipment",
     "palette":     ["#1a2b3c", "#8a9bb0", "#d4c9a8"],
     "tags":        ["protagonist", "mage"],
-    "refs":        ["starry_knight/aria/ref_01.png", "starry_knight/aria/ref_02.png"],
+    "refs":        ["example_comic/hero/ref_01.png", "example_comic/hero/ref_02.png"],
                    (each relative to CHAR_ROOT; refs[0] is the "primary" reference
                    used as the img2img/IP-Adapter seed)
     "lora":        "character_aria.safetensors",  (optional; set by
