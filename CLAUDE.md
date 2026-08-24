@@ -556,7 +556,17 @@ as lying on his *side*.
   blaming the prompt — a "back turnaround" whose head is turned to
   three-quarter will keep producing a visible face.
 - **Expression must be set at generation time.** It is not a safe edit: two
-  masked passes at 780px of face failed to turn a grin into alarm. Avoid
+  masked passes at 780px of face failed to turn a grin into alarm.
+  ⚠ REFINED 2026-08-24: the boundary is narrower than "expression cannot be
+  edited". A shouting mouth WAS successfully reduced to a speaking one with a
+  tight 140x105 mask over the mouth and chin alone. Two things separate it
+  from the failures: the mask was small, so there was little for the model to
+  redecide (the failed passes repainted 780px of face and drifted everything
+  in it), and the ask was a change of DEGREE — open wide to barely parted —
+  rather than a change of MEANING, amused to afraid. Degree behaves like the
+  recolor class that works; meaning behaves like the reconstruct class that
+  does not. Still set expression at generation time by default; reach for a
+  tight masked pass only to adjust the degree of one already-correct feature. Avoid
   "mouth open, eyes wide" — that describes laughing as well as shock. Say
   what the features DO ("corners pulled down, brows raised and pinched").
   ⚠ CORRECTED 2026-08-23: this rule used to end "and negate the wrong read
