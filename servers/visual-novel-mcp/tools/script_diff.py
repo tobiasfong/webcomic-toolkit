@@ -1,0 +1,192 @@
+r"""Diff an author's docx master against the converted Ren'Py scenes.
+
+The docx is the master and it MOVES -- an author revising spontaneously will
+close gaps and change details without saying so, so patching only the change
+they mention misses the rest. This compares the WHOLE document every time.
+
+    python script_diff.py <master.docx> <scenes-dir> [patterns.json]
+
+Reports three things:
+  CHANGED  a block whose wording differs between docx and script
+  NEW      a block in the docx not yet in any script (needs converting)
+  DROPPED  a block in a script no longer in the docx (it was cut)
+
+Staging lines -- scene/show/nvl clear/centered/with -- are ignored; only
+narration and dialogue are compared, since staging belongs to the adaptation
+and prose belongs to the author.
+
+⚠ SPEC BLOCKS. Authors write notes to the implementer inline (combat specs,
+localization notes). Those must never be converted as story, so they are
+skipped -- but recognizing them needs the project's own vocabulary, which is
+story content and therefore CANNOT live in this public file. Put it in a JSON
+file beside the game tree:
+
+    {
+      "spec_start":  ["^(FIGHT SEQUENCE|To Claude[,:])"],
+      "spec_line":   ["^(Sword strike|Uses |Victory!)"],
+      "speaker":     "^[A-Z][A-Za-z0-9'#\- ]{0,34}:\s*",
+      "annotation":  "\s*\((?:[^()]*version would be[^()]*)\)\s*$"
+    }
+
+Every key is optional; the defaults below are generic. Pass the file as the
+third argument, or leave `patterns.json` next to the scenes directory.
+
+⚠ A spec block ends when PROSE resumes, and judging that by LINE LENGTH does
+not work: once an author writes the combat text properly -- move descriptions,
+use lines, a victory line -- those run long, the block looks finished, and the
+rest of the spec reports as unconverted story. Match on vocabulary; keep length
+only as a backstop for short fragments.
+"""
+import difflib
+import json
+import glob
+import io
+import os
+import re
+import sys
+
+
+# Generic defaults. Anything project-specific belongs in patterns.json --
+# see the module docstring.
+DEFAULTS = {
+    # Tolerates numbered mob speakers ("Guard #1:") or their lines read as
+    # unconverted forever, because the label never gets stripped before compare.
+    "speaker": r"^[A-Z][A-Za-z0-9'#\- ]{0,34}:\s*",
+    "spec_start": [r"^(FIGHT SEQUENCE|To Claude[,:]|NOTE TO)"],
+    "spec_line": [r"^(Uses |Victory!|\(\d+ damage|\[Opponent)"],
+    # Inline notes to self -- a localization aside, a gloss after a name. They
+    # never reach the game, so strip them or they read as permanent differences.
+    "annotation": r"\s*\((?:[^()]*version would be[^()]*|[A-Za-z ]{2,30})\)\s*$",
+}
+
+# Short spec fragments the vocabulary misses. Low enough that it cannot swallow
+# a real one-line paragraph of narration.
+SPEC_SHORT = 40
+
+
+def load_patterns(path=None):
+    cfg = dict(DEFAULTS)
+    if path and os.path.exists(path):
+        with io.open(path, encoding="utf-8") as f:
+            cfg.update(json.load(f))
+    def joined(key):
+        v = cfg[key]
+        return re.compile("|".join(v) if isinstance(v, list) else v, re.I)
+    return (re.compile(cfg["speaker"]), joined("spec_start"),
+            joined("spec_line"), re.compile(cfg["annotation"]))
+
+
+SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
+
+
+def normalize(t):
+    t = SPEAKER.sub("", t).strip()
+    t = ANNOTATION.sub("", t).strip()
+    t = t.strip("「」")          # Japanese quotation brackets around written text
+    t = t.strip('“”"')
+    for a, b in (("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"')):
+        t = t.replace(a, b)
+    return " ".join(t.split())
+
+
+def read_docx(path):
+    import docx
+    out = []
+    in_spec = False
+    for p in docx.Document(path).paragraphs:
+        t = p.text.strip()
+        if not t or t.lower() in ("prologue",):
+            continue
+        if SPEC_START.match(t):
+            in_spec = True
+            continue
+        if in_spec:
+            # A spec block ends when a normal prose/dialogue line resumes --
+            # judged by VOCABULARY first, length only as a backstop.
+            if SPEC_LINE.match(t) or len(t) < SPEC_SHORT:
+                continue
+            in_spec = False
+        out.append(normalize(t))
+    return out
+
+
+def read_scenes(scenes_dir):
+    """Prose blocks in label order, with the file each came from."""
+    blocks = []
+    for f in sorted(glob.glob(os.path.join(scenes_dir, "*.rpy"))):
+        for ln in io.open(f, encoding="utf-8").read().split("\n"):
+            s = ln.strip()
+            if s.startswith("#"):
+                continue
+            # Character prefixes may contain digits (numbered mob speakers).
+            m = re.match(r'^(?:[a-z_][a-z0-9_]* )?"(.*)"$', s)
+            if not m:
+                continue
+            t = m.group(1).replace('\\"', '"')
+            # Ren'Py text tags are presentation, not prose -- {size=+18} and
+            # friends must not read as a difference from the docx.
+            t = re.sub(r"\{/?[^{}]*\}", "", t)
+            blocks.append((normalize(t), os.path.basename(f)))
+    return blocks
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit("usage: python script_diff.py <master.docx> <scenes-dir> "
+                 "[patterns.json]\n"
+                 "Paths are deliberately not stored in this repository.")
+    docx_path, scenes = sys.argv[1], sys.argv[2]
+
+    global SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION
+    # Look beside the scenes, then up the tree -- the natural homes are the
+    # game directory and the project directory, and guessing only one of them
+    # fails silently by falling back to the generic defaults, which reports
+    # the author's spec notes as unconverted story.
+    if len(sys.argv) > 3:
+        patterns = sys.argv[3]
+    else:
+        here = os.path.abspath(scenes)
+        for _ in range(3):
+            candidate = os.path.join(here, "patterns.json")
+            if os.path.exists(candidate):
+                break
+            here = os.path.dirname(here)
+        patterns = candidate
+    SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns(patterns)
+    doc = read_docx(docx_path)
+    scr = read_scenes(scenes)
+    scr_text = [t for t, _ in scr]
+
+    print(f"docx : {len(doc)} blocks  ({os.path.basename(docx_path)})")
+    print(f"rpy  : {len(scr_text)} blocks  ({len(set(f for _, f in scr))} scene files)")
+    print()
+
+    sm = difflib.SequenceMatcher(None, scr_text, doc, autojunk=False)
+    findings = 0
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            continue
+        findings += 1
+        if tag == "replace":
+            print(f"CHANGED  (in {scr[i1][1] if i1 < len(scr) else '?'})")
+            for k in range(i1, i2):
+                print(f"    was: {scr_text[k][:130]}")
+            for k in range(j1, j2):
+                print(f"    now: {doc[k][:130]}")
+        elif tag == "insert":
+            after = scr[i1 - 1][1] if 0 < i1 <= len(scr) else "(start)"
+            print(f"NEW      {j2 - j1} block(s), after {after} -- not yet converted")
+            for k in range(j1, j2):
+                print(f"    + {doc[k][:130]}")
+        elif tag == "delete":
+            print(f"DROPPED  {i2 - i1} block(s) from {scr[i1][1]}")
+            for k in range(i1, i2):
+                print(f"    - {scr_text[k][:130]}")
+        print()
+
+    print("in sync" if not findings else f"{findings} region(s) differ")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

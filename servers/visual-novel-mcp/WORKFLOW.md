@@ -157,6 +157,32 @@ erases the art behind it. Legibility travels better ON the glyphs: outlines (a
 dropped shadow plus a crisp dark edge) cost nothing where they are not needed.
 If a scrim helps, gradient it so it darkens only the band the text occupies.
 
+## Tools
+
+`tools/` holds the standalone scripts. **None of them may hardcode a path into
+a game tree** — the project slug is private and this directory is public, so
+they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
+
+| tool | what it does |
+|---|---|
+| `script_diff.py` | diffs the author's docx master against the converted scenes |
+| `fx_plates.py` | draws impact plates — convergence bursts, slash beams, an ice crescent |
+| `make_nvl_scrim.py` | draws the NVL scrim gradient |
+| `make_battle_ui.py` | draws the battle panel and selection cursor as 9-patch frames |
+| `serve_web.py` | serves a web build with threading and Range support |
+
+The drawing tools exist because their output is GEOMETRY — lines meeting at a
+vanishing point, an arc of exact curvature, a rounded panel that stretches
+without distorting its corners. Diffusion cannot place geometry where you ask
+for it, and it turns fine repeated marks into texture. Drawn, they are exact,
+instant, recolorable, and reusable. Regenerate from the script; never edit the
+PNGs.
+
+`script_diff.py` needs the project's own spec vocabulary to tell an author's
+inline notes from prose, and that vocabulary IS story content — so it lives in
+a `patterns.json` beside the game tree, not here. Without one the tool falls
+back to generic defaults and will report spec blocks as unconverted story.
+
 ## Verifying
 
 `renpy lint` parses; it does not execute. It passed on the menu that crashed
