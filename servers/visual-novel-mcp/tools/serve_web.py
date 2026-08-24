@@ -87,6 +87,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Accept-Ranges", "bytes")
+        # A DEVELOPMENT server: never let the browser hold a copy. It does not
+        # stop Ren'Py's service worker (which answers before the network is
+        # consulted at all), but it removes the other half of the problem --
+        # a rebuild that the author cannot see is the most confusing failure
+        # this setup produces.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
         super().end_headers()
 
     def log_message(self, fmt, *args):

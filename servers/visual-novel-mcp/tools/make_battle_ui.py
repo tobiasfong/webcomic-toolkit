@@ -35,6 +35,9 @@ PANEL = (14, 16, 24, 238)        # near-black, slightly transparent
 EDGE = (138, 146, 172, 255)      # cool gray border
 CURSOR = (0, 184, 195, 255)      # gui.accent_color
 
+PANEL_SOFT = (10, 12, 20, 128)   # ~50%, for a plate over artwork
+EDGE_SOFT = (200, 208, 228, 150)
+
 
 def rounded(fill, outline, width, radius=R):
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -48,10 +51,16 @@ def rounded(fill, outline, width, radius=R):
 # The panel every battle box uses.
 rounded(PANEL, EDGE, B).save(os.path.join(OUT, "battle_box.png"))
 
+# A SOFTER panel, for menus laid over artwork. Same shape, roughly half the
+# opacity: a menu needs its text to sit on something so it does not float, but
+# the picture behind it is the thing worth seeing, so the plate must not do
+# what the battle box does and hide it.
+rounded(PANEL_SOFT, EDGE_SOFT, B).save(os.path.join(OUT, "panel_soft.png"))
+
 # The selection cursor: outline only, no fill, so the panel shows through.
 rounded(None, CURSOR, B + 1, radius=R - 6).save(
     os.path.join(OUT, "battle_select.png"))
 
-for n in ("battle_box.png", "battle_select.png"):
+for n in ("battle_box.png", "battle_select.png", "panel_soft.png"):
     p = os.path.join(OUT, n)
     print(f"{n:20} {S}x{S}  9-patch border {INSET}px  {os.path.getsize(p)} bytes")
