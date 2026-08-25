@@ -1012,6 +1012,69 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   the config is musically right, use `generate_variations` and choose a
   performance rather than tuning further.
 
+  ### Instrumental briefs: the REFERENCE sets style, the BRIEF sets mood
+
+  Settled 2026-08-25 on an instrumental theme, after nine wasted renders.
+
+  The author named a reference track and four mood words: energetic, inspiring,
+  martial arts, East Asian. The tags written for the take that matched the
+  reference's STYLE said "dark ... swagger" — neither word was in the brief.
+  Both were generalized from the genre label, not from what was asked for and
+  not from any real knowledge of how the reference actually sounds.
+
+  The cost was not one bad tag string. Across four directions, "inspiring" and
+  "heroic" appeared ONLY on the takes in the wrong style, and the one take in
+  the right style carried the wrong mood — so the author's two requirements
+  were never requested together in a single render. **That is a specification
+  failure, and no amount of seed sweeping fixes it.** Six seeds were burned on
+  the mis-specified recipe before the gap was spotted. Correcting the wording
+  alone moved the verdict from "not it" to "much better than the previous
+  batch" across a whole batch, which is what tells you it was the wording and
+  not a luckier draw.
+
+  So: a reference names INSTRUMENTS, PRODUCTION and GENRE. It does not license
+  mood words the author never said. When the two disagree, the brief wins.
+  Before generating, check every mood adjective in the tags against the brief
+  and delete the ones that came from you.
+
+  **⚠ Same seed + changed tags is NOT a controlled comparison.** Three takes
+  reused the exact seed of a take the author liked, changing only the tags, on
+  the assumption that this isolates the wording. Measured as log-spectrogram
+  correlation against that take: **0.365, 0.406, 0.390** — where a genuine
+  variation sits near 0.9. Tags condition the audio-code LLM, not merely a
+  style embedding, so rewording re-rolls the COMPOSITION.
+
+  The consequence is worth stating plainly, because it closes off an obvious
+  wish: **there is no way to keep an arrangement and change its mood.** A
+  reworded take is a new piece. Approve the arrangement you have, or accept a
+  different one. To get more of an arrangement that works, sweep SEEDS on that
+  exact tag string — never reword and hope.
+
+  ### A LOOPING theme: whole bars, and OGG not MP3
+
+  Three things, all measured 2026-08-25 on a VN title theme.
+
+  **A loop must be a whole number of BARS**, where `bar = 4 * 60 / bpm`. A 90 s
+  take at a measured 89.10 BPM is 33.41 bars, so every wrap shoves the downbeat
+  a third of a bar sideways. Trimming to 33 bars (88.889 s) locks it forever,
+  and costs only tail that was already silent. Verify the seam numerically:
+  the step between last and first sample, plus head and tail RMS.
+
+  **Deliver OGG, not MP3.** MP3 carries encoder delay and padding, so it
+  inserts a short silence at every wrap — which undoes the bar alignment you
+  just bought. Vorbis has none. `approve_track` publishes mp3/flac/beats only,
+  so an OGG has to be copied across by hand.
+
+  **⚠ libsndfile's Vorbis encoder overflows the stack on one big write.**
+  Handing `sf.write()` an 88 s stereo 48 kHz array killed the interpreter
+  outright (0xC00000FD) and left a plausible-looking **4 KB** file on disk —
+  not an error, a truncated file that looks real. Write in blocks:
+
+      with sf.SoundFile(path, "w", samplerate=sr, channels=data.shape[1],
+                        format="OGG", subtype="VORBIS") as f:
+          for i in range(0, len(data), sr):
+              f.write(data[i:i + sr])
+
 ## ⚠ Token economy: DO NOT READ THE RENDERS
 
 The whole point of ComfyUI on the GPU is that images are cheap. They stop being
