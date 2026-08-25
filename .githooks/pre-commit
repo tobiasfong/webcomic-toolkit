@@ -1,0 +1,21 @@
+#!/bin/sh
+# Refuse commits that ADD a private character or project name to this PUBLIC repo.
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+#
+# Tracked so it survives a reclone. The check itself is in
+# private_names_precommit.py beside this file; the name list is read from the
+# gitignored character bibles at run time, so no private name is stored here.
+#
+# Fails open: if no python is available the commit proceeds with a warning,
+# because a guard that blocks on its own absence just teaches --no-verify.
+HOOK_DIR=$(dirname "$0")
+for py in python python3 py; do
+  if command -v "$py" >/dev/null 2>&1; then
+    "$py" "$HOOK_DIR/private_names_precommit.py" || exit 1
+    exit 0
+  fi
+done
+echo "pre-commit: no python found; skipping private-name check" >&2
+exit 0
