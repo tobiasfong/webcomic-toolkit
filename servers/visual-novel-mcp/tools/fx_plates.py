@@ -29,7 +29,13 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter
 
-W, H = 1920, 1080
+# 1280x720, not 1920x1080. These are shown for 30-50 ms as a full-frame flash;
+# at that duration and with content this abstract, the engine's upscale costs
+# nothing visible, and the files drop to roughly a third of the size. The web
+# build fetches them on demand, so their size is wait time before an impact.
+# Pass a width as the second argument to override.
+W = int(sys.argv[2]) if len(sys.argv) > 2 else 1280
+H = W * 9 // 16
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vnpaths import game_dir, out_dir  # noqa: E402
 

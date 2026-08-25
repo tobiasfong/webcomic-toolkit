@@ -110,10 +110,48 @@ def read_docx(path):
     return out
 
 
+def scene_order(scenes_dir):
+    """Scene files in STORY order, by following the jump chain.
+
+    ⚠ NOT alphabetical. Filenames encode whatever the author found readable at
+    the time -- a prologue numbered p00..p08 and then a chapter named c01a
+    sorts the chapter FIRST, which silently misaligns the whole comparison and
+    reports every converted block as missing. The jump chain is the real order
+    and it cannot drift, because it is what the engine executes.
+
+    Falls back to alphabetical if the chain is broken or branches, which is
+    the honest behaviour: a branching story has no single order, and this tool
+    is for linear drift-checking.
+    """
+    files = sorted(glob.glob(os.path.join(scenes_dir, "*.rpy")))
+    label_of, jump_of = {}, {}
+    for f in files:
+        src = io.open(f, encoding="utf-8").read()
+        labels = re.findall(r"^label\s+([A-Za-z_]\w*)\s*:", src, re.M)
+        jumps = re.findall(r"^\s*jump\s+([A-Za-z_]\w*)\s*$", src, re.M)
+        if len(labels) != 1 or len(jumps) > 1:
+            return files                       # not a simple chain
+        label_of[labels[0]] = f
+        if jumps:
+            jump_of[labels[0]] = jumps[0]
+
+    targets = set(jump_of.values())
+    heads = [l for l in label_of if l not in targets]
+    if len(heads) != 1:
+        return files                           # no single entry point
+
+    order, seen, cur = [], set(), heads[0]
+    while cur in label_of and cur not in seen:
+        seen.add(cur)
+        order.append(label_of[cur])
+        cur = jump_of.get(cur)
+    return order if len(order) == len(files) else files
+
+
 def read_scenes(scenes_dir):
-    """Prose blocks in label order, with the file each came from."""
+    """Prose blocks in story order, with the file each came from."""
     blocks = []
-    for f in sorted(glob.glob(os.path.join(scenes_dir, "*.rpy"))):
+    for f in scene_order(scenes_dir):
         for ln in io.open(f, encoding="utf-8").read().split("\n"):
             s = ln.strip()
             if s.startswith("#"):
