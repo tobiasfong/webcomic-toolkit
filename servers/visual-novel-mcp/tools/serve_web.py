@@ -24,6 +24,7 @@ import mimetypes
 import os
 import re
 import sys
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 mimetypes.add_type("application/wasm", ".wasm")
@@ -100,13 +101,25 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("usage: python serve_web.py <dir-containing-*-dists> [port]")
-    root = find_build(os.path.abspath(sys.argv[1]))
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else 8124
-    print(f"Serving {os.path.basename(root)}")
-    print(f"  -> http://127.0.0.1:{port}/")
-    print("Leave this window open. Ctrl-C to stop.", flush=True)
-    ThreadingHTTPServer(
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    if not args:
+        sys.exit("usage: python serve_web.py <dir-containing-*-dists> [port] "
+                 "[--open]")
+    root = find_build(os.path.abspath(args[0]))
+    port = int(args[1]) if len(args) > 1 else 8124
+    url = f"http://127.0.0.1:{port}/"
+
+    # Bind BEFORE opening the browser. A caller that launches the browser
+    # first races the server and lands on ERR_CONNECTION_REFUSED, which looks
+    # exactly like a failed build -- so the browser is opened from here, after
+    # the socket is listening, rather than from whatever script invoked this.
+    httpd = ThreadingHTTPServer(
         ("127.0.0.1", port), functools.partial(Handler, directory=root)
-    ).serve_forever()
+    )
+    print(f"Serving {os.path.basename(root)}")
+    print(f"  -> {url}")
+    print("Leave this window open. Ctrl-C to stop.", flush=True)
+    if "--open" in flags:
+        webbrowser.open(url)
+    httpd.serve_forever()

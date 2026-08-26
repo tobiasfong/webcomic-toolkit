@@ -202,6 +202,24 @@ the moment it drew. Two checks that do catch things:
 
 - The command is `launcher web_build`. `distribute --package web` produces a
   zip of game files with no runtime, and `--launch` starts a server and exits.
+- **Pass the launcher as an ABSOLUTE path.** `renpy.exe launcher web_build
+  <project>` resolves `launcher` against the CURRENT DIRECTORY, not against the
+  SDK, so it works when run from the SDK folder and fails everywhere else:
+
+      Base directory 'C:/.../launcher' does not exist. Giving up.
+
+  That message names the caller's directory, so it reads as a missing or
+  corrupted SDK. The SDK is fine; only the argument was relative. Write
+  `renpy.exe "<sdk>\launcher" web_build "<project>"` and the cwd stops
+  mattering. A double-clicked launch script is exactly the case that exposes
+  this, because its cwd is its own folder rather than the SDK's.
+- **Bind the port before opening the browser.** A script that opens the browser
+  and then starts the server races it, and the reader gets
+  `ERR_CONNECTION_REFUSED` — indistinguishable from a build that failed.
+  `serve_web.py --open` opens it after the socket is listening.
+- **The port is part of the save file's address.** Browser saves are per
+  origin, so serving on a different port hides every existing save without
+  deleting anything. Pick one port and keep it.
 - Serve over HTTP; browsers block WebAssembly and service workers on `file://`.
   `python -m http.server` drops Ren'Py's large concurrent fetches — the server
   needs threading and Range support.
