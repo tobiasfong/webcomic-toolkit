@@ -137,7 +137,14 @@ def generate_background(
         from PIL import Image
         with Image.open(match_canvas_to) as im:
             cw, ch = im.size
-        MAX_SIDE = 1024                      # 6 GB VRAM ceiling for FLUX
+        # 1600, not 1024. The old value was labelled a "6 GB VRAM ceiling",
+        # but VRAM is not the constraint on this card -- ComfyUI streams weights
+        # from system RAM, and plates render at 1600x896 routinely. The cap was
+        # silently downscaling a matched canvas (1600x896 -> 1024x560), so a
+        # plate composited behind full-size figures came back small and soft.
+        # Kept as a cap rather than removed: FLUX starts duplicating elements
+        # past roughly 2 MP, and 1600x896 is 1.43 MP.
+        MAX_SIDE = 1600
         k = min(1.0, MAX_SIDE / max(cw, ch))
         width = max(256, int(cw * k) // 16 * 16)
         height = max(256, int(ch * k) // 16 * 16)
