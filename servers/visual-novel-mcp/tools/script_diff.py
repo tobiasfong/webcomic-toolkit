@@ -80,12 +80,20 @@ SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
 
 
 def normalize(t):
-    t = SPEAKER.sub("", t).strip()
-    t = ANNOTATION.sub("", t).strip()
-    t = t.strip("「」")          # Japanese quotation brackets around written text
-    t = t.strip('“”"')
+    # ⚠ TYPOGRAPHY FIRST, STRUCTURE SECOND. A word processor writes curly
+    # apostrophes, so a speaker label like `Keeper of the King’s Seal:` does
+    # NOT match a speaker pattern whose character class contains only the
+    # straight quote -- the prefix survives, and the block reports as CHANGED
+    # forever no matter how correctly it was converted. Stripping the prefix
+    # before normalizing the quotes made the fix depend on every project's
+    # patterns.json listing both characters; doing it in this order fixes it
+    # once, for every name.
     for a, b in (("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"')):
         t = t.replace(a, b)
+    t = SPEAKER.sub("", t).strip()
+    t = ANNOTATION.sub("", t).strip()
+    t = t.strip("「」")  # Japanese quotation brackets around written text
+    t = t.strip('"')
     return " ".join(t.split())
 
 

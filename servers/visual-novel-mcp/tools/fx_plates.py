@@ -164,9 +164,42 @@ def crescent(hue, seed=7):
     return light(mask, hue)
 
 
+def streak(hue, start=(0.74, 0.18), end=(0.33, 0.56), head=15, tail=3,
+           steps=110):
+    """A small object crossing frame at speed: a tapered trail with a hot head.
+
+    NOT beam(). A beam is a full-frame blade struck through the centre -- an
+    attack. A thrown object is short, off-centre, thickest where the thing
+    actually is, and fading to nothing behind it. Using the attack shape for a
+    tossed object would read as someone striking at the viewer, which is the
+    opposite of the beat.
+
+    Drawn head-last so the brightest marks land on top, and paired with a round
+    head glow so the leading end reads as an object catching light rather than
+    as the end of a line.
+    """
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+    x0, y0 = start[0] * W, start[1] * H
+    x1, y1 = end[0] * W, end[1] * H
+    for i in range(steps):
+        t0, t1 = i / steps, (i + 1) / steps
+        # Cubic taper: the trail thins fast behind the head rather than
+        # sloping evenly, which is what makes it read as motion.
+        w = tail + (head - tail) * (t0 ** 3)
+        v = int(40 + 215 * (t0 ** 2.2))
+        d.line([(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0),
+                (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)],
+               fill=v, width=max(1, int(round(w))))
+    r = head * 1.35
+    d.ellipse([x1 - r, y1 - r, x1 + r, y1 + r], fill=255)
+    return light(mask, hue)
+
+
 ICE = (120, 214, 255)
 QI = (150, 96, 255)
 BLAST = (255, 150, 70)
+GOLD = (255, 198, 74)
 
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
@@ -182,6 +215,11 @@ plates = {
     "crescent_ice": crescent(ICE),
     # An explosive going off.
     "burst_blast": convergence((W * 0.50, H * 0.56), 170, BLAST, seed=303),
+    # A small object thrown across frame. Shown ADDITIVELY rather than as an
+    # opaque plate: the other plates cut the scene to black for an impact, and
+    # blacking out a quiet conversation for a thrown object would hit far
+    # harder than the moment is.
+    "streak_gold": streak(GOLD),
 }
 
 for name, img in plates.items():
