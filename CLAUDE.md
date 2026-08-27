@@ -479,6 +479,38 @@ as lying on his *side*.
   one run. Two wrong diagnoses were chased first, the matting stage and the
   style LoRA's strength; neither was at fault.
 
+- **⚠ BUT BLUR IS NOT ALWAYS THE PROMPT — MEASURE BEFORE YOU REWRITE.** The rule
+  above is real and still first to check, but it is not the only cause, and
+  assuming it is will send you rewriting a prompt that was already correct.
+
+  Measured 2026-08-28 on a minor character. Three draws, **byte-identical
+  wording**, only the seed changed. The prompt contained no "soft", no
+  negation, and already carried the positives above:
+
+  | seed | sharpness | clearance below the feet |
+  |---|---|---|
+  | first | **1.23** | 17 px |
+  | second | 9.35 | **0 px — legs cut off** |
+  | third | 7.36 | 43 px |
+
+  The first was the softest figure in the entire cast; the rest sit between 6
+  and 9. So a render can come back badly soft on wording that is already right,
+  and the fix is a REROLL, not a rewrite. Same trap as the back-view aspect
+  theory elsewhere in this file: one sample cannot separate a setting from a
+  seed.
+
+  **The measurement is cheap and free of token cost** — mean gradient magnitude
+  over the OPAQUE INTERIOR (erode the alpha first, or a soft matte edge scores
+  as a soft drawing). Compare against the other sprites rather than against an
+  absolute: it is the outlier that matters, and the scale depends on the art.
+
+  ⚠ **Check every gate on every reroll.** The second draw fixed the softness and
+  broke the framing — the terminal-feature clause ("clear empty space below his
+  shoes") is a bias, not a guarantee, and that draw ignored it and cropped the
+  legs. Two rerolls failed on two DIFFERENT criteria. Score sharpness and
+  clearance together before showing the author anything, or you trade one defect
+  for another and burn a review round finding out.
+
 - **⚠ NEVER answer "the model will not turn this character" with "draw it
   yourself."** This server is for everyone, not just artists — anyone who can
   draw a back view on demand does not need a character generator. That answer is

@@ -79,6 +79,19 @@ def load_patterns(path=None):
 SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
 
 
+def _speaks(t):
+    """True for `Name: something`, false for a bare heading like `Rules:`.
+
+    The speaker pattern alone is not enough to recognize dialogue: a spec
+    heading that ends in a colon matches it exactly, since the words before
+    the colon are just letters and spaces. What separates them is whether
+    anything FOLLOWS the colon -- dialogue has a line after the name, a
+    heading has nothing.
+    """
+    m = SPEAKER.match(t)
+    return bool(m) and bool(t[m.end():].strip())
+
+
 def normalize(t):
     # ⚠ TYPOGRAPHY FIRST, STRUCTURE SECOND. A word processor writes curly
     # apostrophes, so a speaker label like `Keeper of the King’s Seal:` does
@@ -111,7 +124,16 @@ def read_docx(path):
         if in_spec:
             # A spec block ends when a normal prose/dialogue line resumes --
             # judged by VOCABULARY first, length only as a backstop.
-            if SPEC_LINE.match(t) or len(t) < SPEC_SHORT:
+            #
+            # ⚠ A LINE OF DIALOGUE ALWAYS ENDS THE BLOCK, and is checked
+            # before the length backstop. Notes to the implementer never have
+            # a character speaking in them, while a line of dialogue is very
+            # often shorter than the backstop -- so without this, the first
+            # short line of returning dialogue is swallowed as spec and
+            # silently vanishes from the comparison, taking everything short
+            # after it as well.
+            if not _speaks(t) and (SPEC_LINE.match(t)
+                                   or len(t) < SPEC_SHORT):
                 continue
             in_spec = False
         out.append(normalize(t))
