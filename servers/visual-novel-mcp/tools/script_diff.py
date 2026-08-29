@@ -110,6 +110,47 @@ def normalize(t):
     return " ".join(t.split())
 
 
+def bind_interpolations(scr_text, doc):
+    """Let a line containing a Ren'Py substitution match the paragraph it came from.
+
+    WHY THIS EXISTS
+    ---------------
+    Some lines differ by a single word depending on the player's choices --
+    "I lower my hand" against "I lower my sword". That is ONE paragraph of
+    story and two presentations of it, so it belongs in the document once and
+    in the script once, as `I lower my [_limb]`.
+
+    Compared literally that never matches, and the block reports as CHANGED
+    forever. The two ways out without this function are both bad, and both
+    were tried: duplicate the paragraph in the AUTHOR'S master, which puts an
+    implementation detail into the story and is a chore he has to repeat; or
+    emit two nearly identical script lines, which trades a permanent CHANGED
+    for a permanent extra block. The author objected to being handed the first
+    one, correctly -- the document is the master of the story, not of how the
+    engine renders it.
+
+    So a substitution is treated as a wildcard matching one word. The
+    paragraph stays single, the script line stays single, and the two agree.
+
+    Lines carrying `[[` are skipped: that is an ESCAPED literal bracket in the
+    author's own text, not a tag, and treating it as one would silently match
+    the wrong paragraph.
+    """
+    out = []
+    for t in scr_text:
+        if "[" not in t or "[[" in t:
+            out.append(t)
+            continue
+        parts = re.split(r"\[[^\]]+\]", t)
+        rx = re.compile("^" + r"\S+".join(re.escape(p) for p in parts) + "$")
+        hits = [d for d in doc if rx.match(d)]
+        # First match wins. If the author has ALSO duplicated the paragraph,
+        # the spare one is left to report as unconverted -- which is the right
+        # signal: it says the duplicate is no longer needed.
+        out.append(hits[0] if hits else t)
+    return out
+
+
 def read_docx(path):
     import docx
     out = []
@@ -235,7 +276,7 @@ def main():
     SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns(patterns)
     doc = read_docx(docx_path)
     scr = read_scenes(scenes)
-    scr_text = [t for t, _ in scr]
+    scr_text = bind_interpolations([t for t, _ in scr], doc)
 
     print(f"docx : {len(doc)} blocks  ({os.path.basename(docx_path)})")
     print(f"rpy  : {len(scr_text)} blocks  ({len(set(f for _, f in scr))} scene files)")
