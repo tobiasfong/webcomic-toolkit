@@ -376,8 +376,12 @@ YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
 STEEL = (196, 220, 255)       # an enemy's mundane blade: cold, slightly dim
 SILVER = (232, 240, 252)      # the sword style: a bright colorless flash
 AZURE = (64, 150, 255)        # the ice spells
-VOID_RIM = (208, 216, 228)    # the yin arc's edge: colorless, so the arc
-                              # itself reads as black rather than as purple
+# The yin arc's edge. AZURE rather than colorless, and the reason is
+# legibility rather than palette: the arc's body is a void and the plate
+# behind it is black, so with a white rim the whole effect can vanish into
+# the frame it is drawn on. A colored edge is what keeps a black shape
+# readable against black.
+VOID_RIM = AZURE
 
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
