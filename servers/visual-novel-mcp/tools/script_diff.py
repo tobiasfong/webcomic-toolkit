@@ -205,6 +205,18 @@ def main():
                  "Paths are deliberately not stored in this repository.")
     docx_path, scenes = sys.argv[1], sys.argv[2]
 
+    # ⚠ ACCEPT THE GAME DIRECTORY TOO, because being handed it instead of
+    # scenes/ produces GARBAGE RATHER THAN AN ERROR, and the garbage is
+    # convincing. game/ globs to combat.rpy, gui.rpy, screens.rpy and the rest,
+    # so style names and hex colors get read as dialogue blocks and reported as
+    # rewritten prose. The block counts look plausible, every line of the diff
+    # is nonsense, and nothing says which. It cost a wrong conclusion that this
+    # tool was broken when the argument was simply one level too high.
+    #
+    # vnpaths.game_dir already accepts either spelling for the same reason.
+    if os.path.isdir(os.path.join(scenes, "scenes")):
+        scenes = os.path.join(scenes, "scenes")
+
     global SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION
     # Look beside the scenes, then up the tree -- the natural homes are the
     # game directory and the project directory, and guessing only one of them

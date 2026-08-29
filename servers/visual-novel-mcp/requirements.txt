@@ -1,3 +1,8 @@
 # mcp 2.0.0 removed mcp.server.fastmcp — the <2 bound is load-bearing (see repo CLAUDE.md)
 mcp>=1.2.0,<2
 pillow>=10.0
+# script_diff.py and sync_cards.py both `import docx`. It was missing here, so a
+# fresh clone could install this server cleanly and still not run its own tools —
+# the failure is a ModuleNotFoundError at the moment you need the tool, not at
+# install time, which is the worst place for it to surface.
+python-docx>=1.1
