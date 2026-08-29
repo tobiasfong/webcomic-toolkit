@@ -801,6 +801,41 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 
   Safe asks: eyes closing, head lowering/nodding, hair and
   cloth drift, fire/water/particles, glow pulsing.
+
+  ⚠ **BUT "CLOTH AND HAIR DRIFT" DOES NOT HOLD ON FLAT CEL-SHADED ART.**
+  Measured 2026-08-29 on a title illustration: four figures, crisp black
+  linework, flat color. Two runs on the same figure, dev, strength 0.9,
+  fps 48:
+
+  | canvas | frames | motion | result |
+  |---|---|---|---|
+  | 768x1088 | 25 | 33.68 | face survived, HANDS destroyed |
+  | 896x1280 | 17 | 29.24 | hands better, still tearing |
+
+  Resolution IS the lever for hands, as recorded elsewhere in this file, and
+  the extra 37% of pixels visibly helped — but the cloth never actually moved.
+  What came back was a SHIMMER across the fabric, which the author identified
+  precisely: it reads as heat haze, not as folds. The model has no fold
+  structure to move on flat color, so it displaces pixels instead.
+
+  A drawn sine displacement over the same regions produced the identical
+  effect, which is the confirmation: a smooth periodic displacement over an
+  area IS the standard heat-haze shader. Cloth reads as cloth because folds
+  have EDGES that travel as a unit; nothing that moves pixels continuously
+  can imitate that. Convincing fabric motion needs per-garment masks — real
+  art work — not a better prompt or a bigger canvas.
+
+  So for a static title screen the answer remains the additive glow ambience,
+  which never touches the drawing at all.
+
+  ⚠ ALSO: LTX SIZE IS A HARD CEILING, not a soft one. `pick_size` maximizes
+  pixels within the card's budget, and a tall crop (0.59 aspect) drove it to
+  1024x1728 — 1.77 MP against the working recipe's 0.84. That run made NO
+  progress in 25 minutes: system RAM fell to 5.3 GB free and the working set
+  went to disk. The same job at 768x1088 finished in 285 s. The budget that
+  matters is pixels x frames, so resolution can be bought back by shortening
+  the clip: 896x1280 at 17 frames (19.5 MP-frames) ran fine where 1024x1728
+  at 25 (44) did not.
   Unsafe asks: head or body turning, limbs travelling far, anything revealing a
   surface not visible in the source.
 
