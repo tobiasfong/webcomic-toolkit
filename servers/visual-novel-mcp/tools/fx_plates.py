@@ -379,7 +379,7 @@ plates = {
     "slash_qi": beam(math.radians(28), 26, QI),
     # Frost answering, in the bandit fight.
     "burst_ice": convergence((W * 0.55, H * 0.46), 130, ICE, seed=202),
-    # The Glacial Wall freeze.
+    # The defensive ice barrier.
     "crescent_ice": crescent(ICE),
     # An explosive going off.
     "burst_blast": convergence((W * 0.50, H * 0.56), 170, BLAST, seed=303),
@@ -388,10 +388,10 @@ plates = {
     # blacking out a quiet conversation for a thrown object would hit far
     # harder than the moment is.
     "streak_gold": streak(GOLD),
-    # Icicle Lance: a rigid spear thrown from the caster's corner of the
+    # The ice lance: a rigid spear thrown from the caster's corner of the
     # battle stage toward the enemies' corner.
     "lance_ice": lance(ICE),
-    # Crescent Slash: the yin arc, a void with a lit edge. See dark_crescent()
+    # The yin arc: a void with a lit edge. See dark_crescent()
     # for why this one cannot be an additive plate like the ice.
     "crescent_dark": dark_crescent(YIN),
 }
