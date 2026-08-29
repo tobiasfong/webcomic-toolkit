@@ -368,8 +368,16 @@ QI = (150, 96, 255)
 BLAST = (255, 150, 70)
 GOLD = (255, 198, 74)
 YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
-STEEL = (196, 220, 255)       # a mundane blade: cold white, no ki color
-AZURE = (74, 158, 255)         # the protagonist's own ki
+# ⚠ COLOR IS ASSIGNED PER TECHNIQUE, NOT PER CHARACTER, and getting that
+# backwards has already produced two wrong plates. The protagonist's ice is
+# AZURE, his sword style is SILVER, and his yin technique is BLACK -- three
+# different looks for one man. Meanwhile the purple above is a different
+# character's ki entirely. Do not reach for a plate because the shape fits.
+STEEL = (196, 220, 255)       # an enemy's mundane blade: cold, slightly dim
+SILVER = (232, 240, 252)      # the sword style: a bright colorless flash
+AZURE = (64, 150, 255)        # the ice spells
+VOID_RIM = (208, 216, 228)    # the yin arc's edge: colorless, so the arc
+                              # itself reads as black rather than as purple
 
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
@@ -392,10 +400,10 @@ plates = {
     "streak_gold": streak(GOLD),
     # The ice lance: a rigid spear thrown from the caster's corner of the
     # battle stage toward the enemies' corner.
-    "lance_ice": lance(ICE),
+    "lance_ice": lance(AZURE),
     # The yin arc: a void with a lit edge. See dark_crescent()
     # for why this one cannot be an additive plate like the ice.
-    "crescent_dark": dark_crescent(YIN),
+    "crescent_dark": dark_crescent(VOID_RIM),
     # AN ENEMY'S SWING, which has to be told apart from the player's at a
     # glance because the two land seconds apart in the same frame.
     #
@@ -405,13 +413,27 @@ plates = {
     # direction of its own, so tilt is the only geometric cue available;
     # reusing the player's plate would read as the player swinging on the
     # enemy's turn.
-    "slash_steel": beam(math.radians(-24), 22, STEEL),
-    # THE PROTAGONIST'S OWN KI, and it is a different color from the purple
-    # above on purpose. That purple belongs to another character entirely --
-    # it is what the scenes use for HIS pressure, answered by the
-    # protagonist's frost. Reusing it for the protagonist's sword paints one
-    # character's attack in another's signature.
-    "slash_azure": beam(math.radians(28), 24, AZURE),
+    # ⚠ POSITIVE ANGLES LEAN "\", NOT "/". Screen y increases DOWNWARD, so
+    # +24 degrees runs upper-left to lower-right. Getting this backwards is
+    # easy and silent -- the plate still looks like a slash, just the wrong
+    # way -- so check the sign against the stage rather than the intuition.
+    #
+    # The battle stage puts the player lower-left and the enemies upper-right,
+    # which makes "/" the axis an attack actually travels along. The player
+    # gets that axis; the enemy's swing is deliberately CROSSED against it,
+    # which is the only cue a symmetric line can carry about who is swinging.
+    "slash_steel": beam(math.radians(24), 22, STEEL),
+    # THE SWORD STYLE: silver, which is also the word the prose uses for it.
+    #
+    # ⚠ It is NOT the purple above. That belongs to a different character --
+    # the scenes use it for his pressure, and the protagonist answers it with
+    # frost rather than sharing it.
+    #
+    # This and slash_steel are deliberately close in color, because both are
+    # ordinary blades catching light and dressing one of them up would be a
+    # lie about what it is. They are told apart by TILT, by this one being
+    # brighter and heavier, and by the line that names who swung.
+    "slash_silver": beam(math.radians(-28), 27, SILVER),
 }
 
 for name, img in plates.items():
