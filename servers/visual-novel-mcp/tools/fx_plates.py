@@ -368,6 +368,8 @@ QI = (150, 96, 255)
 BLAST = (255, 150, 70)
 GOLD = (255, 198, 74)
 YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
+STEEL = (196, 220, 255)       # a mundane blade: cold white, no ki color
+AZURE = (74, 158, 255)         # the protagonist's own ki
 
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
@@ -394,6 +396,22 @@ plates = {
     # The yin arc: a void with a lit edge. See dark_crescent()
     # for why this one cannot be an additive plate like the ice.
     "crescent_dark": dark_crescent(YIN),
+    # AN ENEMY'S SWING, which has to be told apart from the player's at a
+    # glance because the two land seconds apart in the same frame.
+    #
+    # Two things separate them, both deliberate. The TILT is mirrored -- the
+    # player's beam leans one way and this leans the other -- and the COLOR is
+    # plain steel rather than ki. A slash is a symmetric line and carries no
+    # direction of its own, so tilt is the only geometric cue available;
+    # reusing the player's plate would read as the player swinging on the
+    # enemy's turn.
+    "slash_steel": beam(math.radians(-24), 22, STEEL),
+    # THE PROTAGONIST'S OWN KI, and it is a different color from the purple
+    # above on purpose. That purple belongs to another character entirely --
+    # it is what the scenes use for HIS pressure, answered by the
+    # protagonist's frost. Reusing it for the protagonist's sword paints one
+    # character's attack in another's signature.
+    "slash_azure": beam(math.radians(28), 24, AZURE),
 }
 
 for name, img in plates.items():
