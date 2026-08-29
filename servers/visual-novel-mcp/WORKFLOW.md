@@ -48,6 +48,29 @@ memory (repo rule). Event CGs use the normal panel pipeline and its rules.
 Every one of these was hit in practice and cost real debugging. They are
 grouped by what they break, and none of them are caught by `renpy lint`.
 
+### A bare string in a `label` is a SAY STATEMENT, not a docstring
+
+A label is Ren'Py SCRIPT, not a Python function. A triple-quoted string at
+the top of one is not documentation — it is narration, and it is read to the
+player every time the label runs.
+
+Written out of Python habit on a helper label called by every attack in a
+fight, this narrated three paragraphs about millisecond timing to the player
+on each swing, mid-combat. It reached a screenshot before anyone caught it.
+
+Nothing warns you. It is valid script, so `lint` passes and the word count
+rises by an amount nobody is watching. What makes the habit feel safe is that
+functions inside an `init python:` block in the same file DO take real
+docstrings — so the convention is correct four lines away from where it
+speaks.
+
+    label battle_fx(plate):
+        """Play one attack's impact."""     # <- SPOKEN ALOUD
+        $ ...
+
+Use `#` comments above the label instead. To audit: for every line matching
+`^label\s`, the next non-blank line must not start with `"""` or `'''`.
+
 ### Text substitution EVALUATES what is inside the brackets
 
 `[name]` is not a format key — Ren'Py evaluates the expression. So a menu
