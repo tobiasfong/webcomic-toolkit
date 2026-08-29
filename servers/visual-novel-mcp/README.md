@@ -96,6 +96,12 @@ against recorded SHA-256 hashes, and records where it put them. Nothing else
 should ever contain an SDK path — resolve it through `tools/renpy_sdk.py`,
 which reads an explicit argument, then `RENPY_SDK`, then that record.
 
+Then build and play it in a browser:
+
+```
+python tools/build_web.py <project-dir> --serve --open
+```
+
 ⚠ The version is pinned deliberately. The engine traps in WORKFLOW.md were
 measured against 8.5.3 and `renpy lint` catches none of them, so `--version`
 moves ground that this repository has notes about.

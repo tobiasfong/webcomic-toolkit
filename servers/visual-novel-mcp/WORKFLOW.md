@@ -170,6 +170,9 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `make_nvl_scrim.py` | draws the NVL scrim gradient |
 | `make_battle_ui.py` | draws the battle panel and selection cursor as 9-patch frames |
 | `serve_web.py` | serves a web build with threading and Range support |
+| `install_renpy.py` | downloads the pinned SDK and its separate web component |
+| `renpy_sdk.py` | resolves where that SDK is — nothing else may hold a path |
+| `build_web.py` | builds the browser version, and can serve it |
 
 The drawing tools exist because their output is GEOMETRY — lines meeting at a
 vanishing point, an arc of exact curvature, a rounded panel that stretches
