@@ -111,7 +111,7 @@ def fit(img: Image.Image, size: tuple[int, int], mode: str = "contain",
     resizing each to 16:9 squashes faces on nearly every one. That is the kind
     of damage nobody notices in a still and everybody notices in motion.
 
-    "contain" letterboxes onto `background`; "cover" fills and centre-crops.
+    "contain" letterboxes onto `background`; "cover" fills and center-crops.
     """
     W, H = size
     if img.size == (W, H):

@@ -11,17 +11,17 @@ compose_panel.py / compose_strip.py.
 
 Method: threshold to a foreground mask, label connected components, keep the
 largest one (the subject) and flood every other component with the crop's own
-background colour (sampled as the median border pixel, so it works on white,
+background color (sampled as the median border pixel, so it works on white,
 light-gray, or a flat tint alike). This also clears the thin dark edge strip
 Kontext output often carries, since that is its own small component.
 
 "Largest component" rather than anything cleverer on purpose: an earlier
 version picked the component owning the topmost pixel nearest the horizontal
-centre, reasoning that is a centred figure's head. On a crop with a 4px dark
+center, reasoning that is a centered figure's head. On a crop with a 4px dark
 strip along the top edge, that strip won and the entire figure was painted
 out. Area is the property that actually distinguishes a subject from bleed.
 
-Limitations: assumes the subject is the centre figure and is not touching a
+Limitations: assumes the subject is the center figure and is not touching a
 neighbour. If a neighbour overlaps the subject they are one component and this
 cannot separate them — recrop or repaint by hand instead.
 
@@ -50,7 +50,7 @@ def clean_crop(image_path, out=None, threshold=225, min_area=200):
     im = Image.open(image_path).convert("RGB")
     arr = np.array(im).astype(int)
 
-    # background colour = median of the 1px border (robust to a stray dark edge)
+    # background color = median of the 1px border (robust to a stray dark edge)
     border = np.concatenate([arr[0], arr[-1], arr[:, 0], arr[:, -1]])
     bg = np.median(border, axis=0).astype(int)
 

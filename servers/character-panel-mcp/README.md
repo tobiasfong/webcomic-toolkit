@@ -106,7 +106,7 @@ is that the tiers were a way to approximate what Kontext does directly.
 reference is missing, if an unregistered image is lurking in a character folder,
 or if the primary reference can't be traced back to an approved sheet. That check
 exists because a silently wrong reference once propagated a character's wrong
-hair colour through a run of finished panels before anyone noticed. Provenance
+hair color through a run of finished panels before anyone noticed. Provenance
 that was searched for and genuinely lost is recorded as `"irrecoverable: <why>"`
 and reported as a NOTE instead — the check is meant to catch provenance nobody
 looked for, and a gate that can never go green is a gate nobody runs.
@@ -626,7 +626,7 @@ CHANGELOG — it worked, and was still the wrong tool:
   is a post-process and does not compete with identity conditioning, so you can
   generate normally with full Kontext identity and matte afterwards.
 
-`tools/cutout.py`'s colour keying is superseded for figures: it cannot separate
+`tools/cutout.py`'s color keying is superseded for figures: it cannot separate
 pale fabric from a pale backdrop by construction, which is why it carries a
 `pale_figure_risk` flag and clamps tolerance at 110 when the measured value
 wanted 173–187.

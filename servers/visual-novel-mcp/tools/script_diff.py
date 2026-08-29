@@ -150,7 +150,7 @@ def scene_order(scenes_dir):
     and it cannot drift, because it is what the engine executes.
 
     Falls back to alphabetical if the chain is broken or branches, which is
-    the honest behaviour: a branching story has no single order, and this tool
+    the honest behavior: a branching story has no single order, and this tool
     is for linear drift-checking.
     """
     files = sorted(glob.glob(os.path.join(scenes_dir, "*.rpy")))

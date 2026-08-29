@@ -84,7 +84,7 @@ Three reasons to leave it alone unless something forces the issue:
 
 ORDER OF ESCALATION, agreed with the author: run the series at Q4_K_M · if
 quality is a problem, try LTXVAddGuide and prompt/resolution work · only if
-those fail, test Q6_K — and test it on p07 of the murim scene, where Q4's
+those fail, test Q6_K — and test it on p07 of the martial-arts scene, where Q4's
 sword-hand deformation across f11-f16 is a known, reproducible failure to
 compare against.
 
@@ -97,7 +97,7 @@ character's hair, eyes, costume or footwear into a prompt from memory or from
 looking at a panel.
 
 What happened when this was broken: a hand-written prompt gave a character the
-wrong hair colour and dropped his eye colour entirely. His bible had carried
+wrong hair color and dropped his eye color entirely. His bible had carried
 both correctly the whole time. The wrong values propagated into a finished panel
 and were only caught sessions later.
 
@@ -338,7 +338,7 @@ because skipping it cost a re-render.
 
 The single most expensive mistake in this pipeline. If the figures are drawn
 flat and the plate is a corridor converging on a vanishing point, the panel
-reads as pasted no matter how well the colour and placement are matched — the
+reads as pasted no matter how well the color and placement are matched — the
 error is geometric, not tonal. A supine figure on a converging ground even reads
 as lying on his *side*.
 
@@ -580,7 +580,7 @@ as lying on his *side*.
   cast not in a full-length wrapped robe. Run with no `extra_prompt` at all she
   came back in a crop top, jeans and trainers; other rolls produced a school
   sailor uniform, laced combat boots and a mini skirt. A robed silhouette has no
-  modern analogue for the prior to pull toward, which is why every robed
+  modern analog for the prior to pull toward, which is why every robed
   character worked first or second time. If a design maps onto common anime
   character-sheet wardrobe, expect to fight for it.
 
@@ -623,7 +623,7 @@ as lying on his *side*.
   asked to move it, which looked safe because an emblem RECOLOR had worked on
   another character. It did not move: measured over the upper body, the blue
   pixel count fell 33840 -> 24812 and the mean x slid from 453 to 412 against a
-  figure centre of 408, i.e. the marking diffused toward the spine and partly
+  figure center of 408, i.e. the marking diffused toward the spine and partly
   dissolved rather than relocating. A recolor changes a surface in place; a MOVE
   has to reconstruct plain fabric where the emblem was, which is the
   invent-what-lies-underneath problem that always fails.
@@ -633,8 +633,8 @@ as lying on his *side*.
   it is the entire mechanism. On a back view the crossed collar barely reads,
   so there is nothing else to repaint.
 
-  Check the side numerically rather than by eye: mask the emblem colour, take
-  its mean x over the upper body, compare against the figure's bbox centre.
+  Check the side numerically rather than by eye: mask the emblem color, take
+  its mean x over the upper body, compare against the figure's bbox center.
 
   ⚠ Note which way the author is reading "left". On a figure seen from behind,
   the character's own left shoulder appears on the VIEWER'S RIGHT. Measure where
@@ -689,7 +689,7 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   get it. So ask for the least motion that reads, and let the impact FX
   (speedlines, flash, shake) carry the rest. That is also what anime does: it
   sells a hit with the hit, not with the travel.
-- **Style survives regardless** — cel shading, linework, colour and background
+- **Style survives regardless** — cel shading, linework, color and background
   hold in every run; no drift toward photoreal. Verified on generated panels
   *and* hand-drawn illustrations. It is specifically **faces** that degrade.
 - Favour mid/long shots for animation; keep close-ups static or nearly so. Keep
@@ -755,8 +755,9 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 
   **Never ask for ROTATION.** Turning a head or body needs an angle the drawing
   does not contain, so the model invents it and the face smears. Measured: a
-  head *lowering* (Silvia) stayed clean; a head *turning from profile toward the
-  viewer* (Matsuyama) degraded the eye and hair. Word prompts to forbid it —
+  head *lowering* (a portrait shot) stayed clean; a head *turning from
+  profile toward the viewer* (a second portrait) degraded the eye and hair.
+  Word prompts must forbid it —
   "tilts her head down, still facing the same way" — because a loose phrase like
   "lowers and tilts his head" is enough for the model to rotate him.
 
@@ -770,7 +771,7 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 
   > ⚠ **UNVERIFIED — the rules in this block need re-testing.** They were each
   > drawn from a single run, and the seed was changed between runs. The same
-  > shot (Matsuyama) moved at 35.6 with a diminutive-heavy prompt on seed 201
+  > shot (that second portrait) moved at 35.6 with a diminutive-heavy prompt on 201
   > and FROZE at 2.29 with a plain prompt on seed 401 — the opposite of what
   > "diminutives freeze it" predicts. Seed variance is the uncontrolled
   > variable. Before trusting any of this, run the same prompt across 3+ seeds
@@ -944,7 +945,7 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
 
   **Keep two versions of every lyric.** The written one for humans (kanji,
   poetic line breaks) and a model-input one (singing-phrase line breaks,
-  ambiguous words spelled out). They are different artefacts; nobody but the
+  ambiguous words spelled out). They are different artifacts; nobody but the
   model sees the second.
 
   **Some words are simply misread, and kana fixes them — but NOT plain
@@ -1007,8 +1008,8 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
 
   **Requesting a relative minor does nothing — it is the same seven notes.**
   Asking for `B minor` returns audio that measures as **D major** (its relative
-  major); `E minor` measures as **G major**. This is not the analyser failing,
-  it is what a relative pair *is*. Picking B minor to "keep the tonal centre
+  major); `E minor` measures as **G major**. This is not the analyzer failing,
+  it is what a relative pair *is*. Picking B minor to "keep the tonal center
   related to the D major they liked" was exactly backwards: sharing a pitch
   collection is what made it unable to change the mood. To actually shift mood,
   count how many notes differ from the current key — D→B minor differs by 0,

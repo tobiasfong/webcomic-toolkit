@@ -43,7 +43,7 @@ def sky_mask(im, tol=42):
     across the whole frame put mold in the clouds -- which is exactly what the
     first version did.
 
-    A flood from the top is used rather than a colour test because sky is the
+    A flood from the top is used rather than a color test because sky is the
     one region guaranteed to touch the top edge and to be interrupted by the
     roofline. It therefore works on a night-graded plate as well as a daylight
     one, where a blue-vs-red test would not.
@@ -69,7 +69,7 @@ def sky_mask(im, tol=42):
                 seen[ny * W + nx] = 1
                 q.append((nx, ny))
 
-    # ⚠ FILL THE HOLES. The flood stops wherever colour departs from the top-row
+    # ⚠ FILL THE HOLES. The flood stops wherever color departs from the top-row
     # reference, which includes CLOUDS -- so a first version masked the blue but
     # left every cloud unprotected, and grime survived inside them. Anything
     # above the lowest sky pixel in a column is also sky.

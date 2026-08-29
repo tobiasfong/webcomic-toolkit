@@ -3,7 +3,7 @@ citygen.py — procedural 3D gothic city, rendered headless to a ControlNet sket
 
 The "Metropolis mode" of the background generator: builds a seeded, reproducible
 3D city (street canyon converging on a landmark cathedral, layered skyline) and
-renders a flat-grey *lineart pass* with a tiny software rasterizer — no GPU, no
+renders a flat-gray *lineart pass* with a tiny software rasterizer — no GPU, no
 browser, no 3D engine. The render is only a composition skeleton: its Canny edge
 map drives ControlNet, and the checkpoint paints all the beauty on top.
 
@@ -67,7 +67,7 @@ class _Mesh:
 
 
 def _grey(i: int) -> int:
-    """Distinct flat grey per mesh -> silhouette edges everywhere, no shading."""
+    """Distinct flat gray per mesh -> silhouette edges everywhere, no shading."""
     g = 0.15 + 0.65 * ((i * 2654435761) % 97) / 97
     return int(g * 255)
 
@@ -84,7 +84,7 @@ def build_city(seed: int = 40001):
 
 
 def _adder(meshes):
-    """Appender that assigns each mesh its distinct flat grey."""
+    """Appender that assigns each mesh its distinct flat gray."""
     def add(v, f):
         meshes.append(_Mesh(v, f, _grey(len(meshes))))
     return add
@@ -180,7 +180,7 @@ def build_from_plan(plan: dict):
 
 
 def plan_centroid(plan: dict, focus: str | None = None):
-    """A point worth looking at: a named district's centre, or the plan centroid."""
+    """A point worth looking at: a named district's center, or the plan centroid."""
     ds = plan.get("districts", [])
     if not ds:
         return (0.0, -400.0)
@@ -231,7 +231,7 @@ def camera_for(preset: str, focus) -> dict:
 
 
 # ---------------------------------------------------------------- rasterizer --
-# One world unit ≈ 0.37 m (buildings are 14-42 units ≈ 4-12 storeys), so a
+# One world unit ≈ 0.37 m (buildings are 14-42 units ≈ 4-12 stories), so a
 # standing adult is ~4.6 units tall. Used by the character anchor.
 HUMAN_HEIGHT = 4.6
 
@@ -287,7 +287,7 @@ def _rasterize(draw, cam, width, height, near, background):
 
 def render_lineart(meshes, camera="vista", width=1344, height=732,
                    near=0.5) -> np.ndarray:
-    """Flat-grey painter's-algorithm render on white — the lineart pass.
+    """Flat-gray painter's-algorithm render on white — the lineart pass.
     Good enough for Canny; not a beauty render (SD supplies the beauty)."""
     cam = _resolve_cam(camera)
     gv, gf = _ground(np.array(cam["pos"], dtype=np.float64))

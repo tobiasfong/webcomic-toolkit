@@ -44,7 +44,7 @@ releases are tagged `character-panel-mcp@vX.Y.Z`.
 - **Do not "clean up" a matte by keying on brightness.** Brightness cannot
   distinguish a white shirt from a white backdrop. A scratchpad script that did
   so deleted a character's white shirt entirely (65,026 px, 24% of the figure)
-  and punched 32,592 px of holes through a mid-grey t-shirt. Size-based guards
+  and punched 32,592 px of holes through a mid-gray t-shirt. Size-based guards
   do not help — a genuine leg gap and a false positive on a garment were both
   ~6% of the figure. A learned matte makes the whole class of cleanup pass
   unnecessary: it keeps white garments AND cuts backdrop trapped inside the
@@ -88,13 +88,13 @@ It worked. It was still the wrong tool:
 Two findings from that work worth keeping:
 
 - **The white edge was NOT the decoder's fault**, which took the author pointing
-  out that a halo is a *trimming* artefact — a natively transparent generation
+  out that a halo is a *trimming* artifact — a natively transparent generation
   trims nothing, so the fringe must have been inherited as content. It was: the
-  grey-field reference the route required was itself built by colour-threshold
+  gray-field reference the route required was itself built by color-threshold
   trimming (rim 192.9 against a 130 fill), i.e. the very technique documented
   here as unable to separate pale fabric from a pale field. Rebuilding that
   reference with RMBG instead dropped its rim to **124.8**, at the fill.
-- **Colour-threshold trimming cannot be tuned out of it.** Hysteresis with a
+- **Color-threshold trimming cannot be tuned out of it.** Hysteresis with a
   bounded reach moved the reference rim only 192.9 → 184.7, and the generated
   edge only −11.5 → −13.9. Unbounded hysteresis flooded the white robe (13.9% of
   the image at threshold 210, 44.5% at 170) because light lineart does not
@@ -111,13 +111,13 @@ conditioning), but the number does not exist, so do not cite one.
 - **`matte_image()`** — learned matting (ComfyUI-RMBG, RMBG-2.0). Cuts an
   existing image out onto transparency in ~5 s: locked panels, approved concept
   panels, hand-drawn work. Measured on a white robe with white boots on a white
-  field — the case colour keying provably destroys — 46.6% transparent / 51.1%
+  field — the case color keying provably destroys — 46.6% transparent / 51.1%
   opaque / 2.3% soft edge, corners exactly 0.0000, boots and hair intact.
   Requires ComfyUI-RMBG (see README Step 3) — no model change on our side.
 
 ### Notes, each measured rather than assumed
 
-- **`cutout.py` colour keying is superseded for figures.** It cannot separate
+- **`cutout.py` color keying is superseded for figures.** It cannot separate
   pale fabric from a pale backdrop by construction — hence `pale_figure_risk`,
   and the clamp at 110 when the measured tolerance wanted 173–187.
 - **ComfyUI-RMBG's auto-downloader is broken against `huggingface_hub` 1.x**
@@ -177,7 +177,7 @@ of defaults, and ~1400 lines of graph code nobody executed.
   photography words, fighting `manwha_style` on every generation — and this
   server had no style suffix at all. Added `FLUX_STYLE_SUFFIX` naming only the
   medium (no lighting, mood or camera words). Verified live on a fixed seed:
-  distinct colours 857 → 382, luminance 0.577 → 0.786, photoreal → cel-shaded
+  distinct colors 857 → 382, luminance 0.577 → 0.786, photoreal → cel-shaded
   manhwa. Applies to txt2img only; `edit_image()` and the turnaround sheet
   inherit style from their reference. **This predated the migration** — it was
   invisible because every finished panel went through Kontext.
@@ -216,7 +216,7 @@ view, an expression crop and an action pose registered alongside.
 This is the root of a whole session's worth of "why is this detail wrong".
 
 ### Fixed — descriptions were missing canon that thirteen panels already showed
-One character's description omitted her eye colour, an accessory and her
+One character's description omitted her eye color, an accessory and her
 footwear, despite all three being consistent across every locked panel. Added,
 with full specs.
 
@@ -224,7 +224,7 @@ with full specs.
 There was **no way through the MCP interface to obtain a character's reference
 image path**. `list_characters` returns prose. So hand-writing appearance into
 prompts was not laziness, it was the only available route — and it is how a
-panel shipped with the wrong hair and eye colour for a character whose bible
+panel shipped with the wrong hair and eye color for a character whose bible
 had carried both correctly the whole time.
 
 Returns the description marked *use verbatim*, the primary ref flagged as the
@@ -347,7 +347,7 @@ lighting.
 ### Rewrote — `tools/cutout.py` for whole characters
 The original hue rules were built for a brown boot on a forest wash and failed
 completely on a character: "blue leads red" ate black hair and navy trousers,
-a neutral-grey rule ate the white shirt, a distance rule ate the skin. It now
+a neutral-gray rule ate the white shirt, a distance rule ate the skin. It now
 keys what is **connected to the image border**, so black, white and skin survive
 inside the figure at any value.
 
@@ -370,7 +370,7 @@ A third arm appeared on one seed and not on another **from the identical
 prompt**. An earlier theory that describing a limb repeatedly invites another
 one did not survive that test. Removing a spare limb by hand took six PIL passes
 and never came clean; re-rolling the seed cost eight minutes and worked. The
-CHANGELOG already said why the surgery fails: painting flat colour cannot
+CHANGELOG already said why the surgery fails: painting flat color cannot
 replace deleted linework, because it has no texture to stand in for what the
 lines were drawn on.
 
@@ -414,7 +414,7 @@ iterations before it was right:
   leaving lavender-tinted streaks behind on her thigh;
 - a hand-drawn polygon that covered only her STANDING leg, so the KICKING leg
   got no protection at all and picked up stray fabric and discoloration;
-- the sunlit dirt path passing the same skin colour test and becoming the
+- the sunlit dirt path passing the same skin color test and becoming the
   single largest "skin" region in the frame, punching holes in the skirt hem;
 - the mask including her face, so an earlier version of her head got pasted
   back a few pixels offset from the current one (Kontext rescales its own
@@ -504,7 +504,7 @@ wrist-length hanfu sleeve has nowhere to hang that the leg is not already using.
 No prompt or mask fixes that — the leg has to be posed clear of the arm line
 back at the depth render.
 
-### Fixed — mask edges leave the old colour behind
+### Fixed — mask edges leave the old color behind
 A recolour masked to the skirt left maroon fringes along the top and left edges,
 where the feather faded out before reaching them. Feathered masks need to extend
 past the region being changed, not stop at its boundary.
@@ -564,7 +564,7 @@ produces a correct hand.
 
 ### Known — masking hands out of the control map does not work
 Three attempts, three artifacts, one cause. Fading the hand disc to background
-produced a bright-rim/dark-centre gradient, which is the depth signature of a
+produced a bright-rim/dark-center gradient, which is the depth signature of a
 sphere: the model drew a translucent bubble over every hand. Flattening to
 wrist depth produced haloed discs. Blurring glowed. Hands sit on the silhouette
 edge, so any local edit there is visible against the background. The code

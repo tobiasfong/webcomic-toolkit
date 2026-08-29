@@ -7,7 +7,7 @@ frames on a single 15-panel scene, and the seven panels that came back clean
 were the ones that barely moved.
 
     DO NOT PICK A SIZE BY HAND — call pick_size(src_w, src_h). It matches the
-    ARTWORK'S OWN ASPECT and then maximises pixels inside a budget. A constant
+    ARTWORK'S OWN ASPECT and then maximizes pixels inside a budget. A constant
     cannot do this: LTXVImgToVideo silently resizes the input to whatever it is
     given, so a fixed "good default" stretches every panel of a different shape.
     1216x832 art at a 1920x1088 default ships 20% too wide, with no warning.

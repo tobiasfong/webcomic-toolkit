@@ -236,7 +236,7 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
                   bpm: int | None = None) -> dict:
     """Beat grid + energy envelope, so video cuts land on downbeats.
 
-    Pass a track_id (analyses its mp3, attaches beats.json to the record) or an
+    Pass a track_id (analyzes its mp3, attaches beats.json to the record) or an
     arbitrary audio_path. `bpm` is the EXPECTED tempo, not an override: detection
     still runs, and the two are reconciled (a measurement that is a harmonic of
     the expectation means the detector picked the wrong peak). For a generated

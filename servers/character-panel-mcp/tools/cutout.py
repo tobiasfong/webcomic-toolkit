@@ -4,7 +4,7 @@ This is the keying step for the solo-generate + composite route: generate a
 thing on its own, cut it out, paste it into the panel. Doing it by hand with a
 magic wand is the tedious part, and the part that does not scale to 15 panels.
 
-The keying is deliberately not a single global colour distance. Anime cel art
+The keying is deliberately not a single global color distance. Anime cel art
 puts near-identical values in unrelated places -- a boot's cream sole and human
 skin sit within a few RGB points of each other -- so a plain "select similar"
 either eats the sole or keeps the leg. Instead each unwanted class gets its own
@@ -31,17 +31,17 @@ def key_cutout(src: str, out: str, box=None, drop_skin: bool = False,
     if flat_backdrop:
         # A whole character on a flat pale backdrop cannot be keyed by hue.
         # Tried and failed: "blue leads red" eats black hair and navy trousers
-        # (near-black is slightly blue), and a neutral-grey rule eats the white
+        # (near-black is slightly blue), and a neutral-gray rule eats the white
         # shirt. Those rules were written for a brown boot on a forest wash.
         #
         # Instead: background is what is CONNECTED TO THE BORDER and close to
-        # the corner colour. That keeps white, black and skin inside the figure
+        # the corner color. That keeps white, black and skin inside the figure
         # no matter their value, and it takes the cast shadow with it, because
         # the shadow touches the border too.
         corner = np.median(np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]]), axis=0)
         dist = np.sqrt(((a - corner) ** 2).sum(axis=2))
         # Distance alone is not enough: pale SKIN sits about as close to a white
-        # backdrop as a grey shadow does, so a tolerance that caught the shadow
+        # backdrop as a gray shadow does, so a tolerance that caught the shadow
         # also erased the character's face and hands. What separates them is
         # temperature -- skin is warm (red leads blue by ~25), while the
         # backdrop and its cast shadow are neutral. Requiring neutrality keeps
@@ -90,7 +90,7 @@ def measure_backdrop_tol(src: str, box=None) -> tuple[float, dict]:
     either eats the costume or keeps the shadow. Live values ranged 14 to 120
     across two characters, which is why this exists.
 
-    Method: take the backdrop colour from the border, build the distance map,
+    Method: take the backdrop color from the border, build the distance map,
     and split it with Otsu. The backdrop is the near mode, the figure the far
     one; the threshold that separates them IS the tolerance. Returns the value
     plus the stats behind it, so a caller can report the number rather than
@@ -101,7 +101,7 @@ def measure_backdrop_tol(src: str, box=None) -> tuple[float, dict]:
         im = im.crop(box)
     a = np.array(im).astype(float)
 
-    # Backdrop colour = median of a border ring, robust to a figure touching an edge.
+    # Backdrop color = median of a border ring, robust to a figure touching an edge.
     k = max(2, min(a.shape[0], a.shape[1]) // 50)
     ring = np.concatenate([a[:k].reshape(-1, 3), a[-k:].reshape(-1, 3),
                            a[:, :k].reshape(-1, 3), a[:, -k:].reshape(-1, 3)])
@@ -114,7 +114,7 @@ def measure_backdrop_tol(src: str, box=None) -> tuple[float, dict]:
     if total == 0:
         return 120.0, {"backdrop_rgb": tuple(bg.round().astype(int)), "note": "empty"}
 
-    # Otsu: maximise between-class variance over the distance histogram.
+    # Otsu: maximize between-class variance over the distance histogram.
     w0 = np.cumsum(hist) / total
     centres = (edges[:-1] + edges[1:]) / 2
     m0 = np.cumsum(hist * centres) / total
@@ -125,7 +125,7 @@ def measure_backdrop_tol(src: str, box=None) -> tuple[float, dict]:
     tol = float(centres[int(np.argmax(between))])
 
     # Otsu finds the valley between backdrop and figure, but it runs high when
-    # the FIGURE contains near-backdrop values -- silver hair on a 236-grey
+    # the FIGURE contains near-backdrop values -- silver hair on a 236-gray
     # backdrop measured 135 and ate a wedge out of the hair, where 40-90 all
     # keyed it cleanly. Cap at 110 and flag the risk rather than trusting it.
     raw = tol

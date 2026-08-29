@@ -98,7 +98,7 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     best-first by `maxdev`.
 
     LEAVE width/height UNSET. They are derived from the artwork by
-    `lw.pick_size`, which matches the source's own aspect and then maximises
+    `lw.pick_size`, which matches the source's own aspect and then maximizes
     pixels within the card's budget — 1216x832 art becomes 1792x1216, 16:9 art
     becomes 1920x1088. Setting them by hand is how panels ship stretched:
     LTXVImgToVideo resizes the input to whatever it is told, silently, with no
@@ -181,7 +181,7 @@ def edit_frame(image_path: str, edit: str, out_dir: str,
     player, not from video generation.
 
     ⚠ NEVER SHIP THE OUTPUT WHOLESALE. Kontext regenerates the WHOLE frame and
-    will quietly restyle linework or shift colour. Follow every call with
+    will quietly restyle linework or shift color. Follow every call with
     `composite_patch` to bring back ONLY the region that was meant to change.
 
     ⚠ Kontext is BINARY — it cannot draw a half-lid. Make mid positions by
@@ -340,8 +340,8 @@ def add_water(clip_path: str, out_path: str, mask_path: str | None = None,
               polygons: list | None = None, ref_size: list[int] | None = None,
               sparkles: int = 22, ripples: int = 9, gain: float = 1.0,
               fps: int = 12) -> dict:
-    """Glints and expanding rings on water. Ring centres are placed on an eroded,
-    colour-filtered mask so a ring cannot expand onto the bank or a lily pad."""
+    """Glints and expanding rings on water. Ring centers are placed on an eroded,
+    color-filtered mask so a ring cannot expand onto the bank or a lily pad."""
     return effects.water(clip_path, out_path, mask_path, polygons,
                          tuple(ref_size) if ref_size else None,
                          sparkles, ripples, gain, fps)
@@ -379,7 +379,7 @@ def add_glow(clip_path: str, out_path: str, mask_path: str | None = None,
     """Pulse and optionally rotate the lit parts of a region — runes, magic.
 
     A drawn sigil brightening is a change of VALUE, not relocation of existing
-    pixels, so LTX leaves it static. This keys the lit pixels by colour
+    pixels, so LTX leaves it static. This keys the lit pixels by color
     (`warm`, `cool`, `bright`), blurs them into a halo and screens it back on a
     sine. `swirl` turns the halo about its own centroid, degrees per second —
     keep it slow, it is a blurred copy and spinning it fast just looks blurred.
@@ -426,7 +426,7 @@ def measure_frame_slot(frame_path: str) -> dict:
 def frame_clip(clip_path: str, out_path: str, frame_path: str,
                slot: list[int] | None = None, video_size: list[int] | None = None,
                bleed: int = 3, fps: int = 12) -> dict:
-    """Composite a clip into a drawn frame's slot, centred in the video canvas.
+    """Composite a clip into a drawn frame's slot, centered in the video canvas.
 
     Portrait artwork in a 16:9 video is only ~720px wide at full height; the
     frame fills what would otherwise be dead screen with the artist's own work.

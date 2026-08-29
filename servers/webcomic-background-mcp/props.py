@@ -62,7 +62,7 @@ def build_bicycle(index: int = 0, r: float = 0.92):
     the saddle (a curved drop-bar hook kept getting painted as a second
     saddle).
 
-    `index` offsets this bike's flat greys so neighbouring bikes in a row stay
+    `index` offsets this bike's flat grays so neighbouring bikes in a row stay
     separable at the Canny stage instead of fusing — the same per-mesh-shade
     trick citygen uses for adjacent buildings.
     """

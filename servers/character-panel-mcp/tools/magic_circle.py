@@ -63,7 +63,7 @@ def _ring_of_runes(img, cx, cy, radius, count, height, col, w, seed):
 
 
 def _star(d, cx, cy, r, points, skip, col, w):
-    """A {points/skip} star polygon — the straight-line figure at the centre."""
+    """A {points/skip} star polygon — the straight-line figure at the center."""
     pts = [(cx + r * math.cos(2 * math.pi * i / points - math.pi / 2),
             cy + r * math.sin(2 * math.pi * i / points - math.pi / 2))
            for i in range(points)]
@@ -104,7 +104,7 @@ def build(size=1400, color="#8fd3ff", points=7, skip=3, runes=40, inner_runes=28
     for (px, py) in pts:                  # a node on each star point
         rr = R * 0.036
         d.ellipse([px - rr, py - rr, px + rr, py + rr], outline=col, width=wt)
-    circle(R * 0.30, wt)                  # centre
+    circle(R * 0.30, wt)                  # center
     circle(R * 0.255, w)
     _ring_of_runes(img, cx, cy, R * 0.155, 8, R * 0.055, col, wt, seed + 2)
 

@@ -17,7 +17,7 @@ Usage:
   python kontext_edit.py --image panel.png --edit "..." --seeds 1,2,3
 
 ⚠ VERIFY EVERY RESULT AGAINST THE ORIGINAL. Kontext regenerates the WHOLE
-frame, so it can quietly restyle linework, shift colour, or alter parts of the
+frame, so it can quietly restyle linework, shift color, or alter parts of the
 image you never asked about. The intended use is to composite ONLY the changed
 region (the eye or mouth patch) back over the original art, never to ship the
 regenerated frame wholesale.

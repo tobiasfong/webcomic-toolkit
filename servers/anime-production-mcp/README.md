@@ -354,14 +354,14 @@ happen.
 ⚠ **The alpha bounding box is not the slot.** Decoration drawn on transparency
 makes the gaps between leaves count as transparent, so the bbox comes out far
 too wide — on the reference frame, 1180px against a true 802px, which left a
-background-coloured line along the bottom of every panel.
+background-colored line along the bottom of every panel.
 `measure_frame_slot` measures the columns clear for the *full height*, which is
 the only region artwork can show through.
 
 ## Scope guard
 
 Generation, framing, drawn effects and assembly. **Not** music (that's
-`music-generation-mcp`), **not** image generation, **not** colour grading or
+`music-generation-mcp`), **not** image generation, **not** color grading or
 compositing beyond what's here. If those appear, stop and split.
 
 ## Privacy

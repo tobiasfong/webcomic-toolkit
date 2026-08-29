@@ -85,14 +85,14 @@ def _save(project: str | None, data: dict) -> None:
 
 
 def _extract_palette(image_path: str, n: int = 5) -> list[str]:
-    """Best-effort dominant colours as hex, for the manifest. Empty list if PIL
+    """Best-effort dominant colors as hex, for the manifest. Empty list if PIL
     isn't available — the palette is descriptive metadata, not load-bearing."""
     try:
         from PIL import Image
     except ImportError:
         return []
     im = Image.open(image_path).convert("RGB").resize((128, 128))
-    # adaptive palette = perceptual-ish quantisation to n colours
+    # adaptive palette = perceptual-ish quantisation to n colors
     pal = im.quantize(colors=n, method=Image.FASTOCTREE).convert("RGB")
     counts = pal.getcolors(128 * 128) or []
     counts.sort(reverse=True)  # most frequent first
@@ -103,7 +103,7 @@ def describe_color(hex_code: str) -> str:
     """Turn '#9b2b1f' into 'deep rust-red' — prompt language, not a hex code.
 
     Diffusion prompts can't consume hex. Translating the palette into words is
-    what actually lets a reference image drive a render's colour, and doing it
+    what actually lets a reference image drive a render's color, and doing it
     by eye is exactly the step that kept getting skipped."""
     import colorsys
     h = hex_code.lstrip("#")
@@ -137,7 +137,7 @@ def describe_color(hex_code: str) -> str:
 
 
 def describe_palette(hex_codes: list[str]) -> list[str]:
-    """De-duplicated colour words for a palette, in dominance order."""
+    """De-duplicated color words for a palette, in dominance order."""
     seen, out = set(), []
     for c in hex_codes:
         word = describe_color(c)

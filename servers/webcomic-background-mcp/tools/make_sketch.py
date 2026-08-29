@@ -31,7 +31,7 @@ Usage:
 
 Photo knobs: --low/--high tune Canny line density; --dilate bolds the lines.
 Drawing knob: --threshold is the paper/stroke cutoff. It defaults to 215, NOT
-a conventional 128 — hand sketches are faint and pencil-grey, and 128 drops
+a conventional 128 — hand sketches are faint and pencil-gray, and 128 drops
 most of the drawing. Lower it if strokes are being missed, raise it if paper
 grain/shadow is coming through as noise.
 

@@ -33,7 +33,7 @@ generation backend is up.
 > SD1.5 plates under FLUX figures look pasted together. **You will need FLUX**;
 > `setup_models.py` fetches it. If disk is tight a smaller GGUF quantisation
 > works (Q6_K is the default, Q3/Q2 exist) — there is deliberately no lower-quality
-> fallback path. Note FLUX.1-dev's licence covers the *model* (non-commercial)
+> fallback path. Note FLUX.1-dev's license covers the *model* (non-commercial)
 > but permits commercial use of generated *outputs*.
 >
 > **v1.8.0 — 3D props (`generate_prop_scene`).** Diffusion fuses, crops, or
@@ -69,7 +69,7 @@ ones:
    `character-panel-mcp`'s `tools/cutout.py` keys a figure off a flat backdrop,
    including a scan or a drawing on white paper.
 3. **Composite**, with that server's `compose_panel` — it takes *any* RGBA PNG
-   and pastes it bottom-centred at a given feet position and height. It does not
+   and pastes it bottom-centered at a given feet position and height. It does not
    care whether the figure was generated or drawn by hand.
 
 For a plate from `generate_city_scene`, use `anchor_x`/`anchor_z` instead of
@@ -257,7 +257,7 @@ just closing the window often isn't enough).
 
 - **`make_sketch.py`** — turn a reference photo into a ControlNet sketch (white
   lines on black) for `sketch_path`. Tune `--low/--high/--blur` for line density.
-- **`grade.py`** — colour-grade a finished plate for mood (`--preset grimdark`,
+- **`grade.py`** — color-grade a finished plate for mood (`--preset grimdark`,
   `night`, `dusk`…). This is how you get a dark panel; don't ask the prompt for it.
 - **`inpaint_region.py`** — paint a rectangular region back into scenery, e.g. to
   remove a stray figure the model dropped in:
@@ -313,7 +313,7 @@ These are the real snags hit while building it:
   older than the CUDA version PyTorch was built for. **Update your GPU driver**
   (GeForce Experience / NVIDIA app) and reboot.
 - **The tool never appears in your MCP client** — the client reads its config at
-  startup, and "close window" on many desktop apps only minimises to the system
+  startup, and "close window" on many desktop apps only minimizes to the system
   tray (the process keeps running). **Fully quit** (tray icon → Quit, or end the
   process in Task Manager) and relaunch.
 

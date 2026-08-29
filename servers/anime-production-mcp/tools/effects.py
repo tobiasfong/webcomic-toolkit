@@ -243,7 +243,7 @@ def streaks(src: str, dst: str, paths: list[list] | None = None,
 # --------------------------------------------------------------------------- #
 
 def _open_water(frame: Image.Image) -> Image.Image:
-    """Classify OPEN water by colour, so a ripple never forms on a lily pad.
+    """Classify OPEN water by color, so a ripple never forms on a lily pad.
 
     Hand-listing the lilies was brittle — the pads are numerous and irregular,
     and listing only the flowers left rings forming on the leaves. Water is
@@ -267,8 +267,8 @@ def water(src: str, dst: str, mask_path: str | None = None,
           fps: int = 12) -> dict:
     """Sparkles and expanding ripples confined to a water region.
 
-    Rings are placed on an ERODED, colour-filtered mask, not the raw region: a
-    ring grows about 50px from its centre, so a centre that is valid right at
+    Rings are placed on an ERODED, color-filtered mask, not the raw region: a
+    ring grows about 50px from its center, so a center that is valid right at
     the waterline still expands onto the bank. Two MinFilter passes pull the
     spawn area in far enough to prevent that.
     """
@@ -426,7 +426,7 @@ def glow(src: str, dst: str, mask_path: str | None = None,
     not animate them: a glowing sigil brightening is not relocation of existing
     pixels, it is a change of value, so the model leaves it static.
 
-    The lit parts are keyed out by colour, blurred into a halo and screened back
+    The lit parts are keyed out by color, blurred into a halo and screened back
     on a sine. `key`: "warm" (gold/orange runes), "cool" (blue/cyan), "bright"
     (anything luminous regardless of hue).
 
@@ -492,16 +492,16 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
            lines: float = 1.0, flash: float = 1.0, shake: float = 1.0,
            margin: int = 18, fps: int = 12,
            blur: float = 1.6, count: int = 84, taper: float = 1.3) -> dict:
-    """Speed lines, a flash and camera shake, centred on `focal` (x,y fractions).
+    """Speed lines, a flash and camera shake, centered on `focal` (x,y fractions).
 
     ⚠ THE DEFAULTS DRAW A RADIAL GLOW, NOT MANGA LINES, and the difference
     surprised the artist. The lines are real — `count` of them, converging on
     `focal` — but `blur=1.6` softens their edges and `taper=1.3` dims each one
-    toward the centre, so together they read as light rather than ink.
+    toward the center, so together they read as light rather than ink.
 
     For inked manga speed lines: blur ~0.3, count ~180, taper ~0.45. That is
     crisper, denser, and bright along most of each line's length. Keep `lines`
-    near 1.0 when you do — the clear centre SHRINKS as intensity rises, so
+    near 1.0 when you do — the clear center SHRINKS as intensity rises, so
     crisp-and-dense plus high intensity buries the figure the effect exists to
     sell. That is how v1's version ended up looking like rain.
 
@@ -510,7 +510,7 @@ def impact(src: str, dst: str, focal: tuple[float, float] = (0.5, 0.5),
     scaled into a margin and cropped inside it — shake or not — so there is no
     wrap and no size pop when the effect starts.
 
-    The speed lines keep a CLEAR CENTRE that widens with intensity, so the
+    The speed lines keep a CLEAR CENTER that widens with intensity, so the
     figure is never buried by the effect that is meant to sell it.
     """
     base = expand_frames(src)

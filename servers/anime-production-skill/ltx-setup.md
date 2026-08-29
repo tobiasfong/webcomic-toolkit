@@ -120,7 +120,7 @@ Open questions to settle by testing:
 ### Style LoRAs — test the baseline first, don't add preemptively
 
 The rule is **not** "hand-drawn vs generic" (that only covers his own art). It is:
-**style should come from the source image, whatever its origin.** For Murim Test
+**style should come from the source image, whatever its origin.** For the test
 the panels are already generated anime — but a style LoRA whose look differs
 from the panel's look still causes drift, just between two generated styles.
 
@@ -150,7 +150,7 @@ consistency.)
 
 ## Test plan (do in this order)
 
-1. **Murim Test panel first** — generated art, so no hand-drawn canon for drift
+1. **Generated test panel first** — generated art, so no hand-drawn canon for drift
    to violate. Lowest-risk proof that it runs at all.
 2. **Then one of his own illustrations** — the real question. Compare against the
    original at 100% zoom: does the linework survive?

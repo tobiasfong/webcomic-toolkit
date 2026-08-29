@@ -140,10 +140,10 @@ def matte(image_path: str, out_path: str | None = None) -> str:
     silhouette against the figure's interior, RMBG scores -28.7 where a
     brightness-keyed cutout scores -11.5 and leaves a white fringe.
 
-    Neither path keys on colour or brightness, which matters: brightness cannot
+    Neither path keys on color or brightness, which matters: brightness cannot
     distinguish a white shirt from a white backdrop, and cleanup passes built on
     that assumption have deleted an entire garment (65,026 px, 24% of a figure)
-    and punched 32,592 px of holes through a mid-grey t-shirt. A learned matte
+    and punched 32,592 px of holes through a mid-gray t-shirt. A learned matte
     also removes backdrop TRAPPED inside the silhouette — between the legs, or
     between an arm and the torso — which is the failure those passes existed to
     patch up.

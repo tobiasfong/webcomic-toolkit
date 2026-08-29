@@ -229,7 +229,7 @@ def prune() -> dict:
 
 
 def attach(track_id: str, key: str, path: str) -> dict | None:
-    """Attach a derived artefact (e.g. beats.json) to an existing track."""
+    """Attach a derived artifact (e.g. beats.json) to an existing track."""
     data = _load()
     for t in data["tracks"]:
         if t["id"] == track_id:

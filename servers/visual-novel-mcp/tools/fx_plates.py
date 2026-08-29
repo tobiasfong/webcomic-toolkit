@@ -72,7 +72,7 @@ def bloom_fast(mask):
 def light(mask, hue):
     """Turn a shape mask into LIGHT of the given hue on a black field.
 
-    The core stays white -- colour survives only where the glow has fallen off,
+    The core stays white -- color survives only where the glow has fallen off,
     which is how a real highlight blows out. Channels are combined additively
     so overlapping beams brighten rather than average.
     """
@@ -168,8 +168,8 @@ def streak(hue, start=(0.74, 0.18), end=(0.33, 0.56), head=15, tail=3,
            steps=110):
     """A small object crossing frame at speed: a tapered trail with a hot head.
 
-    NOT beam(). A beam is a full-frame blade struck through the centre -- an
-    attack. A thrown object is short, off-centre, thickest where the thing
+    NOT beam(). A beam is a full-frame blade struck through the center -- an
+    attack. A thrown object is short, off-center, thickest where the thing
     actually is, and fading to nothing behind it. Using the attack shape for a
     tossed object would read as someone striking at the viewer, which is the
     opposite of the beat.

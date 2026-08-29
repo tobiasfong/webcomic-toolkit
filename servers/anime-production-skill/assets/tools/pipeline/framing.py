@@ -71,7 +71,7 @@ def measure_slot(frame_path: str, alpha_max: int = 8) -> dict:
 
 
 def _cover(art: Image.Image, w: int, h: int) -> Image.Image:
-    """Scale to cover w x h, centre-cropping the overflow. Never letterbox."""
+    """Scale to cover w x h, center-cropping the overflow. Never letterbox."""
     s = max(w / art.width, h / art.height)
     r = art.resize((round(art.width * s), round(art.height * s)), Image.LANCZOS)
     x, y = (r.width - w) // 2, (r.height - h) // 2
@@ -88,8 +88,8 @@ def frame_clip(src: str, dst: str, frame_path: str,
     `bleed` overfills the slot by a few pixels so the frame's own antialiased
     inner edge never reveals background through it.
 
-    The panel is centred in `video_size` with the leftover as flat margin. Leave
-    that the same colour as the frame's own margins and it reads as a mat rather
+    The panel is centered in `video_size` with the leftover as flat margin. Leave
+    that the same color as the frame's own margins and it reads as a mat rather
     than as letterboxing.
     """
     frame = Image.open(frame_path).convert("RGBA")
@@ -123,7 +123,7 @@ def frame_clip(src: str, dst: str, frame_path: str,
 
 def extract_bars(frame_path: str, bars: list[tuple[int, int]],
                  warm: bool = True) -> list[Image.Image]:
-    """Key the frame's vertical rules out by colour, as standalone RGBA strips.
+    """Key the frame's vertical rules out by color, as standalone RGBA strips.
 
     For LANDSCAPE artwork, which cannot use a portrait slot. Place these either
     side of the wide image and every panel in the video shares one visual
@@ -132,7 +132,7 @@ def extract_bars(frame_path: str, bars: list[tuple[int, int]],
     ⚠ THE BARS MUST FLANK THE ART, NEVER OVERLAY IT. At their original x they
     run straight through the middle of a wide image.
 
-    Only the given column runs are kept: a plain colour key also catches warm
+    Only the given column runs are kept: a plain color key also catches warm
     details elsewhere in the decoration (flower stamens), which would come along
     as stray specks.
     """
@@ -168,7 +168,7 @@ class Flutter:
 
     HOW THE PIECES ARE SEPARATED: the decoration may be painted on an OPAQUE
     field rather than on transparency, in which case connected-component
-    labelling on alpha returns the whole margin as one blob. Colour separates
+    labelling on alpha returns the whole margin as one blob. Color separates
     them instead. `rules` is a list of (name, test) where test takes (r,g,b) —
     the defaults handle green foliage and pink blossom on a white field with
     warm rules excluded.
@@ -300,7 +300,7 @@ def composite_patch(base_path: str, patch_path: str, dst: str,
 
     This is the other half of the Kontext path, and skipping it is the mistake
     that ruins a shot. Kontext regenerates the WHOLE frame, so it quietly
-    restyles linework and shifts colour in places nobody asked about. Only the
+    restyles linework and shifts color in places nobody asked about. Only the
     region that was supposed to change may come back.
 
     `blend` < 1 mixes the patch with the original underneath — how a half-lid is

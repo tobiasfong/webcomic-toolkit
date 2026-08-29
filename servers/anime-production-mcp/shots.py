@@ -216,7 +216,7 @@ def forget_rejected(project: str, name: str | None = None) -> dict:
 
 
 def attach(shot_id: str, key: str, path: str) -> dict | None:
-    """Attach a derived artefact (a retimed copy, a composite) to a take."""
+    """Attach a derived artifact (a retimed copy, a composite) to a take."""
     data = _load()
     for s in data["shots"]:
         if s["id"] == shot_id:

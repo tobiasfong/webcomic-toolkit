@@ -35,7 +35,7 @@ additional/alternative conditioning to the current OpenPose line-skeleton map).
 
 The female counterpart, from the **same** OpenGameArt CC0 pack
 (`base_female.zip`, 13.1 MB download, 16.3 MB extracted) — same provenance and
-same CC0 licence as `Base_Male.vrm` above.
+same CC0 license as `Base_Male.vrm` above.
 
 Added 2026-07-29 after a two-character action panel was posed with the male mesh
 for *both* figures, which is wrong at the depth-map level: hip width, shoulder

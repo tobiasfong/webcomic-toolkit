@@ -770,7 +770,7 @@ def generate_turnaround_sheet(
 # drawing. Matting is a post-process and never competed with identity
 # conditioning, so the route had no advantage to trade for that.
 #
-# cutout.py's colour keying is superseded for figures: it cannot separate pale
+# cutout.py's color keying is superseded for figures: it cannot separate pale
 # fabric from a pale backdrop by construction, which is why it carries
 # pale_figure_risk and clamps at 110 when the measured tolerance wanted 173-187.
 
@@ -784,11 +784,11 @@ def matte_image(image_path: str, out_dir: str, model: str = "RMBG-2.0",
     The only route that works on art already made -- locked panels, approved
     concept panels, anything the author drew. ~4 s.
 
-    Validated on the case colour keying provably fails: a white robe with white
+    Validated on the case color keying provably fails: a white robe with white
     boots on a white field came back with both intact, corners exactly 0.0000
     and 2.3% soft-edge pixels.
 
-    refine_foreground: Fast Foreground Colour Estimation, which is what
+    refine_foreground: Fast Foreground Color Estimation, which is what
     suppresses halos on light subjects. Leave it on.
 
     Needs ComfyUI-RMBG's weights placed MANUALLY -- its auto-downloader fails

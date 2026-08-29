@@ -8,7 +8,7 @@ prompt wording changes that. Blinks and mouth flaps therefore come from
 generated KEYFRAMES (this graph), played back by a frame player.
 
 ⚠ NEVER SHIP THE OUTPUT WHOLESALE. Kontext regenerates the WHOLE frame, so it
-can quietly restyle linework, shift colour, or alter parts nobody asked about.
+can quietly restyle linework, shift color, or alter parts nobody asked about.
 The intended use is to composite ONLY the changed region
 (the eye or mouth patch) back over the original art. `composite_patch` in
 tools/framing.py is the other half of that.

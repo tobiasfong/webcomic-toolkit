@@ -1,7 +1,7 @@
 """Paste an RGBA cutout into a panel, aligned by two landmark point pairs.
 
 Nudging a layer by hand is the tedious half of the composite route. Two
-correspondences (say a boot's toe tip and the centre of its opening, matched to
+correspondences (say a boot's toe tip and the center of its opening, matched to
 where those belong on the target limb) pin down scale, rotation and position
 exactly, so placement becomes a number to tune rather than a drag.
 

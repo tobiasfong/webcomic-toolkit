@@ -58,7 +58,7 @@ an existing install pointing at them will fail on a missing model.**
 The sibling `character-panel-mcp` generates every finished figure with FLUX,
 and it retired its own SD1.5/SDXL stack entirely in the same period. FLUX
 characters composited onto SD1.5 plates read as a *composite* — the two models
-render light, edge and colour differently enough that the join shows. Keeping
+render light, edge and color differently enough that the join shows. Keeping
 SD1.5 as a "fallback" would mean shipping a path whose main effect is producing
 mismatched art, so it is gone rather than deprecated. The honest trade is
 stated up front: **you need FLUX; use a smaller GGUF quantisation if VRAM is
@@ -122,7 +122,7 @@ the post-generation tooling that follows from what the port taught us.
 - **Measured ControlNet window for FLUX** (8-render sweep, fixed seed, against
   a `props.py` bike-row sketch). The dominant variable is **`end_percent`, not
   strength** — FLUX keeps injecting the edge map's luminance through the
-  colour phase, so releasing it early is what yields solid painted objects
+  color phase, so releasing it early is what yields solid painted objects
   instead of glowing white outlines on near-black. Ships 0.95 strength /
   0.40 end for synthetic geometry. SD 1.5's tuned values (0.6 / 0.75) are
   deliberately **not** forwarded to FLUX — they produce ghosts.
@@ -134,7 +134,7 @@ the post-generation tooling that follows from what the port taught us.
 Everything below follows from this release's central finding: mood belongs
 *after* generation, not in the prompt.
 
-- **`grade_plate`** (+ `tools/grade.py`) — colour-grade a finished plate for mood
+- **`grade_plate`** (+ `tools/grade.py`) — color-grade a finished plate for mood
   without touching the original. This is the replacement for asking a prompt for
   mood, which this release proved actively breaks the manhwa look. Presets `grimdark`,
   `night`, `dusk`, `overcast`, `warm_lamp`, plus individual exposure / contrast /
@@ -144,9 +144,9 @@ Everything below follows from this release's central finding: mood belongs
   (0.545/0.310) graded to `grimdark` lands at 0.162/0.142 — essentially this
   server's approved SD 1.5 plate (0.138/0.123) — with the cel-shaded style fully
   intact.
-- **`extract_palette`** — read a reference's dominant colours as *prompt
+- **`extract_palette`** — read a reference's dominant colors as *prompt
   language*, not hex. New `world.describe_color()` / `describe_palette()` turn
-  `#9b2b1f` into "deep red", so `references/` can actually drive colour instead
+  `#9b2b1f` into "deep red", so `references/` can actually drive color instead
   of being eyeballed. Returns a ready-to-paste prompt fragment, and warns against
   adding mood wording alongside it.
 - **`edit_background`** (+ FLUX Kontext support in `flux_workflow.py`) — edit an
@@ -245,7 +245,7 @@ was geometry, and every geometry problem this server has ever solved was
 solved the same way: build it in 3D, render it headless, let SD paint.
 Lessons baked in: flat cutout props collapse edge-on (keep the camera ≥ ~25°
 off their plane — enforced by yaw jitter + a documented camera floor);
-per-mesh grey separation is what keeps neighbouring props Canny-separable; and
+per-mesh gray separation is what keeps neighbouring props Canny-separable; and
 a straight T-bar reads as a handlebar where a curved drop-bar hook kept being
 painted as a second saddle.
 
@@ -357,7 +357,7 @@ plus the tuned manhwa render recipe as first-class parameters.
 ### Notes
 - Palette guidance: derive prompt color language from reference images — the
   World Builder's palette extractor (`world._extract_palette`) reads dominant hex
-  colours from any reference for the harness to translate into prompt words.
+  colors from any reference for the harness to translate into prompt words.
   Validated: one 3D city rendered in three completely different reference-derived
   moods while staying structurally identical.
 

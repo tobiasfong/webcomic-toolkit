@@ -23,12 +23,12 @@ and the request wins; anything else means the model did not honour the request
 and the measurement wins. The result gains `bpm_basis` naming the source used.
 
 `bpm` is consequently no longer an override — detection always runs and the two
-are reconciled. This is a behaviour change for callers that passed `bpm` to
+are reconciled. This is a behavior change for callers that passed `bpm` to
 force a grid.
 
 ⚠ Knock-on: the "half-time feel" finding in CLAUDE.md (four of six seeds
 measuring 73.8-76 against a requested 150) matches this pattern exactly — 73.8
-is half of 152. It is probably a detection artefact rather than a rendering.
+is half of 152. It is probably a detection artifact rather than a rendering.
 Not re-verified; those tracks were deleted. Flagged in place, not deleted.
 
 ### Docs

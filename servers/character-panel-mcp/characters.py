@@ -112,7 +112,7 @@ def _save(project: str | None, data: dict) -> None:
 
 
 def _extract_palette(image_path: str, n: int = 5) -> list[str]:
-    """Best-effort dominant colours as hex, for the manifest. Empty list if PIL
+    """Best-effort dominant colors as hex, for the manifest. Empty list if PIL
     isn't available — the palette is descriptive metadata, not load-bearing."""
     try:
         from PIL import Image

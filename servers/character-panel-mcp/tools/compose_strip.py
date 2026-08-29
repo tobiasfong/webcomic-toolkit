@@ -28,7 +28,7 @@ the width rather than being a fixed 24px, which was far too tight.
 Usage (API):
     compose_strip([
         "p01.png",                                        # full-bleed
-        {"path": "p02.png", "frac": 0.72},                # centred box
+        {"path": "p02.png", "frac": 0.72},                # centered box
         {"path": "p03.png", "frac": 0.44, "align": "right"},
         {"pair": ["p14a.png", "p14b.png"], "frac": 0.30}, # side-by-side pair
     ], width=900)
@@ -136,7 +136,7 @@ def compose_strip(panels, width=900, gutter=None, gutter_color=(255, 255, 255),
             continue
 
         row = Image.new("RGB", (width, cell.height), gutter_color)
-        if s["frac"] is None:                      # legacy inset behaviour
+        if s["frac"] is None:                      # legacy inset behavior
             x = int(s["inset"])
         else:
             x = {"left": 0, "right": width - cell.width,

@@ -8,7 +8,7 @@ that wastes a human's review time chasing a "bug" that was fixed on disk an hour
 ago). Re-parsing per call means get_chapter/search_manuscript always reflect
 what's actually on disk right now.
 
-Two heading conventions are recognised:
+Two heading conventions are recognized:
   EN: "Chapter 12: The Long Road"
   JA: "第十二話　長い道のり" (kanji numerals; 話 for web serialization or
       章 for a bound-volume convention — both accepted)

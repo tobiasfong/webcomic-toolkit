@@ -104,7 +104,7 @@ def main() -> int:
         tall = _I.new("RGB", (704, 1216), (200, 30, 30))
         out = assemble.fit(tall, (1920, 1080), "contain")
         assert out.size == (1920, 1080)
-        # the art occupies a centred column of the ORIGINAL aspect ratio
+        # the art occupies a centered column of the ORIGINAL aspect ratio
         w = round(1080 * 704 / 1216)
         px = out.load()
         assert px[1920 // 2, 540] == (200, 30, 30), "art missing from centre"
@@ -187,7 +187,7 @@ def main() -> int:
             assert x1 > x0 and y1 > y0, r
             # The failure this guards: taking the ALPHA BOUNDING BOX instead of
             # the full-height columns gives a slot wider than the real one, and
-            # leaves a background-coloured line along an edge of every panel.
+            # leaves a background-colored line along an edge of every panel.
             from PIL import Image
             bbox = Image.open(frame).convert("RGBA").getchannel("A").point(
                 lambda v: 255 if v < 8 else 0).getbbox()

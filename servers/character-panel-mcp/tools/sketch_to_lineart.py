@@ -38,7 +38,7 @@ def sketch_to_lineart(path, out=None, threshold=215):
 
     threshold is a luminance cutoff on 0-255: anything darker counts as a
     stroke. The default is deliberately high (215, i.e. only just below paper
-    white) because hand sketches are often very faint grey — a conventional
+    white) because hand sketches are often very faint gray — a conventional
     128 drops most of the drawing.
     """
     try:

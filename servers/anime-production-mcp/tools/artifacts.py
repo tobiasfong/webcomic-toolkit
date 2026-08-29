@@ -195,7 +195,7 @@ def face_box(clip_path: str, upper: float = 0.7, pad: int = 22) -> list[int] | N
     if skin.sum() < (W * H) * 0.0015:
         return None
     ys, xs = np.where(skin)
-    # median-centred window rather than the raw bbox: a stray warm pixel in the
+    # median-centered window rather than the raw bbox: a stray warm pixel in the
     # background would otherwise stretch the box across the whole panel
     cx, cy = int(np.median(xs)), int(np.median(ys))
     rx = int(max(np.percentile(xs, 85) - cx, cx - np.percentile(xs, 15))) + pad

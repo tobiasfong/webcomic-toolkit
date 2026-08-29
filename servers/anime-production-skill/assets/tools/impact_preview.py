@@ -3,7 +3,7 @@ impact_preview.py — speed lines / flash / camera shake over a finished clip.
 
 This is a PREVIEW of what src/effects/Impact.tsx does at assembly time. It
 mirrors that component's envelope (instant attack, (1-t)^1.8 decay), its 84
-radial lines, and its clear centre so the figure is never buried. The real
+radial lines, and its clear center so the figure is never buried. The real
 render goes through Remotion at 1080x1920 and also has debris.
 
 Why anime does this: it does not animate the punch travelling, it sells the
@@ -79,7 +79,7 @@ def main():
         d = ImageDraw.Draw(ov)
         for i, (ra, ri, rl, rt) in enumerate(rnd):
             ang = (i / 84) * math.tau + ra * 0.06
-            inner = diag * (0.14 + ri * 0.16) * (1 - s * 0.35)   # clear centre
+            inner = diag * (0.14 + ri * 0.16) * (1 - s * 0.35)   # clear center
             ln = diag * (0.35 + rl * 0.5)
             th = max(1, int((2.5 + rt * 13 * s) * 0.5))
             x0, y0 = OXp + math.cos(ang) * inner, OYp + math.sin(ang) * inner

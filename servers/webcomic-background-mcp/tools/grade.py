@@ -1,5 +1,5 @@
 """
-grade.py — colour-grade a finished plate for mood, deterministically.
+grade.py — color-grade a finished plate for mood, deterministically.
 
 WHY THIS EXISTS (the v1.9.0 lesson): asking FLUX for mood in the prompt
 ("grimdark", "dim lighting", "deep shadow", "muted cool palette") is what made
@@ -29,9 +29,9 @@ import numpy as np
 
 # Each preset is (exposure, contrast, temperature, saturation, vignette).
 #   exposure    <1 darkens, >1 brightens
-#   contrast    >1 expands the tonal range around mid-grey
+#   contrast    >1 expands the tonal range around mid-gray
 #   temperature <0 cools toward blue, >0 warms toward orange
-#   saturation  <1 desaturates, 0 = greyscale
+#   saturation  <1 desaturates, 0 = grayscale
 #   vignette    0 = none, 1 = heavy corner falloff
 PRESETS = {
     # The one this module was written for: Starry Knight's hive interiors.
@@ -46,7 +46,7 @@ PRESETS = {
 
 
 def _vignette_mask(h, w, amount):
-    """Radial falloff, 1.0 at centre down to (1-amount) at the corners."""
+    """Radial falloff, 1.0 at center down to (1-amount) at the corners."""
     yy, xx = np.mgrid[0:h, 0:w]
     cy, cx = (h - 1) / 2, (w - 1) / 2
     r = np.sqrt(((yy - cy) / cy) ** 2 + ((xx - cx) / cx) ** 2)
@@ -58,7 +58,7 @@ def grade(img_bgr, exposure=1.0, contrast=1.0, temp=0.0, saturation=1.0,
     """Apply a grade to a BGR uint8 image; return BGR uint8.
 
     Order matters: exposure -> contrast -> temperature -> saturation ->
-    vignette. Contrast pivots around mid-grey so darkening doesn't also crush
+    vignette. Contrast pivots around mid-gray so darkening doesn't also crush
     the highlights."""
     x = img_bgr.astype(np.float32) / 255.0
 

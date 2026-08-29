@@ -1,5 +1,5 @@
 """
-repair_depth.py — fix monocular-depth artefacts before 3D displacement.
+repair_depth.py — fix monocular-depth artifacts before 3D displacement.
 
 Monocular depth estimators (MiDaS / Depth Anything) fail in a specific way on
 anime line art: dark, flat regions *inside* a figure — a shadowed face in

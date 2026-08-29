@@ -196,7 +196,7 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
 - **Impact FX** (`impact` on a panel) — sells a hit without any extra drawing,
   which is what anime actually does (it doesn't animate the punch travelling):
   `{ at, speedlines, flash, shake, debris, originX, originY }` plus `*Decay`
-  and colour options. `at` is seconds from when the panel is **fully visible**.
+  and color options. `at` is seconds from when the panel is **fully visible**.
   Peaks land exactly on `at` (attack = 0) — a one-frame-late flash reads as
   broken. Shake is applied to the foreground only; shaking the backdrop too
   looks cheap.
@@ -350,7 +350,7 @@ Everything below follows from that one line:
   moved the scrolls, another the quill — the final shot used both.
 - **Never render below 540p** — fine linework mushes before any upscale can
   recover it.
-- Style survives well: cel shading, linework and colour hold, with no drift
+- Style survives well: cel shading, linework and color hold, with no drift
   toward photoreal.
 
 ### Judging the result — the part that goes wrong
@@ -377,16 +377,16 @@ Everything below follows from that one line:
   whose real damage was frames 12-17. Treat every score as a **sort order for
   what to look at**, never a verdict. The one exception is above: an unusually
   LOW score really does mean the model refused.
-- **Colour drift is invisible to edge-energy scanning.** A character's eyes
-  changed from blue to grey over the last five frames of a take and no scan saw
+- **Color drift is invisible to edge-energy scanning.** A character's eyes
+  changed from blue to gray over the last five frames of a take and no scan saw
   it — edge energy barely moves when an iris desaturates. Only the artist caught
-  it. Look at colour separately from structure.
+  it. Look at color separately from structure.
 
 ### What LTX can't do, and what does it instead
 
 - **Blinks / mouth shapes** → `kontext_edit.py` generates the keyframe, then
   composite ONLY the eye or mouth patch back over the original. Kontext
-  regenerates the whole frame and will quietly restyle hair or colour, so never
+  regenerates the whole frame and will quietly restyle hair or color, so never
   ship its output wholesale. It is also **binary** — it cannot do a half-lid, so
   blend the open and closed composites for mid positions.
 - ⚠ **KONTEXT REPAIRS HANDS AT Q6_K — AND DID NOT AT Q3_K_S. RUN Q6.** This was
@@ -459,7 +459,7 @@ Available two ways, same code either way:
    Anything LTX can't do goes to `edit_frame`+`composite_patch` (eyes, mouths)
    or a drawn effect (things that must APPEAR).
 2. **Frame portrait shots** — `frame_clip` drops each clip into a hand-drawn
-   frame's transparent slot, centred in 1920×1080. Portrait art is only ~720px
+   frame's transparent slot, centered in 1920×1080. Portrait art is only ~720px
    wide at full height in 16:9; the frame fills the rest with the artist's own
    work rather than blur or black. Landscape shots skip this — `extract_bars`
    keys the frame's rules out and flanks the wide image with them, so every
@@ -467,7 +467,7 @@ Available two ways, same code either way:
    ⚠ **The alpha bounding box is NOT the slot.** Decoration drawn on
    transparency makes the gaps between leaves count, so the bbox comes out far
    too wide (1180px against a true 802px on the reference frame) and leaves a
-   coloured line along one edge of every panel. `measure_frame_slot` measures
+   colored line along one edge of every panel. `measure_frame_slot` measures
    the columns clear for the FULL height.
 3. **Assemble** — `assemble_video` with a beat grid from `music-generation-mcp`.
 

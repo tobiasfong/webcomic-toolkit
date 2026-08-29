@@ -152,8 +152,8 @@ def get_character(character: str, project: str = characters.DEFAULT_PROJECT) -> 
     the returned description verbatim rather than describing them from memory or
     from looking at a panel. Until this tool existed there was no way to obtain a
     character's reference path through the MCP interface, so prompts got
-    hand-written and drifted — a panel shipped with the wrong hair colour and the
-    wrong eye colour, both of which the bible had recorded correctly all along.
+    hand-written and drifted — a panel shipped with the wrong hair color and the
+    wrong eye color, both of which the bible had recorded correctly all along.
 
     `primary_ref` is the image to condition on (`edit_image`). Note that
     `flux_workflow.generate()` has no identity input at all, so a reference
@@ -889,7 +889,7 @@ def edit_character_image(
     Off by default because it only makes sense when the edit was rendered on a
     clean backdrop — a story panel with real scenery has nothing to key.
     Uses tools/cutout.py's border-connected keying, NOT rembg: the backdrop is
-    whatever is connected to the frame edge AND close to the border colour,
+    whatever is connected to the frame edge AND close to the border color,
     which keeps white, black and skin inside the figure regardless of their
     value, and takes the cast shadow with it.
 

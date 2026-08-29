@@ -137,7 +137,7 @@ def generate_background(
         from PIL import Image
         with Image.open(match_canvas_to) as im:
             cw, ch = im.size
-        # 1600, not 1024. The old value was labelled a "6 GB VRAM ceiling",
+        # 1600, not 1024. The old value was labeled a "6 GB VRAM ceiling",
         # but VRAM is not the constraint on this card -- ComfyUI streams weights
         # from system RAM, and plates render at 1600x896 routinely. The cap was
         # silently downscaling a matched canvas (1600x896 -> 1024x560), so a
@@ -571,7 +571,7 @@ def grade_plate(
     vignette: float | None = None,
     out_path: str | None = None,
 ) -> str:
-    """Colour-grade a finished plate for mood, without touching the original.
+    """Color-grade a finished plate for mood, without touching the original.
 
     Use this INSTEAD of asking for mood in a prompt. Mood words ("grimdark",
     "dim lighting", "deep shadow", "muted palette") drag FLUX off the manhwa
@@ -614,23 +614,23 @@ def grade_plate(
 
 @mcp.tool()
 def extract_palette(image_path: str, n: int = 5) -> str:
-    """Read a reference image's dominant colours as PROMPT LANGUAGE.
+    """Read a reference image's dominant colors as PROMPT LANGUAGE.
 
-    References drive colour only if their palette gets into the prompt, and
+    References drive color only if their palette gets into the prompt, and
     diffusion models can't consume hex — so this returns both the swatches and
     the words. Point it at anything in `references/` (or any approved plate)
-    and paste the colour words straight into a generate_* prompt.
+    and paste the color words straight into a generate_* prompt.
 
     Note the stronger option if you want a reference's *whole* look rather than
-    just its colours: pass it as `location`/img2img instead, which inherits its
+    just its colors: pass it as `location`/img2img instead, which inherits its
     style, palette and composition together (v1.9.0's best result).
 
     Args:
         image_path: Reference image or finished plate.
-        n: How many dominant colours to extract.
+        n: How many dominant colors to extract.
 
     Returns:
-        Hex swatches, colour words, and a ready-to-paste prompt fragment.
+        Hex swatches, color words, and a ready-to-paste prompt fragment.
     """
     if not os.path.exists(image_path):
         return f"Image not found: {image_path}"

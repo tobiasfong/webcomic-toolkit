@@ -11,7 +11,7 @@ box without distorting the corner radius.
 
 PALETTE NOTE: Pokemon's boxes are cream with a navy border. This game is dark
 manhwa, and a cream panel would fight every background in it, so the STRUCTURE
-is copied and the colours come from the game's own UI (near-black panel, cool
+is copied and the colors come from the game's own UI (near-black panel, cool
 border, accent-cyan cursor). Change CURSOR to "#e0483c" for the red cursor of
 the reference.
 

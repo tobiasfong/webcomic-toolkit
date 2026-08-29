@@ -123,7 +123,7 @@ FLUX_LORA = os.environ.get("WEBCOMIC_BG_FLUX_LORA", "manwha_style.safetensors")
 #
 # But 2.0 in plain txt2img is not simply "worse" — it drifts toward
 # photorealistic/cinematic, which is LESS webtoon yet produced the single
-# best-lit frame of the whole sweep (strong raking light, cool-vs-warm colour
+# best-lit frame of the whole sweep (strong raking light, cool-vs-warm color
 # separation, real depth). For a grimdark 40K panel that painterly-realistic
 # register may be more on-genre than webtoon flatness. Treat 2.0 as a
 # different aesthetic worth reaching for deliberately, not a failed setting.
@@ -223,7 +223,7 @@ FLUX_CONTROLNET_UNION_TYPE = "auto"
 # --- ControlNet window, MEASURED on this server 2026-08-01 -------------------
 # An 8-render sweep against a props.py bike-row sketch (seed fixed at 4242).
 # The dominant variable turned out to be END_PERCENT, not strength — FLUX keeps
-# injecting the edge map's luminance through the detail/colour phase, so
+# injecting the edge map's luminance through the detail/color phase, so
 # releasing it early is what produces solid painted objects instead of glowing
 # outlines:
 #

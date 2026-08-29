@@ -702,7 +702,7 @@ and re-confirmed working. The OpenPose branch's wiring validated cleanly too, bu
 the actual ControlNet model file wasn't downloaded on this machine, so it wasn't
 exercised past graph-validation — an environment gap, not a code one, and exactly
 what `setup_models.py` (new this release) exists to fix. Tier 3's async job
-lifecycle (bake → training → done, and separately → cancelled, plus a double-bake
+lifecycle (bake → training → done, and separately → canceled, plus a double-bake
 guard) was verified end-to-end with a stub trainer standing in for kohya-ss/GPU
 training — a real kohya-ss install and a real 30-90 min training run were not
 exercised (kohya-ss isn't installed in the build environment).
@@ -1801,7 +1801,7 @@ that justified the port, not as pending work. Task #52 is closed.
   pulling toward semi-realism. **Generate clean and bright, grade for mood
   afterwards** — which is what `grade_plate` is for.
 - **ControlNet's dominant variable on FLUX is `end_percent`, not strength.** FLUX
-  keeps injecting the edge map's luminance through the colour phase, so releasing
+  keeps injecting the edge map's luminance through the color phase, so releasing
   it early yields solid painted objects instead of glowing outlines on near-black.
   Ships 0.95 strength / 0.40 end for synthetic geometry; SD1.5's 0.6 / 0.75 are
   deliberately not forwarded, as they produce ghosts.
