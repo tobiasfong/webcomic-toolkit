@@ -196,10 +196,178 @@ def streak(hue, start=(0.74, 0.18), end=(0.33, 0.56), head=15, tail=3,
     return light(mask, hue)
 
 
+def ribbon(centerline, half_widths, fill=255):
+    """A filled band along a centerline, thickness varying per point.
+
+    ⚠ USE THIS RATHER THAN SUBTRACTING TWO ELLIPSES. The older arc in
+    crescent() is built that way, and the two ellipses barely differ over most
+    of their length, so the band it produces is thin to the point of vanishing
+    -- which is why that plate reads as loose shards with no body, and why it
+    was eventually replaced by a rendered image rather than fixed.
+
+    Offsetting a centerline by an explicit half-width cannot fail that way:
+    the thickness is a number you set, not an accident of two curvatures.
+    """
+    left, right = [], []
+    n = len(centerline)
+    for i, (x, y) in enumerate(centerline):
+        xa, ya = centerline[max(0, i - 1)]
+        xb, yb = centerline[min(n - 1, i + 1)]
+        ang = math.atan2(yb - ya, xb - xa)
+        nx, ny = -math.sin(ang), math.cos(ang)
+        hw = half_widths[i]
+        left.append((x + nx * hw, y + ny * hw))
+        right.append((x - nx * hw, y - ny * hw))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).polygon(left + right[::-1], fill=fill)
+    return mask
+
+
+def lance(hue, start=(0.06, 0.90), end=(0.78, 0.18), width=58, seed=13):
+    """A crystalline spear driven from the caster toward the enemies.
+
+    NOT streak(). A thrown token is a soft tapered trail with a round head --
+    an object catching light. A lance is a RIGID BODY with straight edges and
+    a point, so it is drawn as a polygon with internal facets rather than as a
+    stroke that fades. The difference is what separates a spear from a comet.
+
+    The default travel is lower-left to upper-right because that is where the
+    battle stage puts the caster and the enemies; a lance flying the other way
+    would read as the player being attacked.
+    """
+    from PIL import ImageChops
+    rng = random.Random(seed)
+    x0, y0 = start[0] * W, start[1] * H
+    x1, y1 = end[0] * W, end[1] * H
+    ang = math.atan2(y1 - y0, x1 - x0)
+    nx, ny = -math.sin(ang), math.cos(ang)          # unit normal
+
+    # A SPEAR PROFILE, not a wedge: a long even shaft, a blade that swells
+    # before the point, and a sharp tip. A shape that tapers evenly end to end
+    # is a shard of light -- the swell is what the eye reads as a weapon.
+    N = 120
+    line = [(x0 + (x1 - x0) * i / N, y0 + (y1 - y0) * i / N) for i in range(N + 1)]
+    halves = []
+    for i in range(N + 1):
+        t = i / N
+        if t < 0.55:                       # shaft, slowly thickening
+            hw = width * (0.30 + 0.22 * (t / 0.55))
+        elif t < 0.82:                     # blade shoulders
+            hw = width * (0.52 + 0.48 * ((t - 0.55) / 0.27))
+        else:                              # converge to the point
+            hw = width * (1.0 - ((t - 0.82) / 0.18) ** 0.75)
+        halves.append(max(0.6, hw))
+
+    # ⚠ The body is drawn at 150, NOT 255. light() keeps the mask value as the
+    # core and adds the halo on top, so a solid filled at full white comes back
+    # pure white with the hue only in a thin fringe -- which is what made the
+    # first attempt read as a laser beam rather than as ice. Held below white,
+    # the ice color survives across the whole body and the bright marks below
+    # are what actually catch the light.
+    mask = ribbon(line, halves, fill=150)
+    d = ImageDraw.Draw(mask)
+
+    # Facets along the shaft, and the tip lit hardest.
+    for f in (-0.55, -0.2, 0.18, 0.5):
+        pts = [(px + nx * hw * f, py + ny * hw * f)
+               for (px, py), hw in zip(line, halves)]
+        d.line(pts, fill=245, width=2)
+    d.line([line[int(N * 0.86)], line[N]], fill=255, width=5)
+
+    # Frost shards shed along the flight path.
+    for _ in range(22):
+        t = rng.uniform(0.10, 0.80)
+        px, py = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+        off = rng.choice((-1, 1)) * rng.uniform(width * 0.7, width * 2.0)
+        L = rng.uniform(16, 62)
+        a = ang + rng.choice((-1, 1)) * rng.uniform(0.5, 1.2)
+        d.line([(px + nx * off, py + ny * off),
+                (px + nx * off + math.cos(a) * L, py + ny * off + math.sin(a) * L)],
+               fill=rng.randint(110, 230), width=rng.randint(2, 5))
+
+    # A dim motion trail BEHIND the tail, tapering away off-frame.
+    trail = Image.new("L", (W, H), 0)
+    td = ImageDraw.Draw(trail)
+    reach = math.hypot(W, H) * 0.45
+    for i in range(60):
+        t0, t1 = i / 60.0, (i + 1) / 60.0
+        v = int(80 * (1.0 - t0) ** 2)
+        w = max(1, int(width * 0.5 * (1.0 - t0)))
+        td.line([(x0 - math.cos(ang) * reach * t0, y0 - math.sin(ang) * reach * t0),
+                 (x0 - math.cos(ang) * reach * t1, y0 - math.sin(ang) * reach * t1)],
+                fill=v, width=w)
+    return ImageChops.add(light(mask, hue), light(trail, hue))
+
+
+def dark_crescent(rim_hue, seed=17, rim_px=9):
+    """A yin arc: a VOID torn across the frame, lit only at its edge.
+
+    ⚠ A DARK EFFECT CANNOT BE AN ADDITIVE PLATE. Additive compositing adds
+    light, and black adds nothing -- so a black arc drawn that way is
+    literally invisible. The plate is opaque instead, and the arc is read by
+    the absence of light inside a luminous rim.
+
+    That inverts the repo's bloom rule rather than breaking it. The rule says
+    a white-hot CORE with the hue surviving only in the halo; here the core is
+    a hole and the hue lives on the boundary. Both say the same thing: the
+    color belongs where the intensity is falling off.
+
+    The core has to be punched back to black AFTER the glow is built, because
+    bloom spreads inward as well as outward and would otherwise fill the void
+    with the very light it is supposed to be missing.
+    """
+    from PIL import ImageChops
+    rng = random.Random(seed)
+
+    # An explicit arc, swept the way the blade travels on the battle stage:
+    # up from the lower left, across, and down to the right. Thickest at the
+    # middle of the stroke and tapering to nothing at both ends, which is the
+    # shape a real cut leaves.
+    N = 200
+    line, halves = [], []
+    for i in range(N + 1):
+        t = i / N
+        x = -W * 0.06 + W * 1.12 * t
+        y = H * 0.74 - math.sin(t * math.pi) * H * 0.46
+        line.append((x, y))
+        halves.append(max(1.0, math.sin(t * math.pi) ** 0.7 * H * 0.115))
+    arc = ribbon(line, halves)
+
+    # Shrink by blur-and-threshold rather than repeated MinFilter: one radius
+    # is the rim width in pixels, which is the number worth tuning.
+    core = arc.filter(ImageFilter.GaussianBlur(rim_px)).point(
+        lambda v: 255 if v > 200 else 0)
+    rim = ImageChops.subtract(arc, core)
+
+    # Ragged marks ALONG THE RIM ONLY, so the cut looks torn rather than
+    # machined. Drawn onto the rim after the core is taken out, or they would
+    # be erased by the void punch below.
+    d = ImageDraw.Draw(rim)
+    for _ in range(80):
+        t = rng.uniform(0.05, 0.95)
+        i = int(t * N)
+        px, py = line[i]
+        side = rng.choice((-1, 1))
+        xa, ya = line[max(0, i - 1)]
+        xb, yb = line[min(N, i + 1)]
+        a = math.atan2(yb - ya, xb - xa)
+        nx, ny = -math.sin(a), math.cos(a)
+        ox, oy = px + nx * halves[i] * side, py + ny * halves[i] * side
+        L = rng.uniform(14, 90)
+        sa = a + side * rng.uniform(0.35, 1.15)
+        d.line([(ox, oy), (ox + math.cos(sa) * L, oy + math.sin(sa) * L)],
+               fill=rng.randint(150, 255), width=rng.randint(2, 5))
+
+    img = light(rim, rim_hue)
+    img.paste((0, 0, 0), (0, 0), core)          # punch the void back out
+    return img
+
+
 ICE = (120, 214, 255)
 QI = (150, 96, 255)
 BLAST = (255, 150, 70)
 GOLD = (255, 198, 74)
+YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
 
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
@@ -220,6 +388,12 @@ plates = {
     # blacking out a quiet conversation for a thrown object would hit far
     # harder than the moment is.
     "streak_gold": streak(GOLD),
+    # Icicle Lance: a rigid spear thrown from the caster's corner of the
+    # battle stage toward the enemies' corner.
+    "lance_ice": lance(ICE),
+    # Crescent Slash: the yin arc, a void with a lit edge. See dark_crescent()
+    # for why this one cannot be an additive plate like the ice.
+    "crescent_dark": dark_crescent(YIN),
 }
 
 for name, img in plates.items():
