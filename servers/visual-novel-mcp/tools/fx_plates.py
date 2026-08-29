@@ -128,15 +128,26 @@ def convergence(vp, n, hue, seed, spread=math.tau, base=math.tau,
     return img
 
 
-def beam(angle, thickness, hue, offset=0):
-    """One hard diagonal blade of light across the whole frame."""
+def beam(angle, thickness, hue, offset=0, fill=255):
+    """One hard diagonal blade of light across the whole frame.
+
+    ⚠ `fill` IS WHAT DECIDES WHETHER THE HUE SURVIVES, not the hue argument.
+    light() keeps the mask value as the core and adds the halo around it, so a
+    beam filled at 255 comes back WHITE whatever hue is passed -- the color
+    lives only in a fringe too thin to read. That is correct for a blade of
+    light and wrong for a dull one: a gray beam at full fill is just a white
+    beam. Drop the fill and the hue comes back.
+
+    Same mechanism that made the ice lance look like a laser on its first
+    pass. Anything meant to read as dim, dull or colored belongs below 255.
+    """
     mask = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(mask)
     cx, cy = W / 2, H / 2 + offset
     dx, dy = math.cos(angle), math.sin(angle)
     reach = math.hypot(W, H)
     d.line([(cx - dx * reach, cy - dy * reach), (cx + dx * reach, cy + dy * reach)],
-           fill=255, width=thickness)
+           fill=fill, width=thickness)
     return light(mask, hue)
 
 
@@ -299,6 +310,52 @@ def lance(hue, start=(0.06, 0.90), end=(0.78, 0.18), width=58, seed=13):
     return ImageChops.add(light(mask, hue), light(trail, hue))
 
 
+def shuriken(hue, center=(0.56, 0.44), radius=None, points=4, spin=True):
+    """A thrown star, mid-flight and mid-spin.
+
+    A star is the one shape here that must NOT read as a line. beam() and
+    lance() both carry an axis, and a spinning object has none -- so the
+    motion is expressed as CONCENTRIC ARCS around the body rather than as a
+    trail behind it. Arcs say rotation; a tapered trail would say it was
+    sliding sideways without turning, which is the wrong verb entirely.
+
+    Drawn small against the frame on purpose. The other plates fill the
+    screen because they are events; this is an OBJECT, and an object the size
+    of the screen reads as a logo rather than as something thrown.
+    """
+    from PIL import ImageChops
+    R = radius or W * 0.075
+    cx, cy = center[0] * W, center[1] * H
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+
+    # The star body: alternating outer points and inner waist, which is what
+    # gives a shuriken its concave edges. A plain polygon of outer points
+    # would be a diamond.
+    pts = []
+    for i in range(points * 2):
+        a = math.pi * i / points - math.pi / 4
+        r = R if i % 2 == 0 else R * 0.34
+        pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
+    d.polygon(pts, fill=225)
+    # A hole at the center, the way a real one is bored.
+    hr = R * 0.11
+    d.ellipse([cx - hr, cy - hr, cx + hr, cy + hr], fill=0)
+
+    if spin:
+        # Two partial rings, offset and unequal, so the blur reads as ROTATION
+        # rather than as a target reticle. Full circles would look drawn.
+        arcs = Image.new("L", (W, H), 0)
+        ad = ImageDraw.Draw(arcs)
+        for rr, start, extent, val, wid in ((R * 1.16, 20, 150, 150, 5),
+                                            (R * 1.34, 200, 120, 95, 4),
+                                            (R * 0.92, 300, 100, 120, 3)):
+            ad.arc([cx - rr, cy - rr, cx + rr, cy + rr],
+                   start, start + extent, fill=val, width=wid)
+        return ImageChops.add(light(mask, hue), light(arcs, hue))
+    return light(mask, hue)
+
+
 def dark_crescent(rim_hue, seed=17, rim_px=9):
     """A yin arc: a VOID torn across the frame, lit only at its edge.
 
@@ -376,6 +433,7 @@ YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
 STEEL = (196, 220, 255)       # an enemy's mundane blade: cold, slightly dim
 SILVER = (232, 240, 252)      # the sword style: a bright colorless flash
 AZURE = (64, 150, 255)        # the ice spells
+GRAY = (146, 150, 158)        # a knife in the dark: dull, no ki at all
 # The yin arc's edge. AZURE rather than colorless, and the reason is
 # legibility rather than palette: the arc's body is a void and the plate
 # behind it is black, so with a white rim the whole effect can vanish into
@@ -438,6 +496,16 @@ plates = {
     # lie about what it is. They are told apart by TILT, by this one being
     # brighter and heavier, and by the line that names who swung.
     "slash_silver": beam(math.radians(-28), 27, SILVER),
+    # A SECOND ENEMY TYPE'S TWO MOVES.
+    #
+    # The stab is GRAY and THIN against the other steel: a jab at a weak
+    # point, not a swing. It keeps the enemy tilt, so it still crosses the
+    # caster's axis, but it is narrower and duller -- a knife in the dark has
+    # no ki behind it and should not flash like a sword does.
+    "slash_gray": beam(math.radians(30), 13, GRAY, fill=118),
+    # The thrown star. See shuriken() for why the motion is arcs and not a
+    # trail, and why it is small when everything else here fills the frame.
+    "star_shuriken": shuriken(STEEL),
 }
 
 for name, img in plates.items():
