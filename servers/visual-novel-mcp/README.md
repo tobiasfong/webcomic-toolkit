@@ -79,5 +79,23 @@ python -m venv .venv
 
 `mcp<2` is load-bearing (mcp 2.0 removed `mcp.server.fastmcp`). Register in
 `~/.claude.json` `mcpServers` with this venv's python, like the other
-servers. No Ren'Py SDK required — the game tree is plain files until the
-engine is installed to actually run the game.
+servers.
+
+### The engine
+
+The server itself never runs Ren'Py — it parses scripts, so the game tree is
+plain files. You need the engine to PLAY the game or build it for a browser,
+and the harness installs that itself:
+
+```
+python tools/install_renpy.py
+```
+
+It fetches the pinned SDK and the separate web-build component, verifies both
+against recorded SHA-256 hashes, and records where it put them. Nothing else
+should ever contain an SDK path — resolve it through `tools/renpy_sdk.py`,
+which reads an explicit argument, then `RENPY_SDK`, then that record.
+
+⚠ The version is pinned deliberately. The engine traps in WORKFLOW.md were
+measured against 8.5.3 and `renpy lint` catches none of them, so `--version`
+moves ground that this repository has notes about.
