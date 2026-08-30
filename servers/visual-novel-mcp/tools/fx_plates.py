@@ -376,19 +376,38 @@ def dark_crescent(rim_hue, seed=17, rim_px=9):
     from PIL import ImageChops
     rng = random.Random(seed)
 
-    # An explicit arc, swept the way the blade travels on the battle stage:
-    # up from the lower left, across, and down to the right. Thickest at the
-    # middle of the stroke and tapering to nothing at both ends, which is the
-    # shape a real cut leaves.
-    N = 200
-    line, halves = [], []
-    for i in range(N + 1):
-        t = i / N
-        x = -W * 0.06 + W * 1.12 * t
-        y = H * 0.74 - math.sin(t * math.pi) * H * 0.46
-        line.append((x, y))
-        halves.append(max(1.0, math.sin(t * math.pi) ** 0.7 * H * 0.115))
-    arc = ribbon(line, halves)
+    # ⚠ A CRESCENT IS TWO OVERLAPPING DISCS, NOT A BAND.
+    #
+    # The first version swept a ribbon of even thickness along an arc, and it
+    # read as two parallel curved lines rather than as a shape -- the author's
+    # word was "weird". A moon crescent is fat through the belly and comes to
+    # a POINT at each horn, and only a disc subtracted from a disc does that:
+    # the thickness falls away on its own toward the intersections, which is
+    # exactly the taper a ribbon has to fake and fakes badly.
+    #
+    # This is the same construction the old crescent() uses and it is not the
+    # reason that one is thin -- ITS two ellipses were nearly identical, so
+    # almost nothing survived the subtraction. Sized deliberately, the method
+    # is right.
+    #
+    # Geometry: outer disc radius R at the center; inner disc radius r offset
+    # by d toward the opening. Belly thickness is R + d - r, so the three
+    # numbers are chosen from the thickness wanted rather than by eye.
+    R = H * 0.62
+    belly = H * 0.30                       # how fat through the middle
+    d = R * 0.26                           # how far the bite is offset
+    r = R + d - belly
+    cx, cy = W * 0.46, H * 0.52
+    # Opening toward the upper right, so the concave face looks the way the
+    # blade travels on the battle stage.
+    ang = math.radians(-32)
+    ox, oy = cx + math.cos(ang) * d, cy + math.sin(ang) * d
+
+    outer = Image.new("L", (W, H), 0)
+    inner = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(outer).ellipse([cx - R, cy - R, cx + R, cy + R], fill=255)
+    ImageDraw.Draw(inner).ellipse([ox - r, oy - r, ox + r, oy + r], fill=255)
+    arc = ImageChops.subtract(outer, inner)
 
     # Shrink by blur-and-threshold rather than repeated MinFilter: one radius
     # is the rim width in pixels, which is the number worth tuning.
@@ -396,24 +415,37 @@ def dark_crescent(rim_hue, seed=17, rim_px=9):
         lambda v: 255 if v > 200 else 0)
     rim = ImageChops.subtract(arc, core)
 
-    # Ragged marks ALONG THE RIM ONLY, so the cut looks torn rather than
-    # machined. Drawn onto the rim after the core is taken out, or they would
-    # be erased by the void punch below.
-    d = ImageDraw.Draw(rim)
-    for _ in range(80):
-        t = rng.uniform(0.05, 0.95)
-        i = int(t * N)
-        px, py = line[i]
-        side = rng.choice((-1, 1))
-        xa, ya = line[max(0, i - 1)]
-        xb, yb = line[min(N, i + 1)]
-        a = math.atan2(yb - ya, xb - xa)
-        nx, ny = -math.sin(a), math.cos(a)
-        ox, oy = px + nx * halves[i] * side, py + ny * halves[i] * side
-        L = rng.uniform(14, 90)
-        sa = a + side * rng.uniform(0.35, 1.15)
-        d.line([(ox, oy), (ox + math.cos(sa) * L, oy + math.sin(sa) * L)],
-               fill=rng.randint(150, 255), width=rng.randint(2, 5))
+    # A little brush texture on the rim, so the edge is not a machined curve.
+    #
+    # SHORT AND TANGENTIAL, and far fewer than before. The previous version
+    # threw long spikes outward at steep angles, which is what a torn hole
+    # looks like -- not what a blade leaves. Strokes that lie ALONG the edge
+    # read as ink drag; strokes that stand off it read as damage.
+    #
+    # Sampled from the rim mask itself rather than from a parametric
+    # centerline, so the texture follows whatever shape the discs produced.
+    import numpy as np
+    ys, xs = np.nonzero(np.asarray(rim) > 0)
+    dd = ImageDraw.Draw(rim)
+    if len(xs):
+        for _ in range(38):
+            j = rng.randrange(len(xs))
+            px, py = float(xs[j]), float(ys[j])
+            # Tangent at this point: perpendicular to the radius from the
+            # outer disc's center, which is the edge the eye actually follows.
+            a = math.atan2(py - cy, px - cx) + math.pi / 2
+            a += rng.uniform(-0.25, 0.25)
+            L = rng.uniform(10, 46)
+            dd.line([(px - math.cos(a) * L * 0.5, py - math.sin(a) * L * 0.5),
+                     (px + math.cos(a) * L * 0.5, py + math.sin(a) * L * 0.5)],
+                    fill=rng.randint(170, 255), width=rng.randint(2, 4))
+
+    # ⚠ HELD BELOW WHITE so the rim is actually the color asked for. light()
+    # keeps the mask value as the core, so a rim at 255 comes back a WHITE
+    # line with the hue only in the halo around it -- correct for a blade of
+    # light, wrong here, where the rim IS the color and the body is nothing.
+    # Same mechanism as beam()'s `fill`, and the third place it has bitten.
+    rim = rim.point(lambda v: int(v * 0.55))
 
     img = light(rim, rim_hue)
     img.paste((0, 0, 0), (0, 0), core)          # punch the void back out
@@ -465,7 +497,7 @@ plates = {
     "lance_ice": lance(AZURE),
     # The yin arc: a void with a lit edge. See dark_crescent()
     # for why this one cannot be an additive plate like the ice.
-    "crescent_dark": dark_crescent(VOID_RIM),
+    "crescent_dark": dark_crescent(VOID_RIM, rim_px=10),
     # AN ENEMY'S SWING, which has to be told apart from the player's at a
     # glance because the two land seconds apart in the same frame.
     #
