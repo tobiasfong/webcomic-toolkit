@@ -193,6 +193,15 @@ def scene_order(scenes_dir):
     Falls back to alphabetical if the chain is broken or branches, which is
     the honest behavior: a branching story has no single order, and this tool
     is for linear drift-checking.
+
+    ⚠ AND IT SAYS SO WHEN IT DOES. The fallback used to be silent, and silence
+    is what made it expensive: a branch that put three labels in one file left
+    the chain unresolvable, the scenes sorted alphabetically, and the diff
+    reported 235 blocks unconverted with nothing actually missing. The output
+    looked like a content problem and was an ordering one.
+
+    A jump target resolves to a file BY NAME, so the fix for a branch is to
+    keep it inside one file whose label matches its name -- see WORKFLOW.md.
     """
     files = sorted(glob.glob(os.path.join(scenes_dir, "*.rpy")))
     label_of, jump_of = {}, {}
@@ -216,7 +225,18 @@ def scene_order(scenes_dir):
         seen.add(cur)
         order.append(label_of[cur])
         cur = jump_of.get(cur)
-    return order if len(order) == len(files) else files
+    if len(order) == len(files):
+        return order
+    missed = [os.path.basename(p) for p in files if p not in order]
+    sys.stderr.write(
+        "script_diff: the jump chain reached %d of %d scene files, so they are\n"
+        "  being compared in ALPHABETICAL order.\n"
+        "  unreached: %s\n"
+        "  A branching jump does this -- a target resolves to a file by NAME,\n"
+        "  so several labels in one file are unreachable. Keep the branch\n"
+        "  inside one file whose label matches its name.\n"
+        % (len(order), len(files), ", ".join(missed) or "(none)"))
+    return files
 
 
 def read_scenes(scenes_dir):

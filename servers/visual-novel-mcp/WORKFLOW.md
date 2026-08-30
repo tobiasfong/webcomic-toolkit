@@ -71,6 +71,45 @@ speaks.
 Use `#` comments above the label instead. To audit: for every line matching
 `^label\s`, the next non-blank line must not start with `"""` or `'''`.
 
+### `scene` clears the figures, so a speaker after one has no sprite
+
+`scene` replaces the background AND empties the master layer. Every plate
+change therefore needs the sprites re-shown behind it, including the ones that
+were standing there a line ago.
+
+Hit three times in one session, each with a plausible-sounding excuse:
+characters spoke from an empty courtyard after arriving, again after a fight
+whose label hides every figure before drawing its own stage, and again through
+an illusion on the reasoning that "the plate is the subject of this beat". It
+never is. If somebody speaks, they are present.
+
+Nothing catches it — the script is valid, `lint` passes, and the only symptom
+is a voice with no body. To audit, walk the scenes IN JUMP ORDER tracking
+`show` / `hide` / `scene` / `call battle_*`, and flag any speaker whose tag is
+not currently shown. Two things that audit must get right, or it reports noise:
+
+* **Carry the shown set ACROSS files.** The master layer survives a jump, so
+  auditing each file from an empty stage flags everyone who walked in during
+  the previous scene. Done wrong this reported 19 problems; done right, 4.
+* **A CG depicts its characters.** Suppress the check while a `scene cg` is up,
+  and remember that a prop reveal on a black field (`scene bg black` plus
+  `show prop ...`) is the same thing. All four survivors above were that.
+
+### A BRANCHING jump breaks script_diff's file ordering
+
+`script_diff` derives its scene order by following the jump chain, and it
+resolves a jump target to a file BY NAME. Three labels living in one file are
+unreachable that way, so the chain comes up short and the tool falls back to
+sorting the scenes alphabetically — which is silent, and catastrophic for the
+comparison: the lesson sorted before the summons, the whole prologue landed
+last, and 235 blocks were reported unconverted when nothing was missing.
+
+Every choice before this one was a `call screen` that set a variable and
+carried straight on, so a linear chain had always been enough.
+
+**Keep a branch inside a single file whose label matches its name.** Jump to
+that file, branch within it, and let all arms converge on one jump out.
+
 ### Text substitution EVALUATES what is inside the brackets
 
 `[name]` is not a format key — Ren'Py evaluates the expression. So a menu
