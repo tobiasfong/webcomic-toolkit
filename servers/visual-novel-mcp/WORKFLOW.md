@@ -219,6 +219,56 @@ erases the art behind it. Legibility travels better ON the glyphs: outlines (a
 dropped shadow plus a crisp dark edge) cost nothing where they are not needed.
 If a scrim helps, gradient it so it darkens only the band the text occupies.
 
+## Generating scenes from the master document
+
+Where an author writes prose in a word processor and the game is Ren'Py, the
+cheapest arrangement is a small per-chapter script that reads the document and
+writes the scene files: the STRUCTURE is chosen in the script (which paragraph
+gets which speaker, where the plate changes, where a fight is called) and the
+WORDS come out of the document untouched. Rerun it after the author edits and
+the prose follows.
+
+The reason to bother is not tidiness. Retyping a chapter of somebody's prose
+is how a wrong word gets into the game and stays there, and a session that has
+just spent a round fixing the author's typos should not be adding its own.
+
+Four things this has to get right, each learned by getting it wrong.
+
+**An emitter must own a BOUNDED span — a start anchor AND an end anchor.**
+The obvious shape is "everything after the line where my chapter begins", and
+it works perfectly until the author writes the next chapter. Then that emitter
+silently swallows the new material too and rewrites another emitter's scene
+with it. Nothing fails: the files are written, the script prints its usual
+summary, and the only symptom is `script_diff` reporting differing regions and
+a DROPPED line — which reads like the author cut something. One emitter here
+reported 371 paragraphs where it owned 86.
+
+**Chain links belong IN the emitter, not appended to its output.** A
+`jump` added to a generated file by hand survives exactly until the next
+regeneration, which rewrites the whole file. The chapters then become
+unreachable and `script_diff` falls back to alphabetical ordering, producing a
+diff full of blocks that are not actually missing. If a scene jumps onward,
+the script that writes that scene writes the jump.
+
+**Resolve positions BY CONTENT, never by paragraph number.** Indices shift
+the moment the author inserts a line, and an index that has quietly moved
+points at the wrong prose without complaining. Search for a distinctive
+phrase instead, and search FORWARD from the previous anchor so the same
+phrase occurring twice cannot capture the wrong one.
+
+**Escape first, then substitute.** Any escaping pass that protects the
+author's own brackets from being read as interpolation will also mangle a tag
+the emitter inserted beforehand — `[_limb]` came out as `[[_limb]` and
+rendered literally on screen. Build the escaped string, then substitute into
+it.
+
+Two smaller notes. Author-to-implementer asides ("Scenario 1:", "(Timeskip,
+so bigger font)") are structure, not narration, and belong in patterns.json's
+spec markers so they never reach a player. And a sentence's full stop can sit
+AFTER a closing bracket — `...I lower my hand (sword if ..., hand if ...).` —
+so a pattern anchored at end-of-string silently matches nothing and the note
+ships in the game text.
+
 ## Tools
 
 `tools/` holds the standalone scripts. **None of them may hardcode a path into
