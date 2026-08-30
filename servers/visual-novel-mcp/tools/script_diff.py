@@ -210,6 +210,26 @@ def scene_order(scenes_dir):
         labels = re.findall(r"^label\s+([A-Za-z_]\w*)\s*:", src, re.M)
         jumps = re.findall(r"^\s*jump\s+([A-Za-z_]\w*)\s*$", src, re.M)
         if len(labels) != 1 or len(jumps) > 1:
+            # ⚠ THIS is the branching case, and it is the return that actually
+            # fires. A first attempt to make the fallback audible put the
+            # message on the length check at the bottom of this function --
+            # which this early exit skips entirely, so the warning never
+            # appeared and the failure stayed as silent as before.
+            #
+            # It reports the FILE, because that is the actionable part: the
+            # fix is to give that file one label and one jump out.
+            sys.stderr.write(
+                "script_diff: %s has %d labels and %d jumps, so the story "
+                "order cannot be\n"
+                "  followed and the scenes are being compared in ALPHABETICAL "
+                "order instead.\n"
+                "  That silently misaligns everything -- expect converted "
+                "blocks to report as\n"
+                "  missing. A jump target resolves to a file by NAME, so keep "
+                "a branch inside\n"
+                "  one file with ONE label matching its name, and one jump "
+                "out.\n"
+                % (os.path.basename(f), len(labels), len(jumps)))
             return files                       # not a simple chain
         label_of[labels[0]] = f
         if jumps:
@@ -218,6 +238,20 @@ def scene_order(scenes_dir):
     targets = set(jump_of.values())
     heads = [l for l in label_of if l not in targets]
     if len(heads) != 1:
+        # The THIRD silent exit, and the one an ordinary authoring slip hits:
+        # a scene nothing jumps to yet is a second head, and two heads mean no
+        # single entry point. Naming them is the whole message -- either one is
+        # the real start and the others need chaining in, or a jump is missing.
+        sys.stderr.write(
+            "script_diff: found %d possible starting scenes, so the story "
+            "order cannot be\n"
+            "  followed and the scenes are being compared in ALPHABETICAL "
+            "order instead.\n"
+            "  candidates: %s\n"
+            "  Exactly one scene should have nothing jumping to it. The rest "
+            "are either\n"
+            "  unchained yet, or something that should jump to them does not.\n"
+            % (len(heads), ", ".join(sorted(heads)) or "(none)"))
         return files                           # no single entry point
 
     order, seen, cur = [], set(), heads[0]
