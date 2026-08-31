@@ -350,6 +350,44 @@ as lying on his *side*.
 - Rotating needs headroom: upscale ~2.3x first, or the crop reaches past the
   rotated corners and leaves black wedges.
 
+**SCALE: the architecture must be CROPPED BY THE FRAME, or the figure reads as a
+giant.** Settled 2026-08-31 after getting this wrong twice in one session.
+
+If a whole building, or a whole hall, fits inside the plate, then the building
+is small in frame — and a full-height figure composited in front of it is
+therefore enormous. The author's words: "three figures, medium shot, and somehow
+I can see the whole throne room, including whole rows of pillars?"
+
+A plate that RECEIVES a figure wants the camera at the distance that figure
+implies:
+
+| the shot | what the plate must show |
+|---|---|
+| full-body figure standing in a street | the LOWER STOREY only — wall, door, shutters — with the roof above the top edge and out of frame, ground as a flat band along the bottom |
+| medium shot of figures in a hall | two columns close to camera and cut off by the top, one wall behind. Not rows receding to a vanishing point |
+
+State it positively — "towering far above the top edge of the picture so the
+walls are cut off by the frame" — rather than asking for less.
+
+⚠ **`location=` FIGHTS THIS**, because location img2img preserves composition.
+The canonical plate for a place is usually a wide establishing view, so passing
+`location=` faithfully reproduces the wide camera you are trying to escape. For
+a figure-scale shot, generate FRESH using the location's vocabulary, and grade
+afterwards to match if it must cut against the registered plate.
+
+⚠ Also `match_canvas_to` used to cap the plate at 1024 on the long side, silently
+downscaling a matched canvas. Fixed 2026-08-31 (MAX_SIDE 1600); the MCP server
+must be restarted for it to take effect, so until then pass width/height
+explicitly.
+
+### A figure that LEANS needs something to lean on IN THE RENDER
+
+A lean drawn against empty white comes back looking like a man falling over —
+the model needs the wall present to get the body mechanics. So put a plain flat
+wall behind him, then MATTE it away; the transparent PNG keeps the pose and
+loses the wall. Prefer a PALE wall: keying a dark robe off dark timber is where
+the matte chews edges.
+
 ### Shadows depend on the camera
 
 - **Eye-level** — a soft sheared pool running away from the light, plus a tight
