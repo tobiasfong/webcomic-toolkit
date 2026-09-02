@@ -466,6 +466,24 @@ STEEL = (196, 220, 255)       # an enemy's mundane blade: cold, slightly dim
 SILVER = (232, 240, 252)      # the sword style: a bright colorless flash
 AZURE = (64, 150, 255)        # the ice spells
 GRAY = (146, 150, 158)        # a knife in the dark: dull, no ki at all
+# A RIVAL'S LIGHTNING SWORD ART.
+#
+# VIOLET, by the author's call. A gold-white version was drawn first on the
+# reasoning that purple already belongs to another character; he overruled it,
+# and he is right that the collision is theoretical -- that character is not
+# in the scene, and lightning is violet in this genre far more often than it
+# is gold.
+#
+# It is deliberately PALER AND PINKER than QI (150, 96, 255), which is that
+# other character's ki, so the two are not the same energy on screen if they
+# ever do share a scene. It also suits the medium better: bloom wants a
+# white-hot core with the hue surviving only in the halo, and a pale violet
+# gives that where a saturated one goes muddy.
+#
+# ⚠ It still must not be AZURE. The strike lands in the same exchange as the
+# protagonist's ice -- she shatters his trap, he answers with an ice barrier
+# -- and two people trading blows in one color read as one person.
+THUNDER = (208, 156, 255)
 # The yin arc's edge. AZURE rather than colorless, and the reason is
 # legibility rather than palette: the arc's body is a void and the plate
 # behind it is black, so with a white rim the whole effect can vanish into
@@ -538,6 +556,56 @@ plates = {
     # The thrown star. See shuriken() for why the motion is arcs and not a
     # trail, and why it is small when everything else here fills the frame.
     "star_shuriken": shuriken(STEEL),
+    # ---- A SWORD FORM PERFORMED RATHER THAN SWUNG -----------------------
+    #
+    # TWO MORE SILVER SLASHES, so the DEMONSTRATION can be three
+    # strokes rather than one flash shown three times. He is not hitting
+    # anyone here -- he is performing a form to prove which school trained
+    # him, and the prose describes it as continuous: "The sword coils and
+    # lashes, the blade almost bending from the sharp motions."
+    #
+    # One plate repeated reads as a stutter. Three ANGLES read as a sequence,
+    # and they alternate direction -- steeper "/", then "\\" as the return
+    # stroke -- because a form that only ever cuts one way looks like a loop.
+    #
+    # ⚠ Mind the sign: screen y grows DOWNWARD, so POSITIVE leans "\\".
+    "slash_silver_2": beam(math.radians(-58), 24, SILVER, offset=-70),
+    "slash_silver_3": beam(math.radians(16), 25, SILVER, offset=60),
+    # THE CONJURED ICE SCULPTURE, and deliberately NOT one of the ice attack
+    # plates. He is not striking anything -- he raises a hand and grows a
+    # small frozen thing in front of a hostile stranger to make a point.
+    #
+    # The attack plates are opaque black frames that cut the scene away for
+    # 50 ms, which is what sells an impact. Blacking out a street to show
+    # someone conjuring an ornament would land far harder than the beat does,
+    # so this one is drawn to be shown ADDITIVE: radial, small, contributing
+    # only light. Same reasoning as the tossed gold token.
+    # ⚠ THE ICE FLOWER IS NOT DRAWN HERE ANY MORE, AND SHOULD NOT BE.
+    #
+    # It was, three times -- a convergence() starburst, then a six-fold
+    # snowflake, then a drawn rose of concentric petals -- and all three were
+    # rejected. The author wanted a BLOOM OF ICE with volume: translucent
+    # crystal, overlapping depth, light coming through it.
+    #
+    # That is the wrong side of the line this file exists to hold. GEOMETRY is
+    # drawn because diffusion cannot place it -- a magic circle in an exact
+    # spot, an arc of exact curvature, evenly spaced runes that would come
+    # back as texture. A SHADED VOLUMETRIC OBJECT is the opposite case: it is
+    # what diffusion is good at and what ImageDraw is bad at, because polygons
+    # and a bloom filter cannot fake refraction.
+    #
+    # It is now generated instead and lives at images/fx/ice_flower.png. What
+    # finally worked, after the smooth translucent version came back reading
+    # as "just a blue flower": describing the MATERIAL DAMAGE rather than the
+    # optics -- fractured shards, internal cracks, frost crust, icicles.
+    # Clarity is what glass looks like; ice looks CRACKED. Then a second pass
+    # on the SAME SEED replaced a furled heart with upright ice needles,
+    # because a furled heart is bud-shaped and kept growing an organic bud.
+    # THE RIVAL'S LIGHTNING SWORD ART. A lance rather than a beam: she drops
+    # to a knee and drives the point into the ground, so the shape should
+    # travel and taper rather than cross the frame evenly.
+    "slash_thunder": lance(THUNDER, start=(0.82, 0.12), end=(0.24, 0.82),
+                           width=52, seed=29),
 }
 
 for name, img in plates.items():

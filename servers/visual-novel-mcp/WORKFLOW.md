@@ -95,6 +95,28 @@ not currently shown. Two things that audit must get right, or it reports noise:
   and remember that a prop reveal on a black field (`scene bg black` plus
   `show prop ...`) is the same thing. All four survivors above were that.
 
+### The image TAG is the first word, so `fx snow` and `fx slash` are one image
+
+Ren'Py takes the first word of an image name as its tag, and one tag holds one
+displayable. So `fx snowfall`, `fx ice burst`, `fx slash thunder` and every
+other plate named `fx something` are all the SAME tag -- `fx`.
+
+Two failures came out of that in one scene, and neither raises anything:
+
+1. **Z-ORDER IS FIXED WHEN THE TAG FIRST APPEARS.** Ambient snow was shown
+   right after the `scene`, before the sprites, which put the `fx` tag below
+   them. Every impact plate afterwards replaced that same tag and inherited
+   its position, so the flashes played BEHIND the characters.
+2. **THE AMBIENT EFFECT DIES AT THE FIRST IMPACT.** Showing a plate replaces
+   the tag, and the `hide` after the flash removes it -- so the snow stopped
+   for the rest of the scene the first time anything was cast.
+
+Give a persistent effect its own tag: `show fx snowfall as snow`. Then the
+weather keeps its low position and impact plates stack on top as a fresh tag.
+
+Lint cannot see any of this; both states are valid. It is caught by watching
+the scene, or by asking why an effect that clearly rendered is not in front.
+
 ### A BRANCHING jump breaks script_diff's file ordering
 
 `script_diff` derives its scene order by following the jump chain, and it

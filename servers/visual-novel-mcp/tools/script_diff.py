@@ -190,53 +190,71 @@ def scene_order(scenes_dir):
     reports every converted block as missing. The jump chain is the real order
     and it cannot drift, because it is what the engine executes.
 
-    Falls back to alphabetical if the chain is broken or branches, which is
-    the honest behavior: a branching story has no single order, and this tool
-    is for linear drift-checking.
+    ⚠ BRANCHES ARE FOLLOWED, and the traversal has to be the right one. This
+    used to give up whenever a file had more than one jump, fall back to
+    alphabetical, and report ~235 blocks unconverted with nothing actually
+    missing. That cost an evening of trusting a broken drift check, because
+    the warning prints at the TOP and the total prints at the bottom, and a
+    `tail` on the output shows only the reassuring half.
 
-    ⚠ AND IT SAYS SO WHEN IT DOES. The fallback used to be silent, and silence
-    is what made it expensive: a branch that put three labels in one file left
-    the chain unresolvable, the scenes sorted alphabetically, and the diff
-    reported 235 blocks unconverted with nothing actually missing. The output
-    looked like a content problem and was an ordering one.
+    DEPTH-FIRST IS THE WRONG ALGORITHM and looks right until you try it.
+    Branches in a visual novel RECONVERGE: three scenarios all jump to one
+    convergence scene. Depth-first walks the first branch straight through the
+    join and out the far side, so the convergence lands before the second and
+    third branches -- while the author wrote all three scenarios first and the
+    convergence after them.
 
-    A jump target resolves to a file BY NAME, so the fix for a branch is to
-    keep it inside one file whose label matches its name -- see WORKFLOW.md.
+    TOPOLOGICAL order is what matches the document: a scene is emitted only
+    once every path into it has been emitted, so a join waits for all of its
+    branches. With the queue kept in discovery order rather than sorted, the
+    branches come out in the order the story jumps to them, which is the order
+    they were written.
+
+    Falls back to alphabetical only when the graph genuinely cannot be
+    ordered -- no single entry point, a cycle, or files nothing reaches -- and
+    says so on stderr.
     """
     files = sorted(glob.glob(os.path.join(scenes_dir, "*.rpy")))
-    label_of, jump_of = {}, {}
+    label_of, out_edges = {}, {}
     for f in files:
         src = io.open(f, encoding="utf-8").read()
         labels = re.findall(r"^label\s+([A-Za-z_]\w*)\s*:", src, re.M)
         jumps = re.findall(r"^\s*jump\s+([A-Za-z_]\w*)\s*$", src, re.M)
-        if len(labels) != 1 or len(jumps) > 1:
-            # ⚠ THIS is the branching case, and it is the return that actually
-            # fires. A first attempt to make the fallback audible put the
-            # message on the length check at the bottom of this function --
-            # which this early exit skips entirely, so the warning never
-            # appeared and the failure stayed as silent as before.
-            #
-            # It reports the FILE, because that is the actionable part: the
-            # fix is to give that file one label and one jump out.
+        if len(labels) != 1:
+            # Still unresolvable, and for the reason that has not changed: a
+            # jump target resolves to a file BY NAME, so two labels in one
+            # file leave a target that cannot be placed.
             sys.stderr.write(
-                "script_diff: %s has %d labels and %d jumps, so the story "
-                "order cannot be\n"
+                "script_diff: %s has %d labels, so the story order cannot be\n"
                 "  followed and the scenes are being compared in ALPHABETICAL "
                 "order instead.\n"
                 "  That silently misaligns everything -- expect converted "
                 "blocks to report as\n"
-                "  missing. A jump target resolves to a file by NAME, so keep "
-                "a branch inside\n"
-                "  one file with ONE label matching its name, and one jump "
-                "out.\n"
-                % (os.path.basename(f), len(labels), len(jumps)))
-            return files                       # not a simple chain
+                "  missing. Give each scene file ONE label matching its name.\n"
+                % (os.path.basename(f), len(labels)))
+            return files
         label_of[labels[0]] = f
-        if jumps:
-            jump_of[labels[0]] = jumps[0]
+        # Order preserved, duplicates dropped: a scene that jumps to the same
+        # target twice is ONE edge. Counted twice, the join never unblocks and
+        # everything after it silently drops out of the order.
+        seen_t, edges = set(), []
+        for t in jumps:
+            if t not in seen_t:
+                seen_t.add(t)
+                edges.append(t)
+        out_edges[labels[0]] = edges
 
-    targets = set(jump_of.values())
-    heads = [l for l in label_of if l not in targets]
+    # Only jumps to scenes can be ordered. A jump into game/ -- a battle label,
+    # say -- is a real edge in the engine but not one between scene files.
+    for lab in out_edges:
+        out_edges[lab] = [t for t in out_edges[lab] if t in label_of]
+
+    indeg = {lab: 0 for lab in label_of}
+    for lab, targets in out_edges.items():
+        for t in targets:
+            indeg[t] += 1
+
+    heads = [l for l in label_of if indeg[l] == 0]
     if len(heads) != 1:
         # The THIRD silent exit, and the one an ordinary authoring slip hits:
         # a scene nothing jumps to yet is a second head, and two heads mean no
@@ -254,21 +272,27 @@ def scene_order(scenes_dir):
             % (len(heads), ", ".join(sorted(heads)) or "(none)"))
         return files                           # no single entry point
 
-    order, seen, cur = [], set(), heads[0]
-    while cur in label_of and cur not in seen:
-        seen.add(cur)
+    # Kahn's algorithm. The queue stays in discovery order rather than being
+    # sorted, so branches emerge in the order the story jumps to them.
+    order, queue, deg = [], list(heads), dict(indeg)
+    while queue:
+        cur = queue.pop(0)
         order.append(label_of[cur])
-        cur = jump_of.get(cur)
+        for t in out_edges.get(cur, []):
+            deg[t] -= 1
+            if deg[t] == 0:
+                queue.append(t)
+
     if len(order) == len(files):
         return order
     missed = [os.path.basename(p) for p in files if p not in order]
     sys.stderr.write(
-        "script_diff: the jump chain reached %d of %d scene files, so they are\n"
+        "script_diff: the jump graph reached %d of %d scene files, so they are\n"
         "  being compared in ALPHABETICAL order.\n"
         "  unreached: %s\n"
-        "  A branching jump does this -- a target resolves to a file by NAME,\n"
-        "  so several labels in one file are unreachable. Keep the branch\n"
-        "  inside one file whose label matches its name.\n"
+        "  Either nothing jumps to them yet, or there is a cycle -- a scene\n"
+        "  inside a loop never has all its incoming paths resolved, so it can\n"
+        "  never be placed.\n"
         % (len(order), len(files), ", ".join(missed) or "(none)"))
     return files
 
