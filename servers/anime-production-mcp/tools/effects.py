@@ -33,7 +33,7 @@ import math
 import os
 import random as pyr
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageSequence
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .motion import expand_frames, _dedupe_guard
 
@@ -279,7 +279,7 @@ def water(src: str, dst: str, mask_path: str | None = None,
     black = Image.new("RGB", (W, H), (0, 0, 0))
 
     pyr.seed(11)
-    mp = mask.load()
+    mask.load()
 
     def scatter(k, src_mask):
         pts, guard = [], 0
@@ -371,7 +371,6 @@ def motion_lines(src: str, dst: str, angle: float = 180.0, density: int = 90,
     """
     base = expand_frames(src)
     W, H = base[0].size
-    n = len(base)
     diag = math.hypot(W, H)
     rad = math.radians(angle)
     dx, dy = math.cos(rad), math.sin(rad)
@@ -439,7 +438,6 @@ def glow(src: str, dst: str, mask_path: str | None = None,
     """
     base = expand_frames(src)
     W, H = base[0].size
-    n = len(base)
 
     if mask_path:
         lit = Image.open(mask_path).convert("L")

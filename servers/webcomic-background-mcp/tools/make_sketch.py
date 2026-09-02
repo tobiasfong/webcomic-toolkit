@@ -40,7 +40,6 @@ drawn. Anything you leave out of the sketch comes out missing or malformed —
 that's a property of the input, not a model defect. Draw every element you
 want to appear.
 """
-import sys
 import argparse
 import os
 import cv2

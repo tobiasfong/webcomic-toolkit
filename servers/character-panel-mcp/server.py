@@ -347,7 +347,7 @@ def _render_pose(
     conflict that produces ragged texture-clash artifacts. Only the name and
     the explicit `pose`/`prompt` text are used; apply the character's actual
     costume afterward via edit_character_image, as its own separate pass."""
-    ref_path = ref_override or characters.primary_ref_path(character, project)
+    ref_override or characters.primary_ref_path(character, project)
     entry = characters.get_character(character, project)
     full_prompt = f"{entry['name']}, {pose}"
     if prompt:

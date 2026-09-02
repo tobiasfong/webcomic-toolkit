@@ -38,7 +38,6 @@ import os
 import random
 import sys
 
-from collections import deque
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -411,11 +410,9 @@ def light_interior(day, target=0.115, lamp=(0.30, 0.62), warm=(255, 168, 92)):
 
     acc = 0.0
     n = 0
-    vals = []
     for y in range(h):
         for x in range(w):
             r, g, b = px[x, y]
-            L = 0.299 * r + 0.587 * g + 0.114 * b
             d = math.hypot(x - lx, y - ly) / reach
             fall = max(0.0, 1.0 - d) ** 1.7          # 1 at the lamp, 0 far off
             amb = 0.16                                # moonlight floor

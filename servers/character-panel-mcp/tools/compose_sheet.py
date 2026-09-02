@@ -232,7 +232,6 @@ def compose_concept_sheet(
     f_h2 = _font(23, bold=True)
     f_body = _font(20)
     f_label = _font(16, bold=True)
-    f_caption = _font(17)
 
     scratch = Image.new("RGB", (10, 10))
     sdraw = ImageDraw.Draw(scratch)

@@ -273,7 +273,7 @@ def main():
     if cfg.get("flutter"):
         import numpy as np
         arr = np.asarray(cover).astype(np.int16)
-        r_, g_, b_ = arr[..., 0], arr[..., 1], arr[..., 2]
+        r_, _, b_ = arr[..., 0], arr[..., 1], arr[..., 2]
         bg = (b_ > r_ + 28) & (b_ > 110)
         fig = (~bg).astype(np.float32)
         # Feather, so the warp fades in at a silhouette edge instead of

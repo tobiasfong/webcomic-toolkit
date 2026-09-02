@@ -40,7 +40,6 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 

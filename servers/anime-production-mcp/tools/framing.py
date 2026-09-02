@@ -16,7 +16,7 @@ import math
 import os
 from collections import deque
 
-from PIL import Image, ImageFilter, ImageSequence
+from PIL import Image, ImageFilter
 
 from .motion import expand_frames, _dedupe_guard
 

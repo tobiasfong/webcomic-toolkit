@@ -15,7 +15,6 @@ the outside of the leg.
 import argparse
 import math
 
-import numpy as np
 from PIL import Image
 
 

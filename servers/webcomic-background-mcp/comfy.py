@@ -9,9 +9,7 @@ with it, this did not.
 
 import os
 import time
-import uuid
 import subprocess
-import tempfile
 import requests
 
 COMFY_URL = os.environ.get("COMFY_URL", "http://127.0.0.1:8188")

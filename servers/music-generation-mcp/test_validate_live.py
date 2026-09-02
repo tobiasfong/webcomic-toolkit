@@ -17,7 +17,6 @@ EXPECTED and tells us nothing is wrong with the graph — while any other error
 class is a real bug.
 """
 
-import json
 import sys
 
 import requests

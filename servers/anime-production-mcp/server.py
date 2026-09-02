@@ -150,7 +150,7 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
         view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
         motion.retime(raw, view, fps=view_fps)
         m = motion.measure(view, tuple(measure_box) if measure_box else None)
-        rec = sh.record(project, shot_id, name,
+        sh.record(project, shot_id, name,
                         lw.recipe(**dict(params, image=os.path.basename(image_path))),
                         {"webp": raw, "retimed": view},
                         {"maxdev": m["maxdev"], "span": m["span"],
