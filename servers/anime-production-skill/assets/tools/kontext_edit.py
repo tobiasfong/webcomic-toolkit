@@ -36,7 +36,7 @@ RAM, and the card this was measured on runs a 14.2 GB model routinely.
 Still expect to discard takes — about a third of Q6 output is unusable, fused
 fingers included. Run three seeds; only one has to land.
 """
-import argparse, json, os, time, urllib.request, urllib.error
+import argparse, json, time, urllib.request, urllib.error
 
 HOST = "http://127.0.0.1:8188"
 UNET = "flux1-kontext-dev-Q6_K.gguf"

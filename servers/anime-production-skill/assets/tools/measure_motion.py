@@ -78,7 +78,7 @@ def main():
     print(f"  maxdev (frame0 vs any)     : {mx:6.2f}  at frame {mxi}"
           f"   <- {'MID-CLIP: consistent with a round trip (blink/gesture)' if 0 < mxi < n - 1 else 'LAST FRAME: monotonic drift, not a round trip'}")
     print(f"  peak consecutive delta     : {peak:6.2f}  (at frame {consec.index(peak)+1})")
-    print(f"  per-frame: " + " ".join(f"{d:.1f}" for d in consec))
+    print("  per-frame: " + " ".join(f"{d:.1f}" for d in consec))
 
     if a.dump:
         os.makedirs(a.dump, exist_ok=True)
