@@ -363,7 +363,7 @@ implies:
 
 | the shot | what the plate must show |
 |---|---|
-| full-body figure standing in a street | the LOWER STOREY only — wall, door, shutters — with the roof above the top edge and out of frame, ground as a flat band along the bottom |
+| full-body figure standing in a street | the LOWER STORY only — wall, door, shutters — with the roof above the top edge and out of frame, ground as a flat band along the bottom |
 | medium shot of figures in a hall | two columns close to camera and cut off by the top, one wall behind. Not rows receding to a vanishing point |
 
 State it positively — "towering far above the top edge of the picture so the
@@ -730,7 +730,7 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
 - **Style survives regardless** — cel shading, linework, color and background
   hold in every run; no drift toward photoreal. Verified on generated panels
   *and* hand-drawn illustrations. It is specifically **faces** that degrade.
-- Favour mid/long shots for animation; keep close-ups static or nearly so. Keep
+- Favor mid/long shots for animation; keep close-ups static or nearly so. Keep
   clips short — drift compounds with generated time.
 - **Use `distilled` for motion. `dev` barely moves.** Measured as mean absolute
   pixel difference between first and last frame (0-255 scale), same seed and
@@ -875,7 +875,7 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   matters is pixels x frames, so resolution can be bought back by shortening
   the clip: 896x1280 at 17 frames (19.5 MP-frames) ran fine where 1024x1728
   at 25 (44) did not.
-  Unsafe asks: head or body turning, limbs travelling far, anything revealing a
+  Unsafe asks: head or body turning, limbs traveling far, anything revealing a
   surface not visible in the source.
 
   **Everything below was tested and FAILED. Do not retry them:**
@@ -1217,6 +1217,95 @@ so late turns were carrying an enormous payload before any work happened.
    normalization was wrong. Use numbers to filter, his eye to judge.
 6. **When a session has read many images, COMPACT OR START FRESH.** The cost is
    already sunk into context and every further turn pays it again.
+
+## Visual novel — working rules
+
+Added 2026-09-02 after a full debugging pass. The game lives under a
+gitignored `vn/<project>/`; its private supplement — story state, the
+speaker-to-sprite map, which sprite gaps are deliberate — is
+`vn/<project>/HANDOVER.md`. THIS section is the procedure, and it is here
+because this file is the one every session loads regardless of model.
+
+### The verification sequence — all of it, in order, on every change
+
+Each step caught a real bug in one week. None substitutes for another.
+
+1. **Re-emit every generated scene** from the master docx
+   (`vn/<project>/tools/emit_*.py`). Scenes from the first generated chapter
+   onward are GENERATED; never hand-edit one, the next re-emit wipes it.
+   Everything earlier is hand-written and edited directly.
+2. **`script_diff`** — and READ THE TOP of its output. Its warning prints
+   first and its total prints last; read through `tail` it shows a
+   reassuring count while the first line says the comparison is
+   meaningless. Expected result: `in sync`.
+3. **Lint** with `renpy.exe <project> lint` — project path FIRST. Filter
+   findings on the shape `^game/.*\.rpy:[0-9]+`, never on the word "error";
+   that once discarded the only line that mattered. Expected: no lines.
+4. **Sprite audit** — see below. Expected: only the documented deliberate
+   gaps.
+5. **`check_story`** via the MCP — after RESTARTING the server if anything
+   under `servers/visual-novel-mcp/` was edited. The running process keeps
+   the old module; a parser fix was invisible for an hour.
+6. **Sound coverage** — every `show fx X` has a `play sound` on the line
+   before it, except ambient effects.
+7. **Web build** (`build_web.py`) when assets or the launcher changed.
+
+### Emitters — where they bite
+
+- **The unbounded tail has fired THREE TIMES.** An emitter that runs to the
+  end of the document is correct until the author writes the next chapter;
+  the next run then swallows that chapter into the previous scene with a
+  normal success summary. Every emitter gets an END ANCHOR. Where the next
+  beat is unwritten and no anchor exists, CAP the tail at a paragraph count
+  and refuse to run past it — failing loudly costs one rerun.
+- The docx has a blank paragraph between every line, so `i + 1` after a
+  marker is the blank. Use a next-non-empty helper. This once emitted `""`
+  as an entire conditional branch, and lint passed it.
+- Anchor on prose CONTENT, never paragraph numbers. The document moves.
+- The outgoing `jump` is EMITTED, never appended by hand — a hand-added one
+  was silently deleted by the next re-emit.
+- Every speaker gets a `show` before speaking, re-issued after every
+  `scene`. Speaking from an empty frame is the most-reported bug here.
+- Conditional paragraphs: emit the DEFAULT branch first (negate the
+  condition) to match document order, or `script_diff` reports a phantom
+  NEW+DROPPED pair.
+- Choice cards, spec notes and scenario headers must be listed in
+  `patterns.json` or they report as unconverted prose. Write those regexes
+  as RAW strings: a `\b` typed with one backslash became a literal
+  backspace character and could never match, while printing as if correct.
+
+### The sprite audit must carry state across scenes
+
+Sprites survive a `jump`; only `scene` clears them. An audit that resets
+per file produced fifteen false positives. Walk files in story order
+(`script_diff.scene_order()`, which follows branches topologically), carry
+the shown set across, reset on every `scene`, treat `scene cg` as a
+no-sprite state. The speaker VARIABLE is not always the sprite TAG — look
+it up. What remains is a short hand-checked list, and an off-screen voice
+is sometimes the point; confirm intent in the file's comments before
+"fixing" it.
+
+### Engine traps confirmed here
+
+- **The image TAG is the first word of the name.** `fx snowfall` and
+  `fx ice burst` share tag `fx`: the ambient effect claims the tag below
+  the sprites, every later plate inherits that z-position and renders
+  BEHIND the cast, and the `hide` after a flash kills the ambient effect for
+  the rest of the scene. Show persistent effects `as <own tag>`.
+- **Two `show`s at one slot stack silently.** One figure vanishes behind
+  the other for a whole scene. No error, no warning.
+- **`define` at different init phases.** `gui.rpy` runs at
+  `init offset = -2`; a stock-template `define` in `options.rpy` at init 0
+  silently WINS over the deliberate value. Lint reports it only as "already
+  defined", which reads as ignorable. One place, one value.
+- **CGs are declared without a transform** on the assumption they are
+  screen-sized. Anything else renders small in the middle. Cover-crop on
+  disk first.
+- Impact plates: 50 ms in, 60 held, 400 out. The sound goes BEFORE the
+  `show`. Stock "impact" audio can take 1–3 s to reach its peak —
+  `import_sfx.py` peak-aligns impacts and leaves sustained sounds alone.
+- Draw GEOMETRY (`fx_plates.py`); GENERATE volumetric objects. Three drawn
+  attempts at a translucent bloom all failed before it was generated.
 
 ## Practical
 
