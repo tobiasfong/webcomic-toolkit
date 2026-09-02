@@ -335,6 +335,57 @@ the moment it drew. Two checks that do catch things:
   sprite picked from a turnaround sheet that was a three-quarter view rather
   than the back view it looked like at thumbnail size.
 
+### Read the tools' output the way the tools write it
+
+Three verification tools each gave a wrong all-clear in one week, and in
+every case the tool had said so and the reading discarded it.
+
+- **`script_diff` prints its warning at the TOP and its total at the
+  bottom.** Read through `tail`, it shows "1 region differs" while the
+  first line says the scenes are being compared in alphabetical order and
+  every count below is meaningless. Never pipe it through `tail`; read the
+  first lines first. It now follows branches (topological order, so a
+  convergence waits for all the branches into it), and still warns when a
+  file has more than one label, the graph has no single head, or there is
+  a cycle.
+- **Lint's findings are lines of the form `game/<file>.rpy:<line>`.**
+  Grepping for the word "error" once threw away the one line that mattered.
+  Filter on that shape. And a "define already defined" line is not noise:
+  `gui.rpy` runs at `init offset = -2`, so a stock-template `define` in
+  `options.rpy` at init 0 silently WINS over a deliberate value set earlier.
+- **`check_story`'s parser read `call screen NAME` as a call to a label
+  named `screen`** and reported two permanent dangling jumps — which trains
+  people to ignore the dangling list, the one list that must never be
+  ignored. Fixed in `rpy_parse.py`.
+- **Editing anything under this server's directory changes nothing until
+  the MCP server is restarted.** The running process keeps the old module.
+  Verify a parser fix in a fresh interpreter before trusting `check_story`.
+
+### The sprite audit must carry state across scenes
+
+A speaker with no sprite on screen is the most-reported bug in this project,
+and the obvious audit — reset the shown set at each file — produced fifteen
+false positives. Sprites survive a `jump`; only `scene` clears them. Walk
+the files in story order (use `script_diff.scene_order()`), carry the shown
+set across, reset it on every `scene`, and treat a `scene cg` as a
+no-sprite state. The speaker VARIABLE is not always the sprite TAG, so the
+mapping has to be looked up, not assumed.
+
+What remains after that is a short list to check by hand, and a voice from
+off-screen is sometimes the point — an ambush shout before the figure lands,
+a line during a blackout, dialogue over an insert shot. Confirm intent in
+the file's own comments before "fixing" it.
+
+### Cap an emitter's tail when it cannot be anchored
+
+A generator that copies prose from the master document to the END of the
+document is correct until the author writes the next chapter; the next run
+then swallows that chapter into the previous scene and prints a normal
+success summary. This has fired three times. When there is no end anchor
+yet because the next beat is unwritten, CAP the tail at a paragraph count
+and refuse to run past it. Failing loudly costs one rerun; failing silently
+cost an evening.
+
 ## Web builds
 
 - The command is `launcher web_build`. `distribute --package web` produces a

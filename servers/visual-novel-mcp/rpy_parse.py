@@ -29,7 +29,12 @@ _PY_KEYWORDS = set(keyword.kwlist) | {
 
 _LABEL_RE = re.compile(r"^(\s*)label\s+([A-Za-z_.][\w.]*)\s*(?:\([^)]*\))?\s*:")
 _JUMP_RE = re.compile(r"^\s*jump\s+(expression\s+)?([\w.]+)")
-_CALL_RE = re.compile(r"^\s*call\s+(expression\s+)?([\w.]+)")
+# `call screen NAME` is a SCREEN statement, not a call to a label named
+# "screen" -- but that is exactly how the plain pattern read it, and
+# check_story reported every battle target picker as a dangling jump to a
+# label called `screen`. Two permanent false positives that trained people to
+# ignore the dangling list, which is the one list that must never be ignored.
+_CALL_RE = re.compile(r"^\s*call\s+(?!screen\b)(expression\s+)?([\w.]+)")
 _MENU_RE = re.compile(r"^(\s*)menu(?:\s+[\w.]+)?\s*:")
 _CHOICE_RE = re.compile(r'^(\s*)"((?:[^"\\]|\\.)*)"\s*(?:if\s+(.+?))?\s*:\s*$')
 _SET_RE = re.compile(r"^\s*\$\s*([A-Za-z_]\w*)\s*(?:=|\+=|-=)\s*")
