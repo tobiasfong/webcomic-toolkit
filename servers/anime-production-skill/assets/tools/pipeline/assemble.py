@@ -40,7 +40,6 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
@@ -267,6 +266,7 @@ def assemble(scenes: list[dict], out: str, audio: str | None = None,
              clip_fps: int = 12, bars_loop: int = 6, hold_seconds: float = 4.0,
              duration: float | None = None, ffmpeg: str | None = None,
              crf: int = 18, preview: float = 0.0, fit_mode: str = "contain",
+             shortest: bool = True,
              background: tuple = (12, 12, 14)) -> dict:
     """Encode the whole video. Blocking; minutes for a two-minute piece."""
     exe = find_ffmpeg(ffmpeg)
@@ -292,7 +292,13 @@ def assemble(scenes: list[dict], out: str, audio: str | None = None,
 
     cmd = [exe, "-y", "-f", "image2pipe", "-vcodec", "png", "-r", str(fps), "-i", "-"]
     if audio:
-        cmd += ["-i", audio, "-shortest", "-c:a", "aac", "-b:a", "192k"]
+        # `-shortest` truncates the VIDEO to the audio. That is wrong whenever the
+        # music was written against the cut: the composer scored to specific panel
+        # timings, so shortening the video moves every beat. Pass shortest=False to
+        # keep the full picture and let a slightly shorter track end early.
+        cmd += ["-i", audio, "-c:a", "aac", "-b:a", "192k"]
+        if shortest:
+            cmd += ["-shortest"]
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
             "-pix_fmt", "yuv420p", out]
 

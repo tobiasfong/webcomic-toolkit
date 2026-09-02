@@ -1250,6 +1250,20 @@ Each step caught a real bug in one week. None substitutes for another.
    before it, except ambient effects.
 7. **Web build** (`build_web.py`) when assets or the launcher changed.
 
+Repo-wide, on any change under `servers/`:
+
+8. **`python -m pyflakes`** over the edited server — and READ ITS OUTPUT
+   AFTER EDITING, not just before. An "unused import" finding names ONE
+   name on a possibly multi-name line; deleting the line removed `Image`
+   from two files, `py_compile` passed them (syntax only), and only the
+   pyflakes re-run caught 88 undefined names.
+9. **`python servers/anime-production-mcp/sync_skill.py --check`**. The
+   anime-production skill ships a vendored copy of that server's pipeline
+   because it installs by being copied elsewhere and must be self-contained.
+   The server is canonical; the copy was once found three weeks stale and
+   missing a function while its docs promised "same code either way". Run
+   without `--check` to bring it current after editing the server's tools.
+
 ### Emitters — where they bite
 
 - **The unbounded tail has fired THREE TIMES.** An emitter that runs to the

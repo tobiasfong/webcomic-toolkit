@@ -169,6 +169,40 @@ def scan_grid(clip_path: str, cols: int = 4, rows: int = 3,
     }
 
 
+def face_box(clip_path: str, upper: float = 0.7, pad: int = 22) -> list[int] | None:
+    """Guess where the faces are, from skin tone on frame 0.
+
+    Faces are what a viewer watches and what LTX damages most visibly, but they
+    are a small fraction of a panel — a head is about a tenth of a wide frame,
+    so whole-frame scanning cannot see one dissolve. Scanning a face box catches
+    it; the problem is knowing where the face is without being told.
+
+    Skin is a usable proxy on cel art: warm, bright, red above blue, and quite
+    unlike foliage, cloth or sky. Restricted to the upper part of the frame,
+    because hands and bare legs are skin too and would drag the box downward.
+
+    Returns None when nothing skin-like is found — a boots-only panel, say — and
+    the caller should fall back to the whole frame rather than trust a guess.
+    """
+    import numpy as np
+
+    frames = read_frames(clip_path)
+    a = np.asarray(frames[0], dtype=np.int16)
+    H, W, _ = a.shape
+    skin = ((a[:, :, 0] > 170) & (a[:, :, 0] > a[:, :, 2] + 18) &
+            (a[:, :, 1] > 130) & (a[:, :, 1] < a[:, :, 0]))
+    skin[int(H * upper):, :] = False
+    if skin.sum() < (W * H) * 0.0015:
+        return None
+    ys, xs = np.where(skin)
+    # median-centered window rather than the raw bbox: a stray warm pixel in the
+    # background would otherwise stretch the box across the whole panel
+    cx, cy = int(np.median(xs)), int(np.median(ys))
+    rx = int(max(np.percentile(xs, 85) - cx, cx - np.percentile(xs, 15))) + pad
+    ry = int(max(np.percentile(ys, 85) - cy, cy - np.percentile(ys, 15))) + pad
+    return [max(0, cx - rx), max(0, cy - ry), min(W, cx + rx), min(H, cy + ry)]
+
+
 def rank(clips: list[str], box: list[int] | None = None,
          threshold: float = 0.85) -> dict:
     """Scan several takes of the same shot and order them by usable length.
