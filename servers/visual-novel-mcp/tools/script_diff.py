@@ -72,10 +72,16 @@ def load_patterns(path=None):
     def joined(key):
         v = cfg[key]
         return re.compile("|".join(v) if isinstance(v, list) else v, re.I)
+    global SKIP_LINE
+    SKIP_LINE = [re.compile(x, re.I) for x in cfg.get('skip_line', [])]
     return (re.compile(cfg["speaker"]), joined("spec_start"),
             joined("spec_line"), re.compile(cfg["annotation"]))
 
 
+# ⚠ SKIP_LINE IS A MODULE GLOBAL SET BY load_patterns AS A SIDE EFFECT, not a
+# fifth return value. Eighteen generated emitters unpack this call as a
+# 4-tuple, and widening it would break every one of them at once.
+SKIP_LINE = []
 SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
 
 
@@ -168,6 +174,13 @@ def prose_mask(paras):
         if not t or t.lower() in ("prologue",):
             mask.append(False)
             continue
+        # A standalone marker: skipped, but it does NOT open a spec region.
+        # The difference matters -- an author's structural note can sit
+        # directly above a short line of real prose, and starting a block
+        # would eat it on the length rule.
+        if any(rx.match(t) for rx in SKIP_LINE):
+            mask.append(False)
+            continue
         if SPEC_START.match(t):
             in_spec = True
             mask.append(False)
@@ -182,34 +195,30 @@ def prose_mask(paras):
 
 
 def read_docx(path):
-    import docx
-    out = []
-    in_spec = False
-    for p in docx.Document(path).paragraphs:
-        t = p.text.strip()
-        if not t or t.lower() in ("prologue",):
-            continue
-        if SPEC_START.match(t):
-            in_spec = True
-            continue
-        if in_spec:
-            # A spec block ends when a normal prose/dialogue line resumes --
-            # judged by VOCABULARY first, length only as a backstop.
-            #
-            # ⚠ A LINE OF DIALOGUE ALWAYS ENDS THE BLOCK, and is checked
-            # before the length backstop. Notes to the implementer never have
-            # a character speaking in them, while a line of dialogue is very
-            # often shorter than the backstop -- so without this, the first
-            # short line of returning dialogue is swallowed as spec and
-            # silently vanishes from the comparison, taking everything short
-            # after it as well.
-            if not _speaks(t) and (SPEC_LINE.match(t)
-                                   or len(t) < SPEC_SHORT):
-                continue
-            in_spec = False
-        out.append(normalize(t))
-    return out
+    """The document's prose blocks, normalized.
 
+    ⚠ USES prose_mask RATHER THAN ITS OWN COPY OF THE STATE MACHINE. It had
+    one until 2026-09-05, and the two promptly diverged: `skip_line` was added
+    to prose_mask for standalone markers and not here, so an emitter correctly
+    omitted "(scenarios converge)" while this function still counted it, and
+    the diff reported a phantom empty block that no scene could ever satisfy.
+    One implementation, used by both, is the only way they cannot disagree.
+
+    A paragraph that normalizes to nothing is dropped: an author annotation
+    that IS the whole paragraph strips to an empty string, and an empty block
+    can never be matched by a scene.
+    """
+    import docx
+    paras = [p.text.strip() for p in docx.Document(path).paragraphs]
+    keep = prose_mask(paras)
+    out = []
+    for t, ok in zip(paras, keep):
+        if not ok:
+            continue
+        n = normalize(t)
+        if n.strip():
+            out.append(n)
+    return out
 
 def scene_order(scenes_dir):
     """Scene files in STORY order, by following the jump chain.
