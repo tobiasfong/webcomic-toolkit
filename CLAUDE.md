@@ -380,13 +380,33 @@ downscaling a matched canvas. Fixed 2026-08-31 (MAX_SIDE 1600); the MCP server
 must be restarted for it to take effect, so until then pass width/height
 explicitly.
 
-### A figure that LEANS needs something to lean on IN THE RENDER
+### A figure in CONTACT needs the thing it touches IN THE RENDER
 
 A lean drawn against empty white comes back looking like a man falling over —
 the model needs the wall present to get the body mechanics. So put a plain flat
 wall behind him, then MATTE it away; the transparent PNG keeps the pose and
-loses the wall. Prefer a PALE wall: keying a dark robe off dark timber is where
-the matte chews edges.
+loses the wall. Prefer a PALE surface: keying a dark robe off dark timber is
+where the matte chews edges.
+
+⚠ This is NOT just about leaning. A figure asked to lie on the ground with "no
+ground line and no cast shadow" — correct wording for a STANDING figure — came
+back reading as FALLING, for exactly the same reason. Put the floor in the
+render and matte it out afterwards.
+
+**And then say it in as FEW words as possible.** Three faults (falling, eyes
+open, head lifted) survived a prompt that had grown to ~250 words of enumerated
+contact: shoulders, back and hips in contact, hair pooled, sleeves crumpled,
+each closed eye described as a curved lid line with lashes at the outer corner.
+The author cut it to "lying fast asleep on the floor, sprawled out on her back,
+her arms and legs loose and flung out where they fell" — about 70 words — and
+all three faults resolved at once, on a canvas whose edges also came back clean
+where the long version had run the hair off both sides.
+
+ASLEEP is one concept the prior already knows, and it carries closed eyes, a
+head resting on the floor and slack limbs for free. Enumerating those
+separately is the same failure as the per-limb pose description that produced a
+three-legged figure and the added limb detail that produced a seashell against
+a cheek: naming the parts competes with naming the thing.
 
 ### Shadows depend on the camera
 
