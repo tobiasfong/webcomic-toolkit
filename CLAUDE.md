@@ -1230,10 +1230,15 @@ because this file is the one every session loads regardless of model.
 
 Each step caught a real bug in one week. None substitutes for another.
 
-1. **Re-emit every generated scene** from the master docx
-   (`vn/<project>/tools/emit_*.py`). Scenes from the first generated chapter
-   onward are GENERATED; never hand-edit one, the next re-emit wipes it.
-   Everything earlier is hand-written and edited directly.
+1. **Re-emit every scene** from the master docx:
+   `python vn/<project>/tools/emit_all.py`. **As of 2026-09-05 EVERY scene
+   file is generated** — there is no hand-written scene left, so never
+   hand-edit one; the next re-emit wipes it. Staging lives in the emitter:
+   change it there. (The prologue and early Act 1 were converted with
+   `servers/visual-novel-mcp/tools/convert_scene.py`, each verified line-
+   for-line identical against its hand-written original before the original
+   was replaced. Convert any future hand-written scene the same way, with
+   `--check`, and do not replace a file until the check says IDENTICAL.)
 2. **`script_diff`** — and READ THE TOP of its output. Its warning prints
    first and its total prints last; read through `tail` it shows a
    reassuring count while the first line says the comparison is

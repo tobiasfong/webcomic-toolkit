@@ -151,6 +151,36 @@ def bind_interpolations(scr_text, doc):
     return out
 
 
+def prose_mask(paras):
+    """Which paragraphs are PROSE, as opposed to spec notes, choice cards and
+    scenario headers -- the same state machine read_docx uses, exposed so an
+    emitter can skip exactly what the diff skips. Anything else drifts: an
+    emitter that skips by its own rule will one day emit a note the diff
+    ignores, and the two will disagree about whether the game is in sync.
+
+    Takes the raw paragraph list (already stripped) and returns a list of
+    bools of the same length.
+    """
+    mask = []
+    in_spec = False
+    for t in paras:
+        t = t.strip()
+        if not t or t.lower() in ("prologue",):
+            mask.append(False)
+            continue
+        if SPEC_START.match(t):
+            in_spec = True
+            mask.append(False)
+            continue
+        if in_spec:
+            if not _speaks(t) and (SPEC_LINE.match(t) or len(t) < SPEC_SHORT):
+                mask.append(False)
+                continue
+            in_spec = False
+        mask.append(True)
+    return mask
+
+
 def read_docx(path):
     import docx
     out = []
