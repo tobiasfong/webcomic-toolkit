@@ -452,6 +452,165 @@ def dark_crescent(rim_hue, seed=17, rim_px=9):
     return img
 
 
+def rake(hue, angle, thickness, gaps, bow=0.16, fill=232, seed=5, span=0.78):
+    """Parallel gashes: a claw, not a blade.
+
+    THREE STROKES, NOT ONE, and that is the whole read. A single beam is a
+    sword; what makes a paw legible is repetition at a fixed spacing, which
+    is exactly the fine repeated detail diffusion smears and geometry gets
+    right. `gaps` are perpendicular offsets in pixels from the center stroke.
+
+    ⚠ TWO THINGS THE FIRST VERSION GOT WRONG, both visible only once drawn.
+
+    THE TAPER MUST HAPPEN INSIDE THE FRAME. That version ran each stroke to
+    0.62 of the frame DIAGONAL, so the tapered tips fell outside the picture
+    and every visible pixel came from the fat middle -- three uniform tubes
+    that read as neon, not as a wound. `span` is now a fraction of the frame
+    WIDTH and stays under 1.0 so both tips land on screen.
+
+    AND A CLAW RAKES IN AN ARC. A straight stroke is a blade; the curve is
+    what says the mark was made by something swinging on a joint. `bow` is
+    how far the middle bulges perpendicular to the stroke, as a fraction of
+    its length.
+    """
+    rng = random.Random(seed)
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+    cx, cy = W / 2, H / 2
+    dx, dy = math.cos(angle), math.sin(angle)
+    px, py = -dy, dx                     # perpendicular: spacing, and the bow
+    reach = W * span / 2.0
+    for gi, g in enumerate(gaps):
+        ox, oy = cx + px * g, cy + py * g
+        curve = bow * reach * (1.0 + rng.uniform(-0.18, 0.18))
+        steps = 60
+        pts = []
+        for i in range(steps + 1):
+            t = -1.0 + 2.0 * i / steps
+            # the bow: zero at the tips, greatest at the middle
+            b = curve * (1.0 - t * t)
+            pts.append((ox + dx * reach * t + px * b,
+                        oy + dy * reach * t + py * b))
+        for i in range(steps):
+            t = -1.0 + 2.0 * i / steps
+            # fat in the middle, nothing at the tips
+            w = thickness * max(0.0, 1.0 - abs(t) ** 1.7) ** 0.75
+            if w < 0.8:
+                continue
+            d.line([pts[i], pts[i + 1]], fill=fill, width=max(1, int(round(w))))
+        # a claw leaves the deepest cut where it bites in: a short thickening
+        # a third of the way along, so the stroke is not symmetrical.
+        j = int(steps * 0.38)
+        d.line([pts[j], pts[j + 1]], fill=fill,
+               width=max(1, int(round(thickness * 1.15))))
+    return light(mask, hue)
+
+
+def jaws(hue, fill=244, seed=23, n_teeth=9):
+    """Two opposing arcs of solid fangs closing on each other.
+
+    ⚠ THE TEETH ARE FILLED TRIANGLES, NOT TICKS ON A LINE. Two earlier
+    versions drew this as strokes -- first as parallel lines, then as arcs
+    with short perpendicular marks -- and neither said "bite". The author
+    pointed at the Pokemon BITE animation, which is exactly right and
+    exactly this: a curved row of solid pointed fangs, top and bottom,
+    with the gap between them reading as the mouth.
+
+    A thin mark is a cut. A filled wedge is a tooth. That is the whole
+    difference, and no amount of tuning the line width gets there.
+    """
+    rng = random.Random(seed)
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+    cx, cy = W * 0.5, H * 0.47
+    rx = W * 0.27
+    ry = H * 0.24
+    gape = H * 0.055                     # half the opening between the jaws
+    for sign in (-1, 1):                 # -1 upper jaw, +1 lower
+        # the gum line: a shallow arc the fangs stand on
+        pts = []
+        for i in range(49):
+            t = -1.0 + 2.0 * i / 48
+            aa = t * 1.02
+            pts.append((cx + math.sin(aa) * rx,
+                        cy + sign * (gape + ry * (1.0 - math.cos(aa)) * 1.5)))
+        for i in range(48):
+            d.line([pts[i], pts[i + 1]], fill=fill, width=7)
+        # the fangs, standing off the gum line INTO the gap
+        for k in range(n_teeth):
+            t = (k + 0.5) / n_teeth
+            i = int(t * 48)
+            x, y = pts[i]
+            # longest at the front of the mouth, shorter toward the corners
+            taper = 1.0 - abs(t - 0.5) * 1.45
+            ln = max(6.0, ry * (0.62 * taper) * rng.uniform(0.88, 1.12))
+            half = max(3.0, ln * 0.34)
+            d.polygon([(x - half, y), (x + half, y), (x, y - sign * ln)],
+                      fill=fill)
+    return light(mask, hue)
+
+
+def shock_rings(hue, center=(0.5, 0.46), n=5, fill=150, seed=11):
+    """An expanding ring of sound: concentric arcs, thinning outward.
+
+    A scream has no shape of its own, so the plate draws its EFFECT -- the
+    pressure front. Rings rather than a burst because a burst reads as an
+    explosion with a source object, and there is no object here, only a
+    mouth. They thin and dim with radius so the eye reads outward travel
+    rather than a target.
+
+    Deliberately dim: this move does less damage than the slash it sits
+    beside, and a plate that outshines the harder attack lies about it.
+    """
+    rng = random.Random(seed)
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+    cx, cy = W * center[0], H * center[1]
+    for i in range(n):
+        f = (i + 1) / n
+        r = W * (0.06 + 0.52 * f ** 0.85)
+        wdt = max(1, int(round(11 * (1.0 - f) + 2)))
+        v = int(fill * (1.0 - 0.62 * f))
+        squash = 0.72 + rng.uniform(-0.04, 0.04)
+        d.ellipse([cx - r, cy - r * squash, cx + r, cy + r * squash],
+                  outline=v, width=wdt)
+    return light(mask, hue)
+
+
+def grasp(hue, n=7, fill=190, seed=17):
+    """Hooked strokes closing inward: hands reaching from every side.
+
+    The lesser spirits in this fight both "clutch at the living", so the plate is a
+    GRAB rather than a strike -- curved talons converging on the center from
+    the frame edges, arriving from all around because there are three of
+    them and they surround him.
+
+    Arcs rather than straight lines: a straight stroke inward is a spear,
+    and the hook is what makes it a hand.
+    """
+    rng = random.Random(seed)
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+    cx, cy = W * 0.5, H * 0.48
+    for i in range(n):
+        a = math.tau * i / n + rng.uniform(-0.16, 0.16)
+        far = W * rng.uniform(0.30, 0.46)
+        near = W * rng.uniform(0.10, 0.16)
+        # a short arc swept about the center, so the talon curves as it closes
+        sweep = rng.uniform(0.20, 0.34) * (1 if rng.random() < 0.5 else -1)
+        steps = 26
+        for k in range(steps):
+            t0, t1 = k / steps, (k + 1) / steps
+            r0 = far + (near - far) * t0
+            r1 = far + (near - far) * t1
+            a0, a1 = a + sweep * t0, a + sweep * t1
+            wdt = max(1, int(round(9 * (1.0 - t0) + 2)))
+            d.line([(cx + math.cos(a0) * r0, cy + math.sin(a0) * r0 * 0.8),
+                    (cx + math.cos(a1) * r1, cy + math.sin(a1) * r1 * 0.8)],
+                   fill=fill, width=wdt)
+    return light(mask, hue)
+
+
 ICE = (120, 214, 255)
 QI = (150, 96, 255)
 BLAST = (255, 150, 70)
@@ -483,6 +642,12 @@ GRAY = (146, 150, 158)        # a knife in the dark: dull, no ki at all
 # ⚠ It still must not be AZURE. The strike lands in the same exchange as the
 # protagonist's ice -- she shatters his trap, he answers with an ice barrier
 # -- and two people trading blows in one color read as one person.
+# The cave chapter. BEAST marks are warm and organic against the cast's cold
+# ki; SPECTER belongs to the spirit boss alone, a sick green-white that answers to
+# none of the existing magic systems so her attacks cannot be mistaken for
+# anyone's technique.
+BEAST = (255, 138, 92)
+SPECTER = (176, 255, 214)
 THUNDER = (208, 156, 255)
 # The yin arc's edge. AZURE rather than colorless, and the reason is
 # legibility rather than palette: the arc's body is a void and the plate
@@ -606,6 +771,22 @@ plates = {
     # travel and taper rather than cross the frame evenly.
     "slash_thunder": lance(THUNDER, start=(0.82, 0.12), end=(0.24, 0.82),
                            width=52, seed=29),
+    # --- the cave chapter, 2026-09-05 ---
+    # A beast's claw. Three gashes, angled DOWNWARD across the frame the way
+    # a big cat strikes, and warm against every cold plate the cast owns.
+    "slash_claw": rake(BEAST, math.radians(-34), 30, (-64, 0, 66)),
+    # Its bite. The same marks turned near-vertical and pulled tighter, so it
+    # reads as jaws closing rather than a swipe -- two rows, not three.
+    "bite_beast": jaws(BEAST),
+    # The spirit's rake: her color, wider spacing, thinner strokes. She is a
+    # bigger thing with narrower fingers.
+    "slash_specter": rake(SPECTER, math.radians(-26), 20, (-92, -12, 70, 132),
+                          fill=214, seed=41),
+    # Her scream.
+    "wail_specter": shock_rings(SPECTER),
+    # The lesser ghosts clutching. Shared by both ghost types: they do the
+    # same thing and the fight already tells them apart by name.
+    "grasp_specter": grasp(SPECTER),
 }
 
 for name, img in plates.items():

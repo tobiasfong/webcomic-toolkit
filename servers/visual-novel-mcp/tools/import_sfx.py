@@ -66,6 +66,17 @@ MAPPING = [
     ("sfx_blast_boom",      "fire-spell-impact",                  "impact"),
     ("sfx_ward_hum",        "magic-spell-02",                     "sustain"),
     ("sfx_sword_shimmer",   "soumages-magic-spell",               "sustain"),
+    # --- the cave chapter's beasts and ghosts, added 2026-09-05 ---
+    # A claw rake gets the SECOND violent slice, so it is audibly its own
+    # thing rather than a reuse of sfx_dark_arc, which is the first one.
+    ("sfx_claw_rake",       "violent-sword-slice-2-393841",       "impact"),
+    # ⚠ CONTRIBUTOR NAME IS "freesound_community", BUT THE FILE CAME FROM
+    # PIXABAY, so Pixabay's blanket license applies. Worth stating because the
+    # licensing note above singles out Freesound as the catalog that must be
+    # checked per file -- a future reader seeing that name on this line would
+    # reasonably wonder. If it is ever re-sourced from Freesound directly,
+    # check it there.
+    ("sfx_bite",            "monster-bite",                       "impact"),
 ]
 
 # Slots with no good match in the batch keep their synthesized versions.
