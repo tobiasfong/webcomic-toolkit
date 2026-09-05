@@ -65,8 +65,18 @@ SPEC_SHORT = 40
 
 
 def load_patterns(path=None):
+    """Generic defaults, overlaid with a project's patterns.json if given.
+
+    ⚠ A path that does not exist is a HARD ERROR, not a fallback. Falling back
+    to the defaults reports every spec note in the document as unconverted
+    story -- an eleven-block phantom diff, on a script that was in sync, from
+    one mistyped path. A wrong answer that looks like a real finding is worse
+    than no answer, so this refuses rather than guesses.
+    """
     cfg = dict(DEFAULTS)
-    if path and os.path.exists(path):
+    if path:
+        if not os.path.exists(path):
+            raise SystemExit("script_diff: no patterns file at %s" % path)
         with io.open(path, encoding="utf-8") as f:
             cfg.update(json.load(f))
     def joined(key):
@@ -383,13 +393,21 @@ def main():
     if len(sys.argv) > 3:
         patterns = sys.argv[3]
     else:
-        here = os.path.abspath(scenes)
+        here, patterns = os.path.abspath(scenes), None
         for _ in range(3):
             candidate = os.path.join(here, "patterns.json")
             if os.path.exists(candidate):
+                patterns = candidate
                 break
             here = os.path.dirname(here)
-        patterns = candidate
+        if patterns is None:
+            # Not fatal -- a project may genuinely have no spec notes -- but it
+            # prints FIRST, because every count below it is then suspect.
+            print("WARNING: no patterns.json found beside %s or above"
+                  " it. Running on generic defaults, so this project's"
+                  " own spec notes will be reported as unconverted"
+                  " prose." % scenes)
+            print()
     SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns(patterns)
     doc = read_docx(docx_path)
     scr = read_scenes(scenes)
