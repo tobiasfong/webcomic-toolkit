@@ -1346,6 +1346,43 @@ is sometimes the point; confirm intent in the file's comments before
 - Draw GEOMETRY (`fx_plates.py`); GENERATE volumetric objects. Three drawn
   attempts at a translucent bloom all failed before it was generated.
 
+### Web build: saves, and how to verify anything in it
+
+Settled 2026-09-05, after four wasted rebuild cycles.
+
+- **Saves in the web build live in browser storage** (an IDBFS mount at
+  `/home/web_user/.renpy`, flushed to IndexedDB by `emscripten.syncfs()`).
+  Saving and loading are AUTOMATIC and survive closing the tab. What loses
+  them: the player clearing site data, a private window, or the browser
+  evicting storage under disk pressure. Only the last is preventable, and
+  `game/web_storage.rpy` does it — `navigator.storage.persist()`, once per
+  session, gated on `import emscripten`. Chrome grants it from engagement
+  heuristics (returning visitor, bookmarked, or INSTALLED as a PWA — the web
+  build ships a `display: standalone` manifest and service worker, so it is
+  installable when self-hosted; itch.io's iframe blocks install). A fresh
+  origin is denied, which is expected, not a bug.
+- **Ren'Py Sync is a one-hour device-to-device transfer, not a backup**
+  (`00sync.rpy:507`: "This sync will expire in an hour"), and it runs on
+  sponsor-funded infrastructure. Never automate it.
+- **Ren'Py ALREADY SHIPS Export Saves / Import Saves** — `onSavegamesExport()`
+  and `onSavegamesImport()` in `web/renpy-pre.js`, behind the `≡` button in
+  the page corner where no player looks. One zip, every save, and import
+  rescans the slots live. `screens.rpy` calls the same functions from
+  web-only "Back up saves" / "Restore saves" buttons on the save/load screen
+  via the built-in `ExecJS(code)` action — which RAISES off the web, so gate
+  it on `renpy.variant("web")`.
+- **Do not auto-download on every save.** Chrome blocks repeated automatic
+  downloads behind a permission prompt, and each save would drop another
+  file in Downloads. One button, one file.
+- ⚠ **The browser tool's `javascript_tool` runs in an ISOLATED WORLD** and
+  cannot see globals the page sets on `window`. Verify page-side code through
+  the DOM, DOM events, or the network — `fetch('/DIAG/marker')` shows up as a
+  404 line in `serve_web.py`'s log. And before any rebuild loop, find the
+  5-second probe: `lint` executes every `init python` block, so a file-write
+  there answers "did init run" without a build.
+- Each web cycle costs ~4 minutes (120 MB build, ~3 min WASM unpack). Say so
+  before the second cycle, not after the fourth.
+
 ## Practical
 
 - **Pin `mcp<2` in every Python server.** mcp 2.0.0 REMOVED `mcp.server.fastmcp`,
