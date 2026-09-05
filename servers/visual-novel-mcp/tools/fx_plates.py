@@ -452,6 +452,80 @@ def dark_crescent(rim_hue, seed=17, rim_px=9):
     return img
 
 
+HAZE = (216, 228, 238)        # cold, barely blue -- fog off a frozen lake
+
+
+def fog_bank(seed=53, n=42):
+    """A soft bank of fog, WIDER THAN THE FRAME so it can drift.
+
+    Not a light effect and not an impact: this one holds for a whole scene,
+    so it is plain RGBA and it is shown with its own tag rather than as an
+    `fx` plate that something later would replace.
+
+    ⚠ THE REPO RULE IS DRAW GEOMETRY, GENERATE VOLUME -- and fog is volume, so
+    the honest reading is that this should have been generated. What makes it
+    the exception is MOTION: a drawn still can be drifted and breathed by the
+    engine, and slow parallax drift is most of what sells fog. A generated
+    plate would look better standing still and could not move at all without
+    the same transform on top of it. If this ever reads as a gray smear rather
+    than as air, that is the moment to generate one instead.
+
+    Built as a band, not a wash. Fog on water sits in a layer -- densest just
+    above the surface, thinning upward into nothing -- so the alpha is shaped
+    by a vertical falloff around a center line rather than being uniform. A
+    uniform veil reads as a dirty lens.
+
+    The left and right edges are feathered because the plate DRIFTS: an
+    un-feathered edge would slide into frame as a visible vertical seam.
+    """
+    rng = random.Random(seed)
+    fw = int(W * 1.35)
+    band = Image.new("L", (fw, H), 0)
+    d = ImageDraw.Draw(band)
+
+    # ⚠ THE BAND SITS ON THE WATER, AND THAT IS MEASURED, NOT CHOSEN.
+    #
+    # The first attempt centered it at 0.62 and was INVISIBLE. This location's
+    # plate is a snowfield under a white sky: sampled by row, it runs 230-237
+    # everywhere except y 0.40-0.60, which is the lake at 108-141. Pale fog
+    # laid over near-white snow adds nothing, by definition. Centered on the
+    # dark water it reads immediately, at the same alpha.
+    #
+    # So the falloff is tight -- +/- 0.15 rather than 0.34 -- to keep it off
+    # the snow, where it does nothing but wash the shoreline.
+    #
+    # ⚠ These numbers are THIS background's. A fog bank for another location
+    # has to be re-measured; there is no general answer.
+    cy = H * 0.52
+    for _ in range(n):
+        x = rng.uniform(-fw * 0.05, fw * 1.05)
+        y = rng.gauss(cy, H * 0.055)
+        rx = rng.uniform(fw * 0.06, fw * 0.20)
+        ry = rx * rng.uniform(0.16, 0.34)
+        d.ellipse([x - rx, y - ry, x + rx, y + ry],
+                  fill=rng.randint(90, 190))
+
+    band = band.filter(ImageFilter.GaussianBlur(W * 0.045))
+
+    # Vertical falloff, so it thins out of the top of the band instead of
+    # ending; and a horizontal feather for the drift.
+    px = band.load()
+    for y in range(H):
+        t = abs(y - cy) / (H * 0.15)
+        vert = max(0.0, 1.0 - t * t)
+        for x in range(fw):
+            # Edge feather for the drift, and a gentle pull toward the middle
+            # of the frame -- the prose puts the fog in the MIDDLE of the lake
+            # and has him point at it, so it should be densest where he points.
+            e = min(1.0, min(x, fw - 1 - x) / (fw * 0.10))
+            mid = 1.0 - 0.45 * abs(x - fw * 0.5) / (fw * 0.5)
+            px[x, y] = int(px[x, y] * vert * e * mid)
+
+    out = Image.new("RGBA", (fw, H), HAZE + (0,))
+    out.putalpha(band)
+    return out
+
+
 BLOOD = (132, 9, 14)
 
 
@@ -885,6 +959,8 @@ plates = {
     "grasp_specter": grasp(SPECTER),
     # The death screen's backdrop. Center left clear for the words.
     "blood_splash": blood_splash(),
+    # Fog on the lake. Wider than the frame -- it drifts.
+    "fog_bank": fog_bank(),
 }
 
 for name, img in plates.items():
