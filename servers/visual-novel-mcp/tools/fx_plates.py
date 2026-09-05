@@ -452,6 +452,96 @@ def dark_crescent(rim_hue, seed=17, rim_px=9):
     return img
 
 
+BLOOD = (132, 9, 14)
+
+
+def blood_splash(seed=91, n_big=15, n_small=260):
+    """Blood thrown across the lens. NOT a light effect -- built as RGBA.
+
+    Every other plate here goes through light(), which blooms a mask and
+    colors it: those are all things that EMIT -- ki, ice, a blade's flash.
+    Blood does not emit, and pushing it through the same path would give it a
+    halo and read as a red glow rather than as a wet mark.
+
+    THE CENTER IS DELIBERATELY LEFT CLEAR. This plate exists to sit under two
+    words, and a splatter that covers the middle would fight the text it is
+    the backdrop for. The big marks are rejected inside a radius of the
+    center; only fine droplets carry into it, which is what sells the splash
+    as covering the whole frame without obscuring it.
+
+    Three sizes of mark, because real spatter has three: heavy blobs where it
+    hit, satellites thrown off the impact, and drips running down from the
+    heavy ones under their own weight.
+    """
+    rng = random.Random(seed)
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    cx0, cy0 = W * 0.5, H * 0.5
+    clear = min(W, H) * 0.26          # the radius kept free for the words
+
+    def blob(cx, cy, r, alpha, lobes=34):
+        """An outline that UNDULATES, with a few deliberate spikes.
+
+        Jittering each lobe independently gives every radius a fresh random
+        value, and the result is a uniform starburst -- the same spiky
+        silhouette every time, which reads as clip art rather than as a mark
+        something wet made. Correlating each radius with the last one makes
+        the edge wander instead, and the occasional long spike then reads as a
+        spike because the rest of the outline is not one.
+        """
+        pts = []
+        rr = 0.85
+        for i in range(lobes):
+            a = math.tau * i / lobes
+            rr = 0.68 * rr + 0.32 * rng.uniform(0.62, 1.06)
+            k = rr * (rng.uniform(1.5, 2.2) if rng.random() < 0.09 else 1.0)
+            pts.append((cx + r * k * math.cos(a), cy + r * k * math.sin(a)))
+        d.polygon(pts, fill=BLOOD + (alpha,))
+
+    def drip(cx, cy, r, alpha):
+        """A run down from a heavy mark, tapering as it goes."""
+        length = r * (1.6 + 4.0 * rng.random())
+        steps = max(6, int(length / 6))
+        for i in range(steps):
+            t = i / float(steps)
+            wpx = max(1.0, r * 0.30 * (1.0 - t) ** 1.4)
+            y = cy + t * length
+            d.ellipse([cx - wpx, y - wpx, cx + wpx, y + wpx],
+                      fill=BLOOD + (int(alpha * (1.0 - 0.45 * t)),))
+
+    # Heavy marks, pushed to the edges and corners.
+    placed = 0
+    while placed < n_big:
+        x, y = rng.uniform(0, W), rng.uniform(0, H)
+        if math.hypot(x - cx0, y - cy0) < clear:
+            continue
+        r = rng.uniform(W * 0.020, W * 0.062)
+        a = rng.randint(170, 235)
+        blob(x, y, r, a)
+        for _ in range(rng.randint(3, 7)):          # satellites
+            ang, dist = rng.random() * math.tau, r * rng.uniform(1.2, 3.0)
+            sr = r * rng.uniform(0.05, 0.20)
+            sx, sy = x + dist * math.cos(ang), y + dist * math.sin(ang)
+            d.ellipse([sx - sr, sy - sr, sx + sr, sy + sr],
+                      fill=BLOOD + (rng.randint(150, 225),))
+        if rng.random() < 0.55:
+            drip(x, y + r * 0.6, r, a)
+        placed += 1
+
+    # Fine droplets, everywhere including the middle -- sparser there.
+    for _ in range(n_small):
+        x, y = rng.uniform(0, W), rng.uniform(0, H)
+        if math.hypot(x - cx0, y - cy0) < clear and rng.random() < 0.72:
+            continue
+        r = rng.uniform(1.2, 6.5)
+        d.ellipse([x - r, y - r, x + r, y + r],
+                  fill=BLOOD + (rng.randint(120, 215),))
+
+    # A breath of blur so the polygons stop reading as polygons. Small: blood
+    # has hard edges, and anything more turns it into fog.
+    return im.filter(ImageFilter.GaussianBlur(1.2))
+
+
 def rake(hue, angle, thickness, gaps, bow=0.16, fill=232, seed=5, span=0.78):
     """Parallel gashes: a claw, not a blade.
 
@@ -675,6 +765,12 @@ plates = {
     # blacking out a quiet conversation for a thrown object would hit far
     # harder than the moment is.
     "streak_gold": streak(GOLD),
+    # A person crossing the frame at speed, rather than an object thrown --
+    # same shape, the cast's colorless sword-flash hue. For the beat where a
+    # figure "streaks across the cavern, a silvery and gray shape". Its
+    # direction matches the prose: in from the upper right, out at mid-left,
+    # where the man it turns into is then shown.
+    "streak_silver": streak(SILVER),
     # The ice lance: a rigid spear thrown from the caster's corner of the
     # battle stage toward the enemies' corner.
     "lance_ice": lance(AZURE),
@@ -787,6 +883,8 @@ plates = {
     # The lesser ghosts clutching. Shared by both ghost types: they do the
     # same thing and the fight already tells them apart by name.
     "grasp_specter": grasp(SPECTER),
+    # The death screen's backdrop. Center left clear for the words.
+    "blood_splash": blood_splash(),
 }
 
 for name, img in plates.items():
