@@ -46,9 +46,25 @@ Everything is derived from the game itself, so no cast names live here:
   * the stage is tracked ACROSS a file: `show` adds, `hide` removes, `scene`
     clears. A figure shown on line 12 is still standing on line 300.
 
-⚠ It cannot see anything conditional. A `show` inside an `if` is treated as
-though it always runs, so a scene that stages two alternatives will report
-them as overlapping each other. Check the file before believing such a pair.
+BRANCHES AND Z-ORDER, BOTH OF WHICH IT USED TO GET WRONG
+--------------------------------------------------------
+Two false-positive sources, each of which put a 100% pair at the top of the
+report on a stage that was actually fine:
+
+  * CONDITIONAL BRANCHES. A `show` indented inside an `if` does not coexist
+    with one inside the matching `else`, but a flat scan sees both standing.
+    Indentation is tracked, and a figure shown deeper than the current line is
+    dropped when that block closes -- so the two sides of a branch are never
+    compared against each other.
+
+  * config.tag_zorder. The engine consults that dict on every show, so a
+    character listed there is in front regardless of who was shown last. It is
+    parsed out of the project and used to decide who is buried; without it,
+    every pair a project has already FIXED still reports as broken.
+
+⚠ Still approximate. Indentation is not a parser: a `show` inside a `while`,
+or one reached by a jump from elsewhere, is beyond it. Read a surprising pair
+in the file before believing it.
 """
 import io
 import json
@@ -91,6 +107,24 @@ def read_transforms(game):
     return out
 
 
+def read_zorder(game):
+    """tag -> zorder, from the project's config.tag_zorder dict."""
+    out = {}
+    for root, _dirs, files in os.walk(game):
+        for fn in files:
+            if not fn.endswith(".rpy"):
+                continue
+            text = io.open(os.path.join(root, fn), encoding="utf-8",
+                           errors="replace").read()
+            m = re.search(r"config\.tag_zorder\s*=\s*\{(.*?)\}", text, re.S)
+            if not m:
+                continue
+            for tag, z in re.findall(r'["\']([a-z0-9_]+)["\']\s*:\s*(-?\d+)',
+                                     m.group(1)):
+                out[tag] = int(z)
+    return out
+
+
 def read_widths(game):
     """tag -> displayed pixel width (body width * the emitted zoom)."""
     zooms, tag = {}, None
@@ -125,6 +159,7 @@ def main(argv):
 
     xalign = read_transforms(game)
     width = read_widths(game)
+    zorder = read_zorder(game)
     if not width:
         sys.exit("sprite_overlap: no sprites.json beside %s" % game)
 
@@ -147,6 +182,18 @@ def main(argv):
         stage, seq = {}, 0
         for n, line in enumerate(io.open(os.path.join(scenes, fn),
                                          encoding="utf-8"), 1):
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+
+            ## A figure shown deeper than the current line belongs to a block
+            ## that has now closed -- the other side of an if/else, most often
+            ## -- so it is no longer standing. Without this the two branches of
+            ## one choice get compared against each other and report as a
+            ## totally buried pair that can never actually co-occur.
+            for t in [t for t, v in stage.items() if v[3] > indent]:
+                del stage[t]
+
             if SCENE.match(line):
                 stage = {}
                 continue
@@ -161,11 +208,11 @@ def main(argv):
             if tag not in width or tf not in xalign:
                 continue
             seq += 1
-            stage[tag] = (xalign[tf], seq, tf)
+            stage[tag] = (xalign[tf], seq, tf, indent)
 
             aw = width[tag]
             ax = xalign[tf] * (W - aw)
-            for other, (oal, oseq, otf) in stage.items():
+            for other, (oal, oseq, otf, oind) in list(stage.items()):
                 if other == tag:
                     continue
                 ow = width[other]
@@ -173,7 +220,13 @@ def main(argv):
                 lo, hi = max(ax, ox), min(ax + aw, ox + ow)
                 if hi <= lo:
                     continue
-                buried, front = (other, tag) if oseq < seq else (tag, other)
+                ## Who is in front: the engine reads config.tag_zorder first
+                ## and falls back to show order only within the same zorder.
+                za, zo = zorder.get(tag, 0), zorder.get(other, 0)
+                if za != zo:
+                    buried, front = (other, tag) if zo < za else (tag, other)
+                else:
+                    buried, front = (other, tag) if oseq < seq else (tag, other)
                 rows.append(((hi - lo) / width[buried], fn, n, buried,
                              stage[buried][2], front, stage[front][2],
                              int(hi - lo)))
