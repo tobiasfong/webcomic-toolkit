@@ -1176,6 +1176,57 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
   different one. To get more of an arrangement that works, sweep SEEDS on that
   exact tag string — never reword and hope.
 
+  ### Describe the SCENE, not the arrangement
+
+  Settled 2026-09-05 on an instrumental cue, after roughly thirty takes and six
+  failed passes of tag engineering.
+
+  Every failed attempt described INSTRUMENTS AND ADJECTIVES — a shopping list.
+  Palette swaps, register control, mood-word surgery, harmonic-minor requests,
+  tempo ranges. Each was an inference layered on top of what the author asked
+  for. The take he approved came from his own sentence, used almost verbatim:
+
+      "martial arts battle theme, tense, high energy, people getting ready to
+       fight, instrumental"
+
+  The difference is one of KIND, not of length. "People getting ready to fight"
+  describes a SCENE. That is the shape of caption this model was trained
+  against; an arrangement spec is not. So write the brief as a scene, add only
+  key and tempo, and sweep seeds. Reach for an instrument list only when a
+  specific instrument is genuinely required, and expect it to cost more than it
+  buys.
+
+  ⚠ **Set `keyscale` deliberately — the default is `C major`.** Leaving it there
+  is a choice, not a neutral, and it is the "too happy" failure outright. Every
+  cue that had to read as tense was set to a minor key explicitly.
+
+  **STRUCTURE cannot be requested, but it can be drawn.** The recurring fault
+  across those thirty takes was that they never built to anything — they
+  repeated. Two fixes were tried and measured:
+
+  | attempt | result |
+  |---|---|
+  | build language in tags (crescendo, escalating, climactic peak) | nothing: energy slope +0.10 against the benchmark's +0.93 |
+  | section markers (`[intro]`, `[chorus]`, `[bridge]`) in the lyrics field | **worse** — up to **30% silence**, gaps of 16 s |
+
+  The markers fail for a reason worth remembering: they exist to structure a
+  song around a VOICE, and an instrumental has no voice to fill those sections,
+  so the model leaves them empty. Do not put them in an instrumental lyric
+  field.
+
+  The scene prompt then produced build → sustain → breakdown → climax on its
+  own, unasked. So structure is reachable, just not by asking for it directly.
+
+  Where a take genuinely lacks shape, `tools/build_arc.py` constructs one
+  deterministically from the material — a lowpass that opens over time, a gain
+  envelope, a quiet section placed before the loudest for contrast, and an
+  optional drop. Sections are specified in BARS so everything stays aligned. It
+  cannot separate stems, so it changes how a passage FEELS, never what it plays;
+  if the repetition is melodic rather than dynamic, it will not help. Same
+  principle as drawing a magic circle rather than prompting for one, and it is
+  deliberately not an MCP tool — §7a keeps that server to generation and beat
+  analysis.
+
   ### A LOOPING theme: whole bars, and OGG not MP3
 
   Three things, all measured 2026-08-25 on a VN title theme.
