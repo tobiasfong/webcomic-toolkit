@@ -59,6 +59,11 @@ DEFAULTS = {
     "annotation": r"\s*\((?:[^()]*version would be[^()]*|[A-Za-z ]{2,30})\)\s*$",
 }
 
+# Fenced regions default to NONE, so a project that declares none behaves
+# exactly as it did before this existed.
+DEFAULTS.setdefault("fence_start", [])
+DEFAULTS.setdefault("fence_end", [])
+
 # Short spec fragments the vocabulary misses. Low enough that it cannot swallow
 # a real one-line paragraph of narration.
 SPEC_SHORT = 40
@@ -82,8 +87,10 @@ def load_patterns(path=None):
     def joined(key):
         v = cfg[key]
         return re.compile("|".join(v) if isinstance(v, list) else v, re.I)
-    global SKIP_LINE
+    global SKIP_LINE, FENCE_START, FENCE_END
     SKIP_LINE = [re.compile(x, re.I) for x in cfg.get('skip_line', [])]
+    FENCE_START = [re.compile(x, re.I) for x in cfg.get('fence_start', [])]
+    FENCE_END = [re.compile(x, re.I) for x in cfg.get('fence_end', [])]
     return (re.compile(cfg["speaker"]), joined("spec_start"),
             joined("spec_line"), re.compile(cfg["annotation"]))
 
@@ -92,6 +99,13 @@ def load_patterns(path=None):
 # fifth return value. Eighteen generated emitters unpack this call as a
 # 4-tuple, and widening it would break every one of them at once.
 SKIP_LINE = []
+
+# ⚠ ALSO MODULE GLOBALS SET BY load_patterns AS A SIDE EFFECT, for the same
+# reason SKIP_LINE is: eighteen generated emitters unpack that call as a
+# 4-tuple and widening it would break every one of them at once.
+FENCE_START = []
+FENCE_END = []
+
 SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
 
 
@@ -179,9 +193,32 @@ def prose_mask(paras):
     """
     mask = []
     in_spec = False
+    fenced = False
     for t in paras:
         t = t.strip()
         if not t or t.lower() in ("prologue",):
+            mask.append(False)
+            continue
+
+        # ⚠ FENCED REGIONS, CHECKED FIRST AND MASKED WHOLE.
+        #
+        # A combat spec is not a run of lines that happen to look like spec --
+        # it is a block the author opens with "(Combat sequence)" and closes
+        # with "(After combat ends)", and everything between belongs to it.
+        # Treating it heuristically meant it survived only as long as each
+        # line was short enough or matched a vocabulary rule, so one move
+        # description phrased a new way ended the block and dropped the rest
+        # of the roster into the game as narration. That happened three times.
+        #
+        # A fence cannot be broken by its contents, which is the whole point:
+        # the author can describe a move any way he likes inside one.
+        if fenced:
+            mask.append(False)
+            if any(rx.match(t) for rx in FENCE_END):
+                fenced = False
+            continue
+        if any(rx.match(t) for rx in FENCE_START):
+            fenced = True
             mask.append(False)
             continue
         # A standalone marker: skipped, but it does NOT open a spec region.
