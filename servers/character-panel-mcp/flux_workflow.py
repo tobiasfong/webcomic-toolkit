@@ -814,3 +814,63 @@ def matte_image(image_path: str, out_dir: str, model: str = "RMBG-2.0",
     data = _submit_and_wait(g, "3", timeout)
     stem = os.path.splitext(os.path.basename(image_path))[0]
     return _save(data, out_dir, stem + "_rgba")
+
+
+# ---------------------------------------------------------------------------
+# Shape-locked restyle: FLUX-dev img2img at partial denoise
+# ---------------------------------------------------------------------------
+def img2img(image_path: str, out_dir: str, prompt: str, denoise: float = 0.45,
+            lora: str | None = None, lora_strength: float | None = None,
+            seed: int | None = None, steps: int = 25, guidance: float | None = None,
+            timeout: int = 900) -> str:
+    """Restyle an image WITHOUT redrawing it.
+
+    The source is the starting latent and `denoise` bounds how far the sampler
+    may walk from it: at ~0.3-0.5 it can change rendering and color but not
+    geometry. This is the operation `edit_image` is NOT -- Kontext is always
+    full denoise and regenerates every pixel with the source as a bias, which
+    is why it kept redrawing a tortoise's feet with the claws at the camera
+    while restyling a photo taken from behind. Here a heel stays a heel by
+    construction.
+
+    Use it to convert a photo-framed render (see CLAUDE.md, "A REAR VIEW of a
+    creature") or any off-style image into the house style with the shape
+    locked. Pre-tint the source toward the target palette so a lower denoise
+    can finish the job; sweep 0.30-0.55 per source and pick.
+
+    Same loaders as `generate` (GGUF unet, t5 fp8, ae); the style LoRA defaults
+    to FLUX_LORA at FLUX_LORA_STRENGTH like the rest of the FLUX path.
+    """
+    ensure_comfy_running()
+    if seed is None:
+        seed = uuid.uuid4().int % (2 ** 31)
+    os.makedirs(out_dir, exist_ok=True)
+    uploaded = _upload_image(image_path)
+    m = FLUX_MODELS[DEFAULT_FLUX_MODEL]
+    use_lora = FLUX_LORA if lora is None else lora
+    use_strength = FLUX_LORA_STRENGTH if lora_strength is None else lora_strength
+    g = {
+        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": m["unet"]}},
+        "2": {"class_type": "LoraLoaderModelOnly",
+              "inputs": {"model": ["1", 0], "lora_name": use_lora, "strength_model": use_strength}},
+        "4": {"class_type": "DualCLIPLoader",
+              "inputs": {"clip_name1": m["clip1"], "clip_name2": m["clip2"], "type": "flux"}},
+        "10": {"class_type": "VAELoader", "inputs": {"vae_name": m["vae"]}},
+        "40": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
+        "43": {"class_type": "VAEEncode", "inputs": {"pixels": ["40", 0], "vae": ["10", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 0]}},
+        "6": {"class_type": "FluxGuidance",
+              "inputs": {"conditioning": ["5", 0],
+                         "guidance": FLUX_GUIDANCE if guidance is None else guidance}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},
+        "45": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+        "9": {"class_type": "KSampler",
+              "inputs": {"model": ["2", 0], "seed": seed, "steps": steps, "cfg": 1.0,
+                         "sampler_name": "euler", "scheduler": "simple",
+                         "positive": ["6", 0], "negative": ["45", 0],
+                         "latent_image": ["43", 0], "denoise": float(denoise)}},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["10", 0]}},
+        "12": {"class_type": "SaveImage", "inputs": {"images": ["11", 0], "filename_prefix": "flux_img2img"}},
+    }
+    data = _submit_and_wait(g, "12", timeout)
+    return _save(data, out_dir, "i2i_d%02d_%d" % (int(round(denoise * 100)), seed))

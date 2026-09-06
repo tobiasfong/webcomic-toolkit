@@ -295,6 +295,60 @@ a wide braced stance. Do not credit a prompt clause for an improvement without a
 controlled comparison — what actually helped between two of these runs is still
 unidentified.
 
+### A REAR VIEW of a creature — generate it as a PHOTO, then restyle shape-locked
+
+Settled 2026-09-07 after roughly forty renders on one spirit beast. Every
+contracted beast needs one, because the player's party faces the enemy in
+combat, so this is a mechanism, not a one-off.
+
+**What does NOT produce a rear view of a non-human character, all measured:**
+
+| route | what came back |
+|---|---|
+| txt2img with the style LoRA, any wording (7 tries, incl. the author's) | side view every time |
+| Kontext restyle of a render, any wording, plain or with a camera LoRA | a horizontal FLIP of the source |
+| the turnaround LoRA | replaced the animal with an elderly man |
+| "Change Camera Angle" Kontext LoRA (rear view, tilt, both pans, alone or stacked, on a floor or a blank field) | mirror, no-op, or a head swap — yet it rotated a HUMAN in a scene fine |
+| InScene LoRA | side view, serpent dropped |
+| ControlNet from a constructed depth/canny guide | a glossy ball, a sundial — the guides had no back in them |
+| a 24 GB Qwen multi-angle stack | rejected: not a pipeline anyone else could run |
+
+The finding under all of it: **a diffusion model cannot rotate what it cannot
+see.** Given a render with no back in it, the cheapest edit that satisfies
+"the angle changed" is a mirror. The back has to already exist in the input.
+
+**What works, in two stages:**
+
+1. **Base FLUX with the style LoRA OFF, prompted as a `photograph of a <animal>
+   walking away from the camera, seen from directly behind`.** The character
+   LoRA's prior is front-facing illustration; base FLUX's photographic prior
+   has seen thousands of animals from behind. Straight-behind held 2 of 2. A
+   rear THREE-QUARTER held 1 of 2 — "walking away toward the upper right,
+   seen from behind and slightly to its left, head visible beyond the far
+   side" — and that one is the combat framing.
+2. **Restyle it SHAPE-LOCKED** with `flux_workflow.img2img()` at denoise
+   0.30–0.50, style LoRA 1.5, source pre-tinted toward the target palette.
+   Kontext is the wrong tool here and it is worth knowing why: Kontext is
+   always full denoise, so "keep the shape" is a wish; img2img makes it a
+   constraint, and a heel cannot turn at 0.5. Three Kontext restyles of a
+   real rear-view photo each redrew the feet with the claws at the camera.
+
+**Surface detail still gets DRAWN, not prompted.** The registered shells are
+large beveled plates; a masked Kontext pass asked for a "raised diamond
+lattice" changed the shade and nothing else. `shell_plates.py` deepens the
+render's OWN plate seams and adds a lit bevel — keep the layout the model
+gave, give it the approved treatment. Drawing a NEW grid over it read as a
+net, then as a waffle; a pattern that fights the render's layout loses.
+
+The serpent is composited from the approved side view, per the standing
+multi-figure rule: the two animals are two generation problems.
+
+⚠ Two habits that cost hours here, so they are rules now: LOOK at a render
+before describing its angle (three side views were reported as rear views
+from wishful reading), and one sample never separates a setting from a seed —
+the rage render held its serpent on 2 of 2 seeds while every calm variant
+lost it, which is what finally isolated the cause.
+
 ## The multi-character panel workflow
 
 Run this in order for any panel with two or more characters. Every step exists
