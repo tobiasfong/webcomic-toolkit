@@ -1406,6 +1406,24 @@ Repo-wide, on any change under `servers/`:
   marker is the blank. Use a next-non-empty helper. This once emitted `""`
   as an entire conditional branch, and lint passed it.
 - Anchor on prose CONTENT, never paragraph numbers. The document moves.
+- **A SPEC FENCE THAT DOES NOT OPEN IS INVISIBLE TO `script_diff`.** Fired
+  2026-09-07. The boss battle's header read `(Combat sequence - as this is a
+  boss battle, use main theme instead of battle theme)`, while `fence_start`
+  demanded the paren close immediately. The fence never opened, and **32
+  paragraphs of stat block — the boss's HP and PP, every move, both
+  assassins — were emitted as spoken dialogue** and read aloud to the player.
+
+  The reason the diff stayed green is worth generalizing: **the docx side and
+  the emitter share `prose_mask`, so a bad mask makes them agree WITH EACH
+  OTHER while both are wrong.** `script_diff` proves the two sides match; it
+  cannot prove the mask is right. Any checker that shares a definition with
+  the thing it checks has this hole.
+
+  So write fence and spec patterns to tolerate a NOTE in the header — anchor
+  with ``, not with a closing paren — and when spec text turns up as
+  dialogue, suspect the fence regex before the emitter. The one check that
+  catches it is reading the emitted scene, which is why the sequence ends by
+  looking at the file rather than at a count.
 - The outgoing `jump` is EMITTED, never appended by hand — a hand-added one
   was silently deleted by the next re-emit.
 - Every speaker gets a `show` before speaking, re-issued after every
