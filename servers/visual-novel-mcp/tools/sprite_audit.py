@@ -152,6 +152,40 @@ def main(argv):
         for n, l, v, t in no_sprite:
             print("  %s:%d  %s (tag %s)" % (n, l, v, t))
         print()
+    ## ⚠ A SECOND CHECK, FOR A BUG EVERY OTHER CHECK IS BLIND TO.
+    ##
+    ## An emitter turns "Name: words" into `character "words"` by looking Name
+    ## up in its own SPEAKERS table. A name MISSING from that table does not
+    ## raise: the lookup fails, the paragraph is treated as narration, and the
+    ## whole line -- "Name: " prefix included -- is emitted inside quotes.
+    ##
+    ## It renders. It lints. script_diff reports in sync, correctly, because
+    ## the words did reach the game. And the sprite audit below cannot see it
+    ## either, which is exactly why the check belongs here: no speaker
+    ## variable was ever produced, so there is no speaker to check a sprite
+    ## against. The line becomes invisible to every check in the sequence
+    ## precisely BY failing.
+    ##
+    ## Six were found in one session: two characters missing from two
+    ## emitters, one mistyped speaker name, and an author's one-off variant of
+    ## a name used 34 other times. All of them had been shipping.
+    prefixed = []
+    for path in order:
+        base = os.path.basename(path)
+        for n, line in enumerate(io.open(path, encoding="utf-8"), 1):
+            m = re.match(r'\s*"([A-Z][A-Za-z0-9\u2019#\- .]{1,34}): ', line)
+            if m:
+                prefixed.append((base, n, m.group(1)))
+
+    if prefixed:
+        print("SPEAKER PREFIX LEFT IN NARRATION (%d) -- these should be "
+              "dialogue." % len(prefixed))
+        print("Add the name to that emitter's SPEAKERS table, or correct it "
+              "in the document:")
+        for base, n, who in prefixed:
+            print("  %s:%d  %s" % (base, n, who))
+        print()
+
     if deliberate_hit:
         print("DELIBERATE gaps, confirmed present (%d):" % len(deliberate_hit))
         for n, l, v, _ in deliberate_hit:
