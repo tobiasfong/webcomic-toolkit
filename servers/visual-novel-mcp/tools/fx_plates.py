@@ -310,6 +310,126 @@ def lance(hue, start=(0.06, 0.90), end=(0.78, 0.18), width=58, seed=13):
     return ImageChops.add(light(mask, hue), light(trail, hue))
 
 
+def icicle_rain(hue, n=46, seed=71, tilt=1.30):
+    """A hail of icicles coming DOWN on the enemies.
+
+    Not lance() repeated. A lance is one rigid body crossing the frame, drawn
+    with a motion trail behind it because the eye needs to know where it came
+    from. A barrage is the opposite read: many shards already in flight, and
+    what sells it is DEPTH -- near ones large and bright, far ones small and
+    dim -- rather than any single shape being convincing.
+
+    They fall steeply and slightly to the right (`tilt` is the flight angle in
+    radians, straight down being pi/2). Dead vertical reads as rain on a
+    window; a consistent lean reads as something thrown.
+
+    ⚠ `tilt` MUST BE POSITIVE. Screen y grows downward, so a negative angle
+    sends the shards UP and puts every point at the top of the frame -- which
+    is what the first draw did, and it read as a rising spindle rather than a
+    falling spike. The tell is that the taper looks wrong end up.
+    """
+    rng = random.Random(seed)
+    mask = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(mask)
+
+    def shard(cx, cy, L, w, fill, ang, facets=True):
+        """One icicle, shaped from the author's reference.
+
+        THE SHOULDER IS HIGH AND THE POINT IS LONG. It widens over the first
+        quarter and then needles away across the remaining three, so most of
+        its length is taper. A spike that swells at mid-length reads stubby --
+        that was the first draw, and against the reference it looked like a
+        leaf rather than an icicle.
+        """
+        dx, dy = math.cos(ang), math.sin(ang)
+        N = 26
+        line = [(cx + dx * L * (t / N), cy + dy * L * (t / N))
+                for t in range(N + 1)]
+        halves = []
+        for t in range(N + 1):
+            f = t / float(N)
+            if f < 0.26:                    # up to the shoulder, quickly
+                hw = w * (0.44 + 0.56 * (f / 0.26))
+            else:                           # and a long needle from there
+                hw = w * (1.0 - ((f - 0.26) / 0.74) ** 0.62)
+            halves.append(max(0.4, hw))
+        # Held below white for the same reason lance() is: light() adds the
+        # halo on top, and a body filled at 255 comes back colorless.
+        band = ribbon(line, halves, fill=fill)
+        mask.paste(band, (0, 0), band.point(lambda v: 255 if v else 0))
+        # INTERNAL FACETS. The reference is not a smooth cone -- it is a
+        # crystal with flat planes catching light at different angles, and
+        # that is most of what makes it read as ice rather than as a spike of
+        # light. Drawn as offset lines at differing brightness, which is the
+        # same trick lance() uses along its shaft.
+        if facets and w > 3.0:
+            nx, ny = -math.sin(ang), math.cos(ang)
+            for off, val in ((-0.46, 0.72), (0.10, 1.0), (0.52, 0.55)):
+                pts = [(px + nx * hw * off, py + ny * hw * off)
+                       for (px, py), hw in zip(line, halves)]
+                d.line(pts, fill=min(255, int(fill * val) + 55),
+                       width=max(1, int(w * 0.16)))
+        return line, halves
+
+    # --- the fall ---------------------------------------------------------
+    for i in range(n):
+        # THREE DEPTH BANDS, drawn far-to-near so the near ones overlap the
+        # far ones. That overlap is the whole cue; a flat scatter at one size
+        # reads as a texture, exactly the way the shell lattice did.
+        depth = i / float(n)
+        scale = 0.34 + 0.86 * depth ** 1.6
+        fill = int(96 + 118 * depth)
+        # Longer and narrower than the first draw: the reference's icicles run
+        # roughly ten times as long as they are wide.
+        L = (H * 0.23) * scale * rng.uniform(0.78, 1.35)
+        w = max(1.2, 9.0 * scale * rng.uniform(0.8, 1.2))
+        # Start above the top edge as often as inside it, so the frame looks
+        # like a window onto a longer fall rather than the whole event.
+        cx = rng.uniform(-0.08, 1.08) * W
+        cy = rng.uniform(-0.26, 0.74) * H
+        shard(cx, cy, L, w, fill, tilt)
+        # DETACHED CHIPS beside the bigger ones, as in the reference: a
+        # crystal that big does not travel clean. They also break up the
+        # regularity of a field of identical spikes.
+        if scale > 0.66:
+            for _ in range(rng.randint(1, 3)):
+                ox = cx + rng.uniform(-1.7, 1.7) * w * 4
+                oy = cy + rng.uniform(0.12, 0.86) * L
+                shard(ox, oy, L * rng.uniform(0.10, 0.20),
+                      w * rng.uniform(0.30, 0.52), fill,
+                      tilt + rng.uniform(-0.9, 0.9), facets=False)
+
+    # --- where they have already landed -----------------------------------
+    #
+    # ⚠ NOT a radiating burst. Splinters thrown out from a point read as a
+    # TUFT OF GRASS or a bird's foot however many you draw and however short
+    # -- tried at 5 lines and at 14, and the second was worse. What actually
+    # says "the ground is now full of icicles" is the same shape as the fall,
+    # STUCK: short spikes at shallow angles, some clipped by the bottom edge,
+    # over a low band of glow. That is the move's whole mechanic, so it is
+    # worth the frame space.
+    for _ in range(22):
+        gx = rng.uniform(-0.02, 1.02) * W
+        gy = rng.uniform(0.70, 1.06) * H
+        gl = rng.uniform(26, 74)
+        gw = rng.uniform(4.0, 10.0)
+        # Leaning both ways: they hit and stuck at whatever angle they came
+        # in at, and a field all leaning together reads as still falling.
+        ga = math.pi / 2 + rng.uniform(-0.62, 0.62)
+        shard(gx, gy - gl, gl, gw, rng.randint(150, 235), ga)
+
+    # A low haze over the field of spikes, so the ground reads as lit by them.
+    glow = Image.new("L", (W, H), 0)
+    gd = ImageDraw.Draw(glow)
+    for k in range(26):
+        f = k / 25.0
+        y = H * (0.74 + 0.26 * f)
+        gd.line([(0, y), (W, y)], fill=int(58 * (1.0 - f)), width=int(H * 0.02))
+    glow = glow.filter(ImageFilter.GaussianBlur(34))
+    from PIL import ImageChops
+    return ImageChops.add(light(mask, hue), light(glow, hue))
+
+
 def shuriken(hue, center=(0.56, 0.44), radius=None, points=4, spin=True):
     """A thrown star, mid-flight and mid-spin.
 
@@ -961,6 +1081,11 @@ plates = {
     "blood_splash": blood_splash(),
     # Fog on the lake. Wider than the frame -- it drifts.
     "fog_bank": fog_bank(),
+    # --- Icicle Barrage, the Frost Yin tier-II sweep, 2026-09-07 ---
+    # AZURE like the other ice spells, not the paler ICE: this is a cast
+    # technique, and it should sit with Freeze and the Glacial Wall rather
+    # than with the ambient frost.
+    "icicle_rain": icicle_rain(AZURE),
 }
 
 for name, img in plates.items():
