@@ -123,6 +123,14 @@ def _speaks(t):
 
 
 def normalize(t):
+    # ⚠ TEXT TAGS COME OFF BEFORE ANYTHING ELSE. Emitters carry the author's
+    # italics through as {i}...{/i} (see vnrich), so the scene side of this
+    # comparison has markup the docx side does not. Stripping the tags here
+    # means the diff compares WORDS and stays blind to styling -- which is
+    # what it is for. It does mean a future emitter that silently dropped
+    # italics again would still read as in sync; the guard against that is
+    # the italics count checked after emitting, not this function.
+    t = re.sub(r"\{/?[a-z][^}]*\}", "", t)
     # ⚠ TYPOGRAPHY FIRST, STRUCTURE SECOND. A word processor writes curly
     # apostrophes, so a speaker label like `Keeper of the King’s Seal:` does
     # NOT match a speaker pattern whose character class contains only the
