@@ -1368,9 +1368,26 @@ Each step caught a real bug in one week. None substitutes for another.
    first and its total prints last; read through `tail` it shows a
    reassuring count while the first line says the comparison is
    meaningless. Expected result: `in sync`.
-3. **Lint** with `renpy.exe <project> lint` — project path FIRST. Filter
-   findings on the shape `^game/.*\.rpy:[0-9]+`, never on the word "error";
-   that once discarded the only line that mattered. Expected: no lines.
+3. **Lint** with `renpy.exe <project> lint` — project path FIRST.
+
+   ⚠ **DELETE `errors.txt` FIRST AND CHECK WHETHER IT COMES BACK.** That is
+   the reliable signal, because it appears only when the script failed to
+   COMPILE, and no filter can hide it:
+
+   ```bash
+   rm -f vn/<project>/errors.txt   # then lint; if it reappears, read it
+   ```
+
+   Filtering the output is where this goes wrong, twice now. Ren'Py prints
+   FINDINGS as `game/x.rpy:42: ...` but PARSE ERRORS as
+   `File "game/x.rpy", line 42:` — a different shape entirely. A filter on
+   the first shape reports a clean sheet while the game will not start. It
+   swallowed a broken `if` once and `has vbox` not being allowed inside an
+   `if` on 2026-09-07, which then crashed a live playtest. If you must
+   filter, use `^(game/.*\.rpy:[0-9]+|File "game)` — and never filter on the
+   word "error", which discards the only line that matters.
+
+   Expected: no findings AND no `errors.txt`.
 4. **Sprite audit** — see below. Expected: only the documented deliberate
    gaps.
 4b. **Slot audit** — `python servers/visual-novel-mcp/tools/slot_audit.py
