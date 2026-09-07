@@ -1373,6 +1373,14 @@ Each step caught a real bug in one week. None substitutes for another.
    that once discarded the only line that mattered. Expected: no lines.
 4. **Sprite audit** — see below. Expected: only the documented deliberate
    gaps.
+4b. **Slot audit** — `python servers/visual-novel-mcp/tools/slot_audit.py
+   vn/<project>`. Expected: `no two sprites share a slot`. Showing a
+   second sprite at an occupied slot is NOT an error in Ren'Py; the
+   first figure is silently covered, and lint and `script_diff` both
+   pass because the text is right. Slots are INHERITED across a jump,
+   so the occupant may be someone the file never mentions — which is
+   how a character came to stand on the protagonist. Only playing it,
+   or this, will find it.
 5. **`check_story`** via the MCP — after RESTARTING the server if anything
    under `servers/visual-novel-mcp/` was edited. The running process keeps
    the old module; a parser fix was invisible for an hour.
