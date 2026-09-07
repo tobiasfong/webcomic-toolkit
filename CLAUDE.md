@@ -1381,6 +1381,18 @@ Each step caught a real bug in one week. None substitutes for another.
    so the occupant may be someone the file never mentions — which is
    how a character came to stand on the protagonist. Only playing it,
    or this, will find it.
+4c. **Spec check** — `python servers/visual-novel-mcp/tools/spec_check.py
+   "<master.docx>" vn/<project>`. Expected: `DISAGREE : 0`. The combat spec
+   is fenced and never emitted, so `script_diff` cannot see it and the
+   author's numbers can drift from the engine in silence — a figure retyped,
+   an editor's stray undo, a value tuned in `combat.rpy` and never written
+   back. Two things it must keep doing: enemies SCALE (one move name, several
+   statlines) and a technique has TWO TIERS, so each name holds the SET of
+   values the engine uses and a claim passes if it matches one. Keying either
+   globally produced confident, wrong findings against correct code. It also
+   PRINTS the numeric spec lines it could not parse, so its coverage is
+   visible rather than assumed.
+
 5. **`check_story`** via the MCP — after RESTARTING the server if anything
    under `servers/visual-novel-mcp/` was edited. The running process keeps
    the old module; a parser fix was invisible for an hour.

@@ -87,12 +87,26 @@ def load_patterns(path=None):
     def joined(key):
         v = cfg[key]
         return re.compile("|".join(v) if isinstance(v, list) else v, re.I)
-    global SKIP_LINE, FENCE_START, FENCE_END
+    # ⚠ ALL SIX ARE SET AS GLOBALS, and four are ALSO returned.
+    #
+    # This used to set only the three list-valued ones and leave the caller to
+    # assign the rest from the return value. A caller that just called it --
+    # which reads perfectly naturally -- got the module's generic DEFAULTS for
+    # speaker and spec matching, and every project-specific rule silently did
+    # nothing. The failure is quiet and convincing: the spec block that opens
+    # this project's item notes came back as story prose, which looks exactly
+    # like a real regression. Setting them here means forgetting to assign is
+    # no longer possible.
+    global SKIP_LINE, FENCE_START, FENCE_END, SPEAKER, SPEC_START, SPEC_LINE
+    global ANNOTATION
     SKIP_LINE = [re.compile(x, re.I) for x in cfg.get('skip_line', [])]
     FENCE_START = [re.compile(x, re.I) for x in cfg.get('fence_start', [])]
     FENCE_END = [re.compile(x, re.I) for x in cfg.get('fence_end', [])]
-    return (re.compile(cfg["speaker"]), joined("spec_start"),
-            joined("spec_line"), re.compile(cfg["annotation"]))
+    SPEAKER = re.compile(cfg["speaker"])
+    SPEC_START = joined("spec_start")
+    SPEC_LINE = joined("spec_line")
+    ANNOTATION = re.compile(cfg["annotation"])
+    return SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION
 
 
 # ⚠ SKIP_LINE IS A MODULE GLOBAL SET BY load_patterns AS A SIDE EFFECT, not a
