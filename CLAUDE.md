@@ -1463,6 +1463,18 @@ Repo-wide, on any change under `servers/`:
   looking at the file rather than at a count.
 - The outgoing `jump` is EMITTED, never appended by hand — a hand-added one
   was silently deleted by the next re-emit.
+- **The five emitter helpers live in `tools/emitlib.py`, bound once per
+  emitter with `find, split_speaker, esc, say, block = emitlib.bind(SPEAKERS)`.**
+  Never paste them into an emitter. Settled 2026-09-08 after an audit found
+  `esc` copied into 26 files and `say`/`split_speaker` into 25, in SEVEN
+  variants that disagreed about where quotes were stripped and whether the
+  annotation filter ran; changing `esc` earlier that week had meant patching
+  25 files with a regex. A copy is a fork. The consolidation was verified by
+  a byte-diff of every generated scene — re-run that diff whenever emitlib
+  changes. `convert_scene.py` emits the bind line, not a copy.
+- **A fight starts with `$ battle_setup([...enemies...], music=...)`**, never
+  with the six assignments spelled out. Seven labels once repeated them and
+  only three reset the stun flag.
 - Every speaker gets a `show` before speaking, re-issued after every
   `scene`. Speaking from an empty frame is the most-reported bug here.
 - Conditional paragraphs: emit the DEFAULT branch first (negate the

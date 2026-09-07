@@ -284,13 +284,14 @@ def convert(docx_path, patterns_path, scene_path, out_dir, check=False):
          "import io", "import os", "import re", "import sys", "",
          "sys.path.insert(0, %r)" % tools_dir,
          "import docx  # noqa: E402",
-         "import script_diff  # noqa: E402", "",
+         "import script_diff  # noqa: E402",
+         "import emitlib  # noqa: E402", "",
          "DOCX = %r" % os.path.abspath(docx_path),
          "PATTERNS = %r" % os.path.abspath(patterns_path),
          "OUT = %r" % os.path.abspath(os.path.dirname(scene_path)), "",
          "SPEAKERS = {"]
     g += ["    %r: %r," % (k, v) for k, v in sorted(speakers.items())]
-    g += ["}", "", HELPERS, "def main():",
+    g += ["}", "", BIND, "", "", "def main():",
           "    (script_diff.SPEAKER, script_diff.SPEC_START, script_diff.SPEC_LINE,",
           "     script_diff.ANNOTATION) = script_diff.load_patterns(PATTERNS)",
           "    paras = [p.text.strip() for p in docx.Document(DOCX).paragraphs]",
@@ -378,67 +379,10 @@ def convert(docx_path, patterns_path, scene_path, out_dir, check=False):
     return verify(out_path, scene_path, name) if check else 0
 
 
-HELPERS = '''
-def find(paras, needle, frm):
-    """A plain anchor is a prefix of the target paragraph. A PAIR anchor is
-    (context, text): the target contains `text` and the previous non-empty
-    paragraph contains `context` -- for lines that repeat verbatim."""
-    for n in range(frm, len(paras)):
-        if isinstance(needle, tuple):
-            if needle[1] in paras[n]:
-                prev = next((j for j in range(n - 1, -1, -1) if paras[j]), None)
-                if prev is not None and needle[0] in paras[prev]:
-                    return n
-        elif needle in paras[n]:
-            return n
-    raise SystemExit("anchor not found in docx after paragraph %d: %r" % (frm, needle))
-
-
-def split_speaker(t):
-    m = re.match(r"^([^:]{1,40}):\\s*(.*)$", t)
-    if not m or m.group(1).strip() not in SPEAKERS:
-        return None, t
-    return SPEAKERS[m.group(1).strip()], m.group(2).strip()
-
-
-def esc(s):
-    return s.replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("[", "[[") \\
-            .replace("{", "{{")
-
-
-def say(t, indent="    ", var=None):
-    t = script_diff.ANNOTATION.sub("", t).strip()
-    who, body = split_speaker(t)
-    if var is not None:
-        who = var or None
-    body = body.strip()
-    if len(body) >= 2 and body[0] in "\\u201c\\"" and body[-1] in "\\u201d\\"":
-        body = body[1:-1]
-    return indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
-
-
-def block(paras, prose, forced, a, b, resolved):
-    out = []
-    for k in range(a, b):
-        t = paras[k]
-        if not t or (not prose[k] and k not in forced):
-            continue
-        st = resolved.get(k, {})
-        out += st.get("before", [])
-        if st.get("literal") is not None:
-            out.append(st["literal"])
-        else:
-            out.append(say(t, st.get("indent") or "    ", st.get("var")))
-        out.append("")
-        for x in st.get("after", []):
-            if isinstance(x, tuple):
-                out.append(say(paras[find(paras, x[2], 0)], x[3] or "    ", x[1]))
-                out.append("")
-            else:
-                out.append(x)
-    return out
-
-'''
+# The five helpers every emitter needs live in emitlib, bound to the scene's
+# SPEAKERS table. They were pasted into each generated file until an audit
+# found 26 copies in seven drifting variants; see emitlib's docstring.
+BIND = "find, split_speaker, esc, say, block = emitlib.bind(SPEAKERS)"
 
 
 def _norm_lines(text):
