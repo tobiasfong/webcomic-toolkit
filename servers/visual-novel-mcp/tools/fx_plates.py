@@ -1081,9 +1081,9 @@ plates = {
     "blood_splash": blood_splash(),
     # Fog on the lake. Wider than the frame -- it drifts.
     "fog_bank": fog_bank(),
-    # --- Icicle Barrage, the Frost Yin tier-II sweep, 2026-09-07 ---
+    # --- a hail of icicles, for an area ice attack, 2026-09-07 ---
     # AZURE like the other ice spells, not the paler ICE: this is a cast
-    # technique, and it should sit with Freeze and the Glacial Wall rather
+    # technique, and it should sit with the rest of a caster's kit rather
     # than with the ambient frost.
     "icicle_rain": icicle_rain(AZURE),
 }

@@ -15,9 +15,9 @@ cannot see any of it, because it only checks the prose that ships.
 MOVES ARE KEYED BY THEIR OWNER, NOT BY NAME
 -------------------------------------------
 Move names are NOT unique, and the numbers behind one name are not constant.
-ENEMIES SCALE as the game goes on: Mak Mu Yeong throws a Shuriken for 15 while
-her assassins throw one for 5, and the same assassins are 10 HP early and 20 HP
-at the Act 1 boss. Every one of those figures is correct.
+ENEMIES SCALE as a story goes on: a boss and her underlings can throw the same
+named weapon for 15 and for 5, and the same underlings can be worth 10 HP in an
+early fight and 20 in a late one. Every one of those figures is correct.
 
 Keyed globally on the move name, the first version of this tool called that a
 mismatch -- a confident, wrong finding against code that was right. A checker
@@ -416,10 +416,11 @@ def main(docx_path, project, patterns):
 def _player_move(moves, name):
     """The player's move, allowing the script's shorter spelling of it.
 
-    The docx writes "Sword Strike"; the engine calls it "Wudang Sword Strike",
-    because on the command grid it must be told apart from two other styles'
-    strikes. Only an UNAMBIGUOUS suffix match counts -- if two of his moves
-    could end that way, this returns nothing rather than guessing.
+    A script commonly writes the short name of a move ("Sword Strike") where
+    the engine qualifies it ("<Style> Sword Strike"), because on the command
+    grid it has to be told apart from other styles' strikes. Only an
+    UNAMBIGUOUS suffix match counts -- if two of the player's moves could end
+    that way, this returns nothing rather than guessing.
     """
     k = norm(name)
     kit = moves[PLAYER]
