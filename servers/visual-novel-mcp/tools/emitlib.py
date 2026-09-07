@@ -122,3 +122,74 @@ def bind(speakers):
         return out
 
     return find, split_speaker, esc, say, block
+
+
+def bind_scene(paras, prose, say, name="emitter", floor=0, clamp=False):
+    """The two SCENE-LOCAL helpers the hand-written emitters carried.
+
+        find, block = emitlib.bind_scene(paras, prose, say, name="emit_c01yz")
+
+    Seven emitters each defined a `find()` and a `block()` as closures over
+    their own paragraph list -- seven `find`s and five `block`s, in as many
+    variants. The differences were real but small, and every one is a
+    parameter here rather than a copy:
+
+      floor   where find() searches from when no start is given. Two
+              emitters searched from the scene's own first paragraph rather
+              than from zero, so a phrase that repeats earlier in the
+              document cannot capture an anchor.
+      clamp   one of those two also refused to search BEFORE the floor even
+              when asked to (`max(frm, start)`); this keeps that.
+      prose   the prose mask, or None. With a mask, block() skips spec
+              paragraphs; without one it skips only empty ones -- the two
+              older emitters emit ranges that contain no spec.
+
+    block() takes both `before` and `after` staging maps (each family had
+    one), checks the range is not inverted, and refuses to finish if any
+    staging anchor never landed -- an anchor keyed to a paragraph outside the
+    range, or to one the mask skips, used to be dropped in silence, and that
+    is how a boss fight once vanished from the game.
+
+    Verified the same way bind() was: every generated scene byte-identical
+    before and after the seven emitters switched over.
+    """
+
+    def find(needle, frm=None, start=None):
+        f = frm if frm is not None else (start if start is not None else floor)
+        if clamp:
+            f = max(f, floor)
+        for n in range(f, len(paras)):
+            if needle in paras[n]:
+                return n
+        raise SystemExit("%s: not in docx: %r" % (name, needle))
+
+    def block(a, b, before=None, after=None, indent="    "):
+        if b < a:
+            raise SystemExit(
+                "%s: inverted range [%d, %d). An anchor points at a paragraph "
+                "earlier than the one before it -- most likely a line moved in "
+                "the document." % (name, a, b))
+        before, after = before or {}, after or {}
+        out, used = [], set()
+        for k in range(a, b):
+            t = paras[k].strip()
+            if not t or (prose is not None and not prose[k]):
+                continue
+            if k in before:
+                out += before[k]
+                used.add(k)
+            out.append(say(t, indent))
+            out.append("")
+            if k in after:
+                out += after[k]
+                used.add(k)
+        missing = sorted((set(before) | set(after)) - used)
+        if missing:
+            raise SystemExit(
+                "%s: %d staging anchor(s) never landed in range [%d, %d): %s. "
+                "Each names a paragraph outside the range or masked as spec -- "
+                "check for a repeated phrase and pass frm=."
+                % (name, len(missing), a, b, missing))
+        return out
+
+    return find, block

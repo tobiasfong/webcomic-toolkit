@@ -1355,6 +1355,23 @@ because this file is the one every session loads regardless of model.
 
 Each step caught a real bug in one week. None substitutes for another.
 
+**⚠ RUN THEM AS ONE COMMAND, not by hand:**
+
+```bash
+servers/visual-novel-mcp/.venv/Scripts/python.exe servers/visual-novel-mcp/tools/verify_all.py vn/<project> "<master.docx>"
+```
+
+`verify_all.py` (added 2026-09-08) runs every step below in order and stops
+at the first failure with that step's output. It exists because the steps,
+run by hand, get skipped, reordered, or filtered wrong — the lint step in
+particular was grepped for `game/x.rpy:42` and reported a clean sheet while
+the game would not compile, since a parse error prints in a different
+shape. The script never greps lint: it deletes `errors.txt` and fails if
+Ren'Py writes it back. It also adds a measured check that no NVL page runs
+under the quick menu, and calls `check_story` directly. A green run is the
+whole sequence with nothing skipped; that is the only green worth reporting.
+The steps are listed individually below so each one's REASON survives.
+
 1. **Re-emit every scene** from the master docx:
    `python vn/<project>/tools/emit_all.py`. **As of 2026-09-05 EVERY scene
    file is generated** — there is no hand-written scene left, so never
@@ -1471,7 +1488,12 @@ Repo-wide, on any change under `servers/`:
   annotation filter ran; changing `esc` earlier that week had meant patching
   25 files with a regex. A copy is a fork. The consolidation was verified by
   a byte-diff of every generated scene — re-run that diff whenever emitlib
-  changes. `convert_scene.py` emits the bind line, not a copy.
+  changes. `convert_scene.py` emits the bind line, not a copy. The
+  scene-local pair a hand-written emitter needs — `find` over its own
+  paragraphs and `block` with staging — comes from
+  `find, block = emitlib.bind_scene(paras, prose, say, name=..., floor=start)`
+  for the same reason: seven emitters had grown seven `find`s and six
+  `block`s, one of them under a different name.
 - **A fight starts with `$ battle_setup([...enemies...], music=...)`**, never
   with the six assignments spelled out. Seven labels once repeated them and
   only three reset the stun flag.
