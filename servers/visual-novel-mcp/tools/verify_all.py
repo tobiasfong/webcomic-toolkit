@@ -167,66 +167,35 @@ def _gui_int(gui_text, name, default):
 
 
 def step_nvl(project, docx):
-    """No NVL page may run under the quick menu. Measured, not assumed."""
+    """No NVL page may run under the quick menu. Measured, not assumed.
+
+    Uses the SAME page model paginate_nvl.py places the breaks with
+    (nvlpage.py): story order across files, branches followed as the game
+    follows them. That shared definition is also the caveat -- a fault in
+    the model is invisible to both -- so the model is kept simple, and the
+    final check is playing it.
+    """
     try:
-        from PIL import ImageFont
+        import nvlpage
         import renpy_sdk
-    except Exception:                            # noqa: BLE001
-        return "skipped -- PIL or the SDK is unavailable"
-    gui = io.open(os.path.join(project, "game", "gui.rpy"), encoding="utf-8").read()
-    size = _gui_int(gui, "nvl_text_size", 34)
-    measure = _gui_int(gui, "nvl_measure", 1520)
-    per_page = _gui_int(gui, "nvl_list_length", 5)
-    spacing = _gui_int(gui, "nvl_spacing", 20)
-    text_ypos = _gui_int(gui, "nvl_text_ypos", 46)
-    q_size = _gui_int(gui, "quick_button_text_size", 34)
-    m = re.search(r"gui\.init\((\d+),\s*(\d+)\)", gui)
-    screen_h = int(m.group(2)) if m else 1080
-    fontfile = os.path.join(renpy_sdk.sdk_dir(), "renpy", "common", "DejaVuSans.ttf")
-    font = ImageFont.truetype(fontfile, size)
-    line = sum(font.getmetrics())
-    limit = screen_h - (q_size + 16) - 20          # quick menu + bottom border
-
-    say = re.compile(r'^\s*(?:([a-z_0-9]+)\s+)?"(.*)"\s*$')
-    cache = {}
-
-    def wrap(text):
-        if text in cache:
-            return cache[text]
-        n, cur = 0, ""
-        for w in text.split():
-            t = (cur + " " + w).strip()
-            if font.getlength(t) <= measure or not cur:
-                cur = t
-            else:
-                n += 1
-                cur = w
-        cache[text] = n + (1 if cur else 0)
-        return cache[text]
-
-    worst, where = 0, None
-    for f in sorted(glob.glob(os.path.join(project, "game", "scenes", "*.rpy"))):
-        page = []
-        for ln in io.open(f, encoding="utf-8"):
-            if ln.strip() == "nvl clear":
-                page = []
-                continue
-            mm = say.match(ln)
-            if not mm or "/" in mm.group(2)[:10] or mm.group(1) in ("battle_say", "centered"):
-                continue
-            page.append((mm.group(1), re.sub(r"\{/?[a-z]+\}", "", mm.group(2))))
-            win = page[-per_page:]
-            h = 30 + sum((text_ypos if w else 0) + wrap(t) * line for w, t in win) \
-                + spacing * (len(win) - 1)
-            if h > worst:
-                worst, where = h, "%s (%d entries)" % (os.path.basename(f), len(win))
-    if worst > screen_h - 20:
+        import script_diff
+    except Exception as e:                       # noqa: BLE001
+        return "skipped -- %s" % e
+    scenes = os.path.join(project, "game", "scenes")
+    files = [f for f in script_diff.scene_order(scenes) if os.path.exists(f)]
+    metrics = nvlpage.Metrics(project, renpy_sdk.sdk_dir())
+    _, tallest, _ = nvlpage.walk(files, metrics, insert=False)
+    worst, f, line, n = tallest
+    where = "%s:%d (%d entries)" % (os.path.basename(f or "?"), line + 1, n)
+    auto = sum(io.open(x, encoding="utf-8").read().count(nvlpage.MARK) for x in files)
+    if worst > metrics.screen_h - 20:
         raise Fail("tallest page %d px at %s -- runs off a %d px screen"
-                   % (worst, where, screen_h))
-    if worst > limit:
+                   % (worst, where, metrics.screen_h))
+    if worst > metrics.limit:
         raise Fail("tallest page %d px at %s -- its text reaches the quick menu "
-                   "(limit %d)" % (worst, where, limit))
-    return "tallest page %d px of %d, %s" % (worst, limit, where)
+                   "(limit %d)" % (worst, where, metrics.limit))
+    return "tallest page %d px of %d at %s; %d automatic breaks" % (
+        worst, metrics.limit, where, auto)
 
 
 def step_pyflakes(project, docx):
