@@ -8,8 +8,19 @@ model is invisible to both. The measurement is made with the same font
 Ren'Py renders, from the project's own gui.rpy numbers, so what can go wrong
 is the PAGE WALK, and that is kept simple enough to read.
 
-WHY PAGES ARE PLACED BY HEIGHT, NOT BY COUNT
---------------------------------------------
+⚠ STATUS, 2026-09-09: THE PAGINATOR IS NOT WIRED IN. It ran for one evening
+and the pages it packed overflowed in play. This model had been checked
+against its own numbers and never against a rendered frame, and the
+paginator used it to fill pages to the exact budget with no margin, so a
+few percent of error in line height or wrapping was enough. The count
+(gui.nvl_list_length) turns the pages again; its slack is what makes it
+safe. verify_all.py still uses this model as a FLOOR -- a page it calls
+tall is tall -- but a page it passes is not proven to fit. If height
+pagination is retried: calibrate the line height and wrap width against a
+screenshot first, then pack to no more than ~85% of the budget.
+
+WHY PAGES WOULD BE PLACED BY HEIGHT, NOT BY COUNT
+-------------------------------------------------
 Ren'Py's NVL turns the page by a count of entries (gui.nvl_list_length).
 A count is a proxy: four short replies leave a screen mostly empty, four
 long paragraphs run off it. Measured over this project's 1,964 entries, a
@@ -80,6 +91,10 @@ class Metrics(object):
         self.font = ImageFont.truetype(
             os.path.join(sdk, "renpy", "common", "DejaVuSans.ttf"), self.size)
         self.line = sum(self.font.getmetrics())
+        # Ren'Py shows only the last N entries of a page. The paginator
+        # placed breaks ignoring this (it meant the cap never to bite); the
+        # verifier must honor it, or a page the engine trims reads as tall.
+        self.list_length = _gui_int(gui, "nvl_list_length", 5)
         self._wrap = {}
 
     def lines(self, text):
@@ -100,6 +115,7 @@ class Metrics(object):
         return (self.text_ypos if who else 0) + self.lines(text) * self.line
 
     def page(self, entries):
+        entries = entries[-self.list_length:]
         if not entries:
             return 0
         return 30 + sum(e.height for e in entries) + self.spacing * (len(entries) - 1)

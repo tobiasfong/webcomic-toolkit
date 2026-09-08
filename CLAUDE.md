@@ -1497,18 +1497,16 @@ Repo-wide, on any change under `servers/`:
 - **A fight starts with `$ battle_setup([...enemies...], music=...)`**, never
   with the six assignments spelled out. Seven labels once repeated them and
   only three reset the stun flag.
-- **NVL pages are turned BY MEASURED HEIGHT, not by the entry cap.**
-  `paginate_nvl.py` runs at the end of `emit_all.py` and places
-  `nvl clear  # auto-page` wherever the next entry would not fit under the
-  quick menu, using the real font and the project's own gui numbers
-  (`nvlpage.py` is the model; `verify_all.py` checks every page with the
-  same model). Settled 2026-09-08: a cap of four entries left the median
-  screen half empty and turned the page 516 times where height needs ~215.
-  The author's own `nvl clear`s are untouched; the automatic ones are
-  stripped and re-placed on every emit, so never hand-edit one. Breaks are
-  softened -- moved back an entry or two to keep a reply with its question
-  or narration with the line it sets up -- but only within a branch and
-  only if the closing page stays at least half full.
+- **NVL pages turn on the entry cap (`gui.nvl_list_length`, four). Height
+  pagination was tried and REVERTED, 2026-09-09.** `paginate_nvl.py` packed
+  pages to the exact measured budget for one evening and they overflowed in
+  play: the font model (`nvlpage.py`) had been checked against its own
+  numbers, never against a rendered frame, and packing to the limit left no
+  margin for the few percent it was off. The count is blunter, but its slack
+  is what makes it safe. `verify_all.py` still measures pages with that
+  model as a FLOOR -- a page it calls tall is tall; one it passes is not
+  proven to fit. Do not re-wire the paginator without first calibrating the
+  model against a screenshot and then packing to no more than ~85%.
 - Every speaker gets a `show` before speaking, re-issued after every
   `scene`. Speaking from an empty frame is the most-reported bug here.
 - Conditional paragraphs: emit the DEFAULT branch first (negate the
