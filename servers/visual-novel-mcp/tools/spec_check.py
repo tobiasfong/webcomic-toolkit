@@ -306,18 +306,18 @@ def _damage_below(spec, n):
 def _find_owner(hp_map, moves, who):
     """Match a spec roster name to the engine's combatants.
 
-    The author writes "Bandits (3), each with 5 HP" for three Combatants named
-    "Bandit #1..#3", so an exact lookup finds nothing. Falls back to any engine
+    A script writes "<Mob>s (3), each with 5 HP" for three Combatants named
+    "<Mob> #1..#3", so an exact lookup finds nothing. Falls back to any engine
     name that starts with the singular.
     """
     out = []
-    # "Assassin #1 and Assassin #2, 20 HP each" names two combatants at once.
+    # "<Mob> #1 and <Mob> #2, 20 HP each" names two combatants at once.
     for part in re.split(r"\s+and\s+", who):
         k = norm(part)
         if k in moves:
             out.append(k)
             continue
-        # "Bandits (3), each with 5 HP" against Combatants "Bandit #1..#3".
+        # "<Mob>s (3), each with 5 HP" against Combatants "<Mob> #1..#3".
         stem = k[:-1] if k.endswith("s") else k
         out += [n for n in moves if n.startswith(stem) and n != PLAYER]
     return out
@@ -459,8 +459,8 @@ def main(docx_path, project, patterns):
 def _player_move(moves, name):
     """The player's move, allowing the script's shorter spelling of it.
 
-    A script commonly writes the short name of a move ("Sword Strike") where
-    the engine qualifies it ("<Style> Sword Strike"), because on the command
+    A script commonly writes the short name of a move ("<Move>") where
+    the engine qualifies it ("<Style> <Move>"), because on the command
     grid it has to be told apart from other styles' strikes. Only an
     UNAMBIGUOUS suffix match counts -- if two of the player's moves could end
     that way, this returns nothing rather than guessing.

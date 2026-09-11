@@ -23,7 +23,7 @@ file beside the game tree:
 
     {
       "spec_start":  ["^(FIGHT SEQUENCE|To Claude[,:])"],
-      "spec_line":   ["^(Sword strike|Uses |Victory!)"],
+      "spec_line":   ["^(<Move name>|Uses |Victory!)"],
       "speaker":     "^[A-Z][A-Za-z0-9'#\- ]{0,34}:\s*",
       "annotation":  "\s*\((?:[^()]*version would be[^()]*)\)\s*$"
     }
