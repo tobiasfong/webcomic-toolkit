@@ -29,7 +29,7 @@ THE STEPS
   4  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
   5  slots      slot_audit: no two sprites in one slot, across scene boundaries
   6  spec       spec_check: the author's numbers against the engine's
-  7  sound      every impact plate has a sound in the three lines before it
+  7  sound      every impact plate has a sound in the three lines before it, and is declared
   8  story      check_story: no dangling jumps, unresolved images, missing audio
   9  nvl        no NVL page taller than the screen, measured with the real font
  10  pyflakes   the server's tools and the project's
@@ -138,7 +138,36 @@ def step_sound(project, docx):
     if bad:
         raise Fail("impact plates with no sound in the three lines before:\n  "
                    + "\n  ".join(bad))
-    return "every impact plate has its sound"
+
+    # ⚠ AND EVERY PLATE IS DECLARED. Ren'Py defines an image for every file
+    # under images/ by itself -- fx/slash_gray.png becomes `fx slash gray` --
+    # so a plate nobody declared still resolves, check_story is satisfied,
+    # lint is satisfied, and the fight draws it at its NATIVE size in the
+    # middle of the frame: 1280x720 on a 1080p screen. Two of the assassins'
+    # plates ran that way for a month (found 2026-09-11). The declarations
+    # in presentation.rpy exist precisely to state the full-screen transform,
+    # so a plate that is only automatic is a bug by definition.
+    used = set()
+    for f in glob.glob(os.path.join(project, "game", "scenes", "*.rpy")):
+        for m in re.finditer(r"^\s*show (fx [a-z0-9 ]+?)(?: as .+)?\s*$",
+                             io.open(f, encoding="utf-8").read(), re.M):
+            used.add(m.group(1).strip())
+    combat = os.path.join(project, "game", "combat.rpy")
+    if os.path.exists(combat):
+        used.update(re.findall(r'"(fx [a-z0-9 ]+)"',
+                               io.open(combat, encoding="utf-8").read()))
+    declared = set()
+    for f in glob.glob(os.path.join(project, "game", "*.rpy")):
+        for m in re.finditer(r"^image (fx [a-z0-9 ]+?)\s*[=:]",
+                             io.open(f, encoding="utf-8").read(), re.M):
+            declared.add(m.group(1).strip())
+    auto = sorted(used - declared)
+    if auto:
+        raise Fail("plates the game shows but nothing declares -- Ren'Py is "
+                   "drawing these at native size from the file name alone; "
+                   "declare each in presentation.rpy with the full-screen "
+                   "Transform:\n  " + "\n  ".join(auto))
+    return "every impact plate has its sound, and %d plates are declared" % len(used)
 
 
 def step_story(project, docx, slug=None):
@@ -224,7 +253,27 @@ STEPS = [
 ]
 
 
+def _utf8_stdout():
+    """Make stdout survive the author's prose.
+
+    ⚠ A failure message often QUOTES THE DOCX -- the tail cap prints the last
+    paragraph in range, emitters print the anchor they could not find -- and
+    that prose carries curly quotes and ellipses. On Windows this process
+    writes to a cp1252 console, so printing the message raised
+    UnicodeEncodeError from inside the except branch and the REAL error was
+    never shown: the run looked like a crash in the checker rather than the
+    guard doing its job. Fixed 2026-09-11, after the Act 2 tail cap fired and
+    its explanation was swallowed.
+    """
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv):
+    _utf8_stdout()
     if len(argv) < 2:
         raise SystemExit(__doc__.strip().splitlines()[2].strip())
     project, docx = os.path.abspath(argv[0]), os.path.abspath(argv[1])

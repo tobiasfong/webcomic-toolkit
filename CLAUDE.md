@@ -1427,11 +1427,28 @@ The steps are listed individually below so each one's REASON survives.
    PRINTS the numeric spec lines it could not parse, so its coverage is
    visible rather than assumed.
 
+   ⚠ **THERE IS A THIRD COPY, and since 2026-09-11 this checks it too.** The
+   tier-II inventory entries restate the same upgrade figures in English,
+   because those items describe MECHANICS rather than carrying the author's
+   shelf copy. So a number lives in the docx, in `combat.rpy`, AND in
+   `inventory.rpy`. Two of those were compared and the third was not: the
+   author swapped a single-target and an area attack's damage, the docx and
+   the engine were updated together and passed clean, and the bag went on
+   telling the player the old figure. The inventory is now checked against
+   the DOCX -- like against like, two pieces of prose making one claim -- and
+   the docx-vs-engine comparison closes the loop transitively.
+
 5. **`check_story`** via the MCP — after RESTARTING the server if anything
    under `servers/visual-novel-mcp/` was edited. The running process keeps
    the old module; a parser fix was invisible for an hour.
 6. **Sound coverage** — every `show fx X` has a `play sound` on the line
-   before it, except ambient effects.
+   before it, except ambient effects. Since 2026-09-11 the same step also
+   checks that every plate a scene or a fight names is DECLARED in a .rpy.
+   Ren'Py defines an image for every file under `images/` on its own, so an
+   undeclared plate still resolves and every other checker stays green --
+   and it is drawn at its native 1280x720 in the middle of the 1080p frame,
+   which is the two-thirds-screen failure presentation.rpy warns about. Two
+   assassin plates ran that way for a month.
 7. **Web build** (`build_web.py`) when assets or the launcher changed.
 
 Repo-wide, on any change under `servers/`:

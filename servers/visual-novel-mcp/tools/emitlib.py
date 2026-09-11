@@ -38,7 +38,63 @@ the proof, and it is worth re-running any time this file changes.
 """
 import re
 
+import docx
 import script_diff
+import vnrich
+
+
+def span(docx_path, name, start, end, include_end=False):
+    """The paragraphs one emitter owns -- bounded at BOTH ends.
+
+        p = emitlib.span(DOCX, "emit_scene_b",
+                         lambda l: "last line of the scene before" in l,
+                         lambda l: "first line of the scene after" in l)
+
+    `start` and `end` are predicates over a paragraph's text. The result is
+    every non-empty paragraph strictly after the first paragraph `start`
+    accepts, up to the first later one `end` accepts -- exclusive, or
+    inclusive of that end paragraph with `include_end`.
+
+    ⚠ AN END ANCHOR IS NOT OPTIONAL, and this is the history of why. Three
+    emitters each carried their own copy of this loader, and each copy had
+    once run unbounded -- everything after its start to the end of the
+    document -- which was harmless only while the scene was the last thing
+    written. The moment the author added a later chapter, the emitter
+    swallowed it: one reported 371 paragraphs where it owned 86 and rewrote
+    a scene belonging to another emitter with 671 lines of someone else's
+    chapter, and another would have done the same to two scenes with the
+    380-paragraph chapter that followed. Nothing failed loudly. The files
+    were written, the tool printed its usual summary, and only script_diff
+    noticed -- as six differing regions and a DROPPED line, which reads like
+    the author cut something. Every emitter is a span, so every emitter
+    names where it stops; this function makes it impossible not to.
+
+    A missing anchor fails with the emitter's name rather than a bare
+    StopIteration, which is the other thing the three copies got wrong.
+    """
+    paras = [vnrich.rich(p, strip=False) for p in docx.Document(docx_path).paragraphs]
+    i = next((n for n, l in enumerate(paras) if start(l)), None)
+    if i is None:
+        raise SystemExit("%s: start anchor not found in the docx" % name)
+    j = next((n for n, l in enumerate(paras) if n > i and end(l)), None)
+    if j is None:
+        raise SystemExit("%s: end anchor not found after paragraph %d" % (name, i))
+    return [l for l in paras[i + 1:j + (1 if include_end else 0)] if l.strip()]
+
+
+def strip_note(t):
+    """Drop an author-to-implementer parenthetical from the END of a line.
+
+    ⚠ The sentence's FULL STOP CAN SIT AFTER THE BRACKET -- "...and sets
+    it down (the sword, if he took one)." -- so anchoring the pattern at the
+    end of the string silently matches nothing and the note ships in the
+    game text. Allow the trailing punctuation and put it back.
+
+    This was pasted into two emitters; sync_cards.strip_notes() is the
+    different case -- INLINE parentheticals anywhere in a card body, opt-in
+    -- and stays where it is.
+    """
+    return re.sub(r"\s*\([^)]*\)\s*([.!?\u2026]?)\s*$", r"\1", t).strip()
 
 
 def bind(speakers):

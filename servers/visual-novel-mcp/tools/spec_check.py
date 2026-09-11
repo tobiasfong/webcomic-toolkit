@@ -323,6 +323,31 @@ def _find_owner(hp_map, moves, who):
     return out
 
 
+# ⚠ THE THIRD COPY. The tier-II inventory entries restate the same upgrade
+# figures in English -- "<move> increases to 25 damage." -- because the
+# author decided those items describe MECHANICS rather than carrying his shelf
+# copy. That makes inventory.rpy a third place a number lives, after the docx
+# and combat.rpy, and until 2026-09-11 nothing compared it to either: he
+# swapped a single-target and an area move, the docx and the engine were updated
+# together and passed clean, and the bag went on telling the player 20.
+#
+# Checked against the DOCX rather than the engine, deliberately. The docx is
+# already compared to the engine above, so docx-vs-inventory closes the loop
+# transitively, and it compares like with like: two pieces of English prose
+# making the same claim.
+INV_INCREASE = re.compile(r"([A-Z][A-Za-z' ’]+?)\s+increases to\s+(\d+)\s*damage")
+
+
+def inventory_claims(project):
+    """[(move name, damage)] restated in the inventory's own descriptions."""
+    path = os.path.join(project, "game", "inventory.rpy")
+    if not os.path.exists(path):
+        return []
+    src = io.open(path, encoding="utf-8").read()
+    return [(m.group(1).strip(), int(m.group(2)))
+            for m in INV_INCREASE.finditer(src)]
+
+
 def main(docx_path, project, patterns):
     hp, moves, upgrade, fieldvals = engine(project)
     found, unread = claims(docx_path, patterns)
@@ -392,11 +417,29 @@ def main(docx_path, project, patterns):
                 bad.append(("move damage/PP", "%s / %s" % (who, mv),
                             value, sorted(have), para))
 
+    # The inventory's own restatement of the same upgrade figures.
+    want = dict((k, v) for kind, k, v, _ in found if kind == "upgrade")
+    inv_bad = []
+    inv_ok = 0
+    for name, value in inventory_claims(project):
+        if name not in want:
+            continue
+        if want[name] == value:
+            inv_ok += 1
+        else:
+            inv_bad.append((name, value, want[name]))
+
     print("spec_check: %d numeric claim(s) read from the spec" % len(found))
     print("  agree with the engine : %d" % ok)
     print("  DISAGREE              : %d" % len(bad))
     print("  no engine counterpart : %d" % len(nomatch))
     print("  spec lines not parsed : %d" % len(unread))
+    print("  inventory echoes      : %d agree, %d DISAGREE"
+          % (inv_ok, len(inv_bad)))
+    for name, got, expect in inv_bad:
+        print("\nMISMATCH  inventory.rpy description of %s" % name)
+        print("   inventory.rpy says   : %d damage" % got)
+        print("   the script says      : %d damage" % expect)
     for what, name, want, have, para in bad:
         print("\nMISMATCH  %s of %s" % (what, name))
         print("   script (para %d) says : %s" % (para, want))
@@ -410,7 +453,7 @@ def main(docx_path, project, patterns):
         print("\nNOT PARSED -- numeric spec lines this tool does not read:")
         for para, line in unread:
             print("  para %-5d %s" % (para, line[:86]))
-    return 1 if bad else 0
+    return 1 if (bad or inv_bad) else 0
 
 
 def _player_move(moves, name):
