@@ -63,7 +63,7 @@ from comfy import (
 )
 
 # --- Base FLUX model (Stage 1-3, validated 2026-07-21/22) -------------------
-# Q6_K, settled 2026-08-10. See "Model quantisation" at the top of the repo's
+# Q6_K, settled 2026-08-10. See "Model quantization" at the top of the repo's
 # CLAUDE.md. Short version: measured against Q3_K_S at 832x1216 with this LoRA
 # and a canny ControlNet, output was IDENTICAL — no quality change, no character
 # drift — but Q6 ran in 225 s against 339 s and peaked at 5482 MiB against 5892.
@@ -160,7 +160,7 @@ FLUX_HAND_DETAIL_PROMPT = os.environ.get(
 #
 # Q6_K, 2026-08-10. This is the ONE place bit depth was measured to matter:
 # repairing a damaged hand went 0-of-6 frames usable at Q3_K_S to 3-of-3 at
-# Q6_K (see "Model quantisation" in the repo's CLAUDE.md). Kontext repair
+# Q6_K (see "Model quantization" in the repo's CLAUDE.md). Kontext repair
 # reconstructs destroyed structure from corrupted pixels, which is right at the
 # edge of the model's capability, and 3.3 bits per weight is not enough.
 # Generation is a much easier ask and showed no difference — do not read this as

@@ -92,7 +92,7 @@ def _extract_palette(image_path: str, n: int = 5) -> list[str]:
     except ImportError:
         return []
     im = Image.open(image_path).convert("RGB").resize((128, 128))
-    # adaptive palette = perceptual-ish quantisation to n colors
+    # adaptive palette = perceptual-ish quantization to n colors
     pal = im.quantize(colors=n, method=Image.FASTOCTREE).convert("RGB")
     counts = pal.getcolors(128 * 128) or []
     counts.sort(reverse=True)  # most frequent first
@@ -116,8 +116,8 @@ def describe_color(hex_code: str) -> str:
     if light > 0.93 and sat < 0.15:
         return "off-white"
     if sat < 0.10:
-        return ("charcoal grey" if light < 0.3 else
-                "ash grey" if light < 0.6 else "pale grey")
+        return ("charcoal gray" if light < 0.3 else
+                "ash gray" if light < 0.6 else "pale gray")
 
     for lo, hi, base in ((0, 15, "red"), (15, 40, "rust-orange"), (40, 65, "amber"),
                          (65, 95, "olive-yellow"), (95, 150, "green"),
@@ -128,7 +128,7 @@ def describe_color(hex_code: str) -> str:
             name = base
             break
     else:
-        name = "grey"
+        name = "gray"
 
     tone = ("deep " if light < 0.28 else
             "pale " if light > 0.72 else

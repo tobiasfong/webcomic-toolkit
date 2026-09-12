@@ -43,7 +43,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("path", nargs="?")
     p.add_argument("--latest", action="store_true", help="use newest ltx_* file in ComfyUI output/")
-    p.add_argument("--dump", help="directory to write per-frame PNGs (full colour, native res)")
+    p.add_argument("--dump", help="directory to write per-frame PNGs (full color, native res)")
     p.add_argument("--box", help="restrict measurement to L,T,R,B — required for eye/mouth-scale "
                                  "features, which the whole-frame mean cannot resolve")
     a = p.parse_args()
@@ -55,25 +55,25 @@ def main():
             raise SystemExit("no ltx_* clips in " + OUT)
         path = max(cands, key=os.path.getmtime)
 
-    grey, colour = frames_of(path)
-    n = len(grey)
+    gray, color = frames_of(path)
+    n = len(gray)
     if n < 2:
         raise SystemExit(f"{os.path.basename(path)}: only {n} frame(s)")
 
     label = "whole frame"
     if a.box:
         box = tuple(int(x) for x in a.box.split(","))
-        grey = [g.crop(box) for g in grey]
-        pct = (box[2] - box[0]) * (box[3] - box[1]) / (colour.size[0] * colour.size[1]) * 100
+        gray = [g.crop(box) for g in gray]
+        pct = (box[2] - box[0]) * (box[3] - box[1]) / (color.size[0] * color.size[1]) * 100
         label = f"box {box} = {pct:.2f}% of frame"
 
-    span = mean_abs_diff(grey[0], grey[-1])
-    consec = [mean_abs_diff(grey[i], grey[i + 1]) for i in range(n - 1)]
+    span = mean_abs_diff(gray[0], gray[-1])
+    consec = [mean_abs_diff(gray[i], gray[i + 1]) for i in range(n - 1)]
     peak = max(consec)
-    dev = [mean_abs_diff(grey[0], g) for g in grey]
+    dev = [mean_abs_diff(gray[0], g) for g in gray]
     mx = max(dev); mxi = dev.index(mx)
 
-    print(f"{os.path.basename(path)}  {colour.size[0]}x{colour.size[1]}  {n} frames  [{label}]")
+    print(f"{os.path.basename(path)}  {color.size[0]}x{color.size[1]}  {n} frames  [{label}]")
     print(f"  span (frame0 vs frameLast) : {span:6.2f}   <- blind to round trips")
     print(f"  maxdev (frame0 vs any)     : {mx:6.2f}  at frame {mxi}"
           f"   <- {'MID-CLIP: consistent with a round trip (blink/gesture)' if 0 < mxi < n - 1 else 'LAST FRAME: monotonic drift, not a round trip'}")

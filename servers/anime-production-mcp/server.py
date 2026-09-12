@@ -293,7 +293,7 @@ def add_impact(clip_path: str, out_path: str, focal: list[float] | None = None,
                flash: float = 1.0, shake: float = 1.0, fps: int = 12) -> dict:
     """Speed lines, flash and camera shake — sells a hit with no extra drawing.
 
-    Anime does not animate the punch travelling; it sells the MOMENT OF CONTACT.
+    Anime does not animate the punch traveling; it sells the MOMENT OF CONTACT.
     `focal` is [x, y] as fractions of the frame; `at` is the contact frame.
     """
     return effects.impact(clip_path, out_path,
@@ -356,7 +356,7 @@ def add_motion_lines(clip_path: str, out_path: str, angle: float = 180.0,
                      density: int = 90, gain: float = 1.0, length: float = 0.55,
                      clear: list[float] | None = None, start: int = 0,
                      ramp: int = 3, fps: int = 12) -> dict:
-    """Parallel streaks travelling one way — sells travel across the frame.
+    """Parallel streaks traveling one way — sells travel across the frame.
 
     Distinct from add_impact, whose lines radiate from a point of contact.
     Needed because LTX deforms locally and will NOT translate a subject across a

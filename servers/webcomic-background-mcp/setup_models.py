@@ -20,7 +20,7 @@ Downloads (skips anything already present):
 Disk/VRAM: these are the Q6_K quantisations (~9.85 GB each). They do NOT need
 to fit in VRAM — ComfyUI streams unet weights from system RAM, so VRAM was
 never the constraint, and the old "Q3_K_S so FLUX fits a 6 GB card" reasoning
-was wrong (see CLAUDE.md, quantisation). Q6 buys nothing for plain generation;
+was wrong (see CLAUDE.md, quantization). Q6 buys nothing for plain generation;
 it was adopted because bit depth measurably matters for Kontext editing.
 You need ONE of the dev unets to generate; Kontext is only needed for
 edit_background.

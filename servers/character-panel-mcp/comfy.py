@@ -2,7 +2,7 @@
 comfy.py — shared ComfyUI plumbing for this server.
 
 Extracted from the former workflow.py when the SD1.5/SDXL path was retired in
-favour of FLUX (see CHANGELOG). Everything here is model-agnostic: connecting to
+favor of FLUX (see CHANGELOG). Everything here is model-agnostic: connecting to
 ComfyUI, auto-launching it, uploading images, the clean-backdrop prompt suffix
 that makes a render matte cleanly, and rembg matting.
 
@@ -105,7 +105,7 @@ def _upload_image(path: str) -> str:
 # FLUX_STYLE_SUFFIX owns that.
 CLEAN_BACKDROP_SUFFIX = (
     ", solo, full body, standing pose, plain flat light-gray background, "
-    "solid colour background, no scenery"
+    "solid color background, no scenery"
 )
 CLEAN_BACKDROP_NEGATIVE = (
     "background clutter, scenery, room, outdoors, patterned background, "

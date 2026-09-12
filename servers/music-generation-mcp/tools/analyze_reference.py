@@ -62,7 +62,7 @@ def load_mono(path: str) -> tuple[np.ndarray, float]:
 def spectrogram(x: np.ndarray) -> np.ndarray:
     n = 1 + (len(x) - WIN) // HOP
     if n < 2:
-        raise ValueError("clip too short to analyse")
+        raise ValueError("clip too short to analyze")
     window = np.hanning(WIN).astype(np.float32)
     frames = np.lib.stride_tricks.as_strided(
         x, shape=(n, WIN), strides=(x.strides[0] * HOP, x.strides[0])) * window

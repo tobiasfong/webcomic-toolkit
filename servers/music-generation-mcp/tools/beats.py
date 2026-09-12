@@ -56,12 +56,12 @@ def _load_mono(path: str) -> tuple[np.ndarray, float]:
 def _frames(x: np.ndarray) -> np.ndarray:
     n = 1 + (len(x) - WIN) // HOP
     if n < 4:
-        raise ValueError("clip too short to analyse")
+        raise ValueError("clip too short to analyze")
     return np.lib.stride_tricks.as_strided(
         x, shape=(n, WIN), strides=(x.strides[0] * HOP, x.strides[0]))
 
 
-def analyse(path: str, known_bpm: float | None = None) -> dict:
+def analyze(path: str, known_bpm: float | None = None) -> dict:
     x, duration = _load_mono(path)
     fr = _frames(x)
     rms = np.sqrt((fr ** 2).mean(axis=1))
@@ -86,8 +86,8 @@ def analyse(path: str, known_bpm: float | None = None) -> dict:
     if known_bpm:
         bpm = float(known_bpm)
     else:
-        centred = flux - flux.mean()
-        ac = np.correlate(centred, centred, mode="full")[len(centred) - 1:]
+        centered = flux - flux.mean()
+        ac = np.correlate(centered, centered, mode="full")[len(centered) - 1:]
         lo, hi = int(FRAME_RATE * 60 / 180), min(int(FRAME_RATE * 60 / 60), len(ac) - 1)
         bpm = 60.0 * FRAME_RATE / (lo + int(np.argmax(ac[lo:hi]))) if hi > lo else 120.0
         while bpm > 170:      # fold absurd tempi into a musical range
@@ -129,7 +129,7 @@ def analyse(path: str, known_bpm: float | None = None) -> dict:
 
 
 def write(path: str, out_path: str, known_bpm: float | None = None) -> dict:
-    out = analyse(path, known_bpm)
+    out = analyze(path, known_bpm)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)

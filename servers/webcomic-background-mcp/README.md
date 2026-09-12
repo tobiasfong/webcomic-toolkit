@@ -26,12 +26,12 @@ and returns a finished PNG. A second tool, `check_status`, reports whether the
 generation backend is up.
 
 > **v2.0.0 — FLUX.1-dev only. Stable Diffusion 1.5 has been removed.**
-> This server now renders exclusively with FLUX.1-dev (GGUF-quantised, so it
+> This server now renders exclusively with FLUX.1-dev (GGUF-quantized, so it
 > fits a 6 GB card). The SD1.5 pipeline, its checkpoints, and the
 > `character_path` mode are gone — see CHANGELOG for the reasoning, but in
 > short: the sibling character-panel server generates figures with FLUX, and
 > SD1.5 plates under FLUX figures look pasted together. **You will need FLUX**;
-> `setup_models.py` fetches it. If disk is tight a smaller GGUF quantisation
+> `setup_models.py` fetches it. If disk is tight a smaller GGUF quantization
 > works (Q6_K is the default, Q3/Q2 exist) — there is deliberately no lower-quality
 > fallback path. Note FLUX.1-dev's license covers the *model* (non-commercial)
 > but permits commercial use of generated *outputs*.
@@ -172,7 +172,7 @@ That fetches the stack below. Or place them manually under `ComfyUI/models/`:
 > node** — ComfyUI's stock loader cannot read `.gguf`. Install it before running
 > `setup_models.py`.
 
-> **Quantisation.** `Q6_K` (~9.85 GB) is what this project is developed on — on a
+> **Quantization.** `Q6_K` (~9.85 GB) is what this project is developed on — on a
 > 6 GB card. The unet does *not* have to fit in VRAM: ComfyUI streams weights
 > from system RAM, so the earlier "Q3_K_S so FLUX fits 6 GB" reasoning was wrong.
 > Q6 buys nothing for plain generation; it was adopted because bit depth
@@ -290,7 +290,7 @@ supply the *style*; your library supplies the *structure*.
 | `WEBCOMIC_BG_AUTOLAUNCH` | `1` | Set `0` to require a manually-started ComfyUI |
 
 > Model definitions live in `FLUX_MODELS` in `flux_workflow.py`. Add entries there
-> to register another FLUX quantisation (e.g. a smaller unet on a slower disk).
+> to register another FLUX quantization (e.g. a smaller unet on a slower disk).
 
 ## Troubleshooting
 

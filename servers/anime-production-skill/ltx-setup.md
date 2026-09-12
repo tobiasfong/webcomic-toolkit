@@ -81,7 +81,7 @@ with 44GB system RAM — you have 32GB, so expect it to be tighter):
 - Use the **fp8** checkpoint variant, or GGUF
 - **Offload the VAE to CPU**
 - **Last-stage batch = 1**
-- Keep the text encoder quantised low (it can be offloaded after encoding —
+- Keep the text encoder quantized low (it can be offloaded after encoding —
   it only runs once per generation)
 
 ## Resolution floor — important for this art style

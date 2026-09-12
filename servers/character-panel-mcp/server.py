@@ -949,7 +949,7 @@ def edit_character_image(
             matte_note = f"Matted cutout: {cut}\n  keying: {stats}\n"
             if stats.get("pale_figure_risk"):
                 matte_note += ("  WARNING pale_figure_risk — part of the figure sits "
-                               "close to the backdrop colour; check the silhouette for "
+                               "close to the backdrop color; check the silhouette for "
                                "bites out of pale hair or costume, and re-run with a "
                                "lower matte_tol if so.\n")
             matte_note += "  Drop onto a plate with compose_panel.\n"

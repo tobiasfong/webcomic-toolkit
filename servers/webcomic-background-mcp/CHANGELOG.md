@@ -27,7 +27,7 @@ an existing install pointing at them will fail on a missing model.**
   same LoRA and canny ControlNet — and the output was identical. No quality
   change, no character drift.
 
-  The rule that reconciles those two results: **quantisation error surfaces when
+  The rule that reconciles those two results: **quantization error surfaces when
   the task is hard.** Kontext repair rebuilds destroyed structure out of
   corrupted pixels, at the edge of what the model can do, and 3.3 bits per
   weight is not enough there. Free generation with a good prompt and a
@@ -47,7 +47,7 @@ an existing install pointing at them will fail on a missing model.**
 ### Documentation
 - **The "Q3 so FLUX fits a 6 GB card" reasoning was wrong and is corrected.**
   ComfyUI streams unet weights from system RAM, so VRAM was never the constraint
-  on quantisation — disk is. The out-of-memory troubleshooting entry now points
+  on quantization — disk is. The out-of-memory troubleshooting entry now points
   at `width`/`height`, which is what actually fills VRAM.
 
 ## [2.0.0] — 2026-08-01
@@ -61,7 +61,7 @@ characters composited onto SD1.5 plates read as a *composite* — the two models
 render light, edge and color differently enough that the join shows. Keeping
 SD1.5 as a "fallback" would mean shipping a path whose main effect is producing
 mismatched art, so it is gone rather than deprecated. The honest trade is
-stated up front: **you need FLUX; use a smaller GGUF quantisation if VRAM is
+stated up front: **you need FLUX; use a smaller GGUF quantization if VRAM is
 tight, but there is no lower-quality fallback.**
 
 ### Removed

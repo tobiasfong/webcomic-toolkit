@@ -38,7 +38,7 @@ def read_frames(path: str, mode: str = "RGB") -> list[Image.Image]:
 
 
 def expand_frames(path: str, fps: int = 12, mode: str = "RGB") -> list[Image.Image]:
-    """Frames on a UNIFORM `fps` grid, honouring each stored frame's duration.
+    """Frames on a UNIFORM `fps` grid, honoring each stored frame's duration.
 
     `read_frames` returns what is STORED, which is not the timeline when a clip
     uses durations to express holds (see build_sequence). A 13-frame file whose
@@ -226,20 +226,20 @@ def measure(path: str, box: tuple[int, int, int, int] | None = None) -> dict:
     control — if the arm scores 17 and the face scores 2, that is real localised
     motion; if both move, it is global drift.
     """
-    grey = read_frames(path, "L")
-    n = len(grey)
+    gray = read_frames(path, "L")
+    n = len(gray)
     if n < 2:
         raise ValueError(f"{os.path.basename(path)}: only {n} frame(s) — nothing to compare")
 
-    full_w, full_h = grey[0].size
+    full_w, full_h = gray[0].size
     region = "whole frame"
     if box:
-        grey = [g.crop(box) for g in grey]
+        gray = [g.crop(box) for g in gray]
         pct = (box[2] - box[0]) * (box[3] - box[1]) / (full_w * full_h) * 100
         region = f"box {tuple(box)} = {pct:.2f}% of frame"
 
-    consec = [_mad(grey[i], grey[i + 1]) for i in range(n - 1)]
-    dev = [_mad(grey[0], g) for g in grey]
+    consec = [_mad(gray[i], gray[i + 1]) for i in range(n - 1)]
+    dev = [_mad(gray[0], g) for g in gray]
     mx = max(dev)
     mxi = dev.index(mx)
 
@@ -248,7 +248,7 @@ def measure(path: str, box: tuple[int, int, int, int] | None = None) -> dict:
         "size": [full_w, full_h],
         "frames": n,
         "region": region,
-        "span": round(_mad(grey[0], grey[-1]), 2),
+        "span": round(_mad(gray[0], gray[-1]), 2),
         "maxdev": round(mx, 2),
         "peak_frame": mxi,
         "peak_consecutive": round(max(consec), 2),

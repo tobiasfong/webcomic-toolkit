@@ -333,10 +333,10 @@ If you already run that server, this step is done.
 ## Step 2 — Models
 
 FLUX only. Roughly 11 GB total, all of it fitting a 6 GB card via GGUF
-quantisation and ComfyUI's model offloading.
+quantization and ComfyUI's model offloading.
 
 ⚠ **Q6_K, not a low quant.** The Q3_K_S files these used to name were deleted
-2026-08-10. VRAM is not the reason to quantise low — ComfyUI streams weights
+2026-08-10. VRAM is not the reason to quantize low — ComfyUI streams weights
 from system RAM, and this 6 GB card runs a 14.2 GB model routinely. Measured:
 Kontext repair of a damaged hand went from 0-of-6 frames usable at Q3_K_S to
 3-of-3 at Q6_K. Plain generation showed no difference either way, but Q6 was

@@ -30,7 +30,7 @@ EVERY frame it was given. Same ~233 s per edit, 5127 MiB of 6144 peak VRAM.
 Bit depth bites hardest exactly here, because repair reconstructs destroyed
 structure from corrupted pixels — the edge of what the model can do. (Ordinary
 generation showed NO difference between the two, so this is specific to repair.)
-And VRAM is not the reason to quantise low: ComfyUI streams weights from system
+And VRAM is not the reason to quantize low: ComfyUI streams weights from system
 RAM, and the card this was measured on runs a 14.2 GB model routinely.
 
 Still expect to discard takes — about a third of Q6 output is unusable, fused

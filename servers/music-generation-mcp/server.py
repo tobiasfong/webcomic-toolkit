@@ -207,7 +207,7 @@ def _reconcile_bpm(measured: float, requested: float | None,
     So neither source is authoritative alone. The discriminator is the RATIO: a
     measurement close to a simple harmonic of the request is the detector
     picking the wrong peak, and the request wins. Anything else is the model not
-    honouring the request, and the measurement wins.
+    honoring the request, and the measurement wins.
     """
     if not requested or measured <= 0:
         return measured, "measured", None
@@ -225,7 +225,7 @@ def _reconcile_bpm(measured: float, requested: float | None,
     drift = abs(60.0 / measured - 60.0 / requested)
     return measured, "measured", (
         f"Rendered tempo ({measured:.2f}) differs from the requested {requested} "
-        f"and is not a harmonic of it, so the model did not honour the request. "
+        f"and is not a harmonic of it, so the model did not honor the request. "
         f"Grid built from the MEASURED tempo; a {requested} grid would slip "
         f"~{drift:.4f}s per beat. Verify by ear."
     )
@@ -261,7 +261,7 @@ def extract_beats(track_id: str | None = None, audio_path: str | None = None,
 
     # Measure ALWAYS, then reconcile against what was asked for — see
     # _reconcile_bpm for why neither source can be trusted on its own.
-    measured = beats.analyse(audio_path, known_bpm=None)
+    measured = beats.analyze(audio_path, known_bpm=None)
     requested = bpm if bpm is not None else (rec or {}).get("recipe", {}).get("bpm")
     grid_bpm, basis, note = _reconcile_bpm(measured["bpm"], requested)
 

@@ -3,7 +3,7 @@
 Read this before generating or editing any character art. These rules exist
 because each one was broken in practice and cost real time.
 
-## Model quantisation — settled 2026-08-10
+## Model quantization — settled 2026-08-10
 
 **Everything runs Q6_K. Both FLUX models are on disk and both are configured.**
 
@@ -19,7 +19,7 @@ because each one was broken in practice and cost real time.
 | Kontext REPAIR of a damaged hand | 0 of 6 frames usable -> **3 of 3 usable** |
 | Panel GENERATION, same seed and prompt | **identical — no visible difference, no character drift** |
 
-The rule that explains both: **quantisation error surfaces when the task is
+The rule that explains both: **quantization error surfaces when the task is
 HARD.** Kontext repair reconstructs destroyed structure from corrupted pixels,
 right at the edge of the model's capability, and 3.3 bits per weight is not
 enough — hands came back as fused blobs. Generation from a good prompt with a
@@ -995,7 +995,7 @@ on the RTX 3060 Laptop, ACE-Step 1.5 turbo, 12 steps. Driver:
 - **No custom nodes.** ACE-Step 1.0 and 1.5 are both in ComfyUI core as of 0.25
   (`comfy_extras/nodes_ace.py`). Nothing to install but the weights — unlike LTX,
   which needed city96's GGUF loaders.
-- **6 GB is enough, and no quantisation exists or is needed.** Peak ~5.9-6.0 GB
+- **6 GB is enough, and no quantization exists or is needed.** Peak ~5.9-6.0 GB
   for a 120 s track. It runs FASTER THAN REAL TIME, which inverts the assumption
   that auditioning would be expensive: `generate_variations` at n=5 is ~9 minutes.
   Audition properly instead of settling for the first usable take.

@@ -86,7 +86,7 @@ def _unique_out_path(out_dir: str, stem: str) -> str:
     return out_path
 
 # --- models -----------------------------------------------------------------
-# Q6_K, settled 2026-08-10. See "Model quantisation" at the top of the repo's
+# Q6_K, settled 2026-08-10. See "Model quantization" at the top of the repo's
 # CLAUDE.md. Short version: measured against Q3_K_S at 832x1216 with this LoRA
 # and a canny ControlNet, output was IDENTICAL — no quality change, no character
 # drift — but Q6 ran in 225 s against 339 s and peaked at 5482 MiB against 5892.

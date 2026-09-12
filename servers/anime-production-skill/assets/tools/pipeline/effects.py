@@ -17,7 +17,7 @@ Measured cases that sent each effect to this file:
     Water looked like the easy "existing pixels churning" case, like fire — but
     a still pond has no turbulent texture to churn, and glints and rings are
     things that APPEAR.
-  * Impact: anime does not animate the punch travelling, it sells the MOMENT OF
+  * Impact: anime does not animate the punch traveling, it sells the MOMENT OF
     CONTACT. One held drawing plus lines, flash and shake reads as a hit. This
     is why the pipeline never needed a paid image-to-video service for action.
 
@@ -353,7 +353,7 @@ def motion_lines(src: str, dst: str, angle: float = 180.0, density: int = 90,
                  color: tuple[int, int, int] = (255, 255, 255),
                  clear: tuple[float, float, float] | None = None,
                  start: int = 0, ramp: int = 3, fps: int = 12) -> dict:
-    """Parallel streaks travelling in one direction — the anime "he moved" cue.
+    """Parallel streaks traveling in one direction — the anime "he moved" cue.
 
     Distinct from `impact`, whose lines radiate from a point of contact. These
     are LATERAL: they sell travel across the frame.

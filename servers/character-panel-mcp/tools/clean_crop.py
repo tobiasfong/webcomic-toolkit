@@ -1,5 +1,5 @@
 """
-clean_crop.py — paint out neighbour bleed in a single-figure crop taken from a
+clean_crop.py — paint out neighbor bleed in a single-figure crop taken from a
 multi-figure sheet (turnaround rows, expression strips, contact sheets).
 
 Why this exists: cropping one panel out of a turnaround sheet almost always
@@ -22,7 +22,7 @@ strip along the top edge, that strip won and the entire figure was painted
 out. Area is the property that actually distinguishes a subject from bleed.
 
 Limitations: assumes the subject is the center figure and is not touching a
-neighbour. If a neighbour overlaps the subject they are one component and this
+neighbor. If a neighbor overlaps the subject they are one component and this
 cannot separate them — recrop or repaint by hand instead.
 
 Usage:
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     ap.add_argument("image")
     ap.add_argument("--out", default=None)
     ap.add_argument("--threshold", type=int, default=225,
-                    help="how far from the background colour counts as foreground")
+                    help="how far from the background color counts as foreground")
     ap.add_argument("--min-area", type=int, default=200,
                     help="ignore components smaller than this when picking the subject")
     a = ap.parse_args()

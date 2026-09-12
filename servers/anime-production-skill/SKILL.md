@@ -194,7 +194,7 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
   is exactly "on twos" = 12 drawings/sec. At 30fps no integer hold gives 12, so
   you get uneven 3,3,2,2 holds and visible judder.
 - **Impact FX** (`impact` on a panel) — sells a hit without any extra drawing,
-  which is what anime actually does (it doesn't animate the punch travelling):
+  which is what anime actually does (it doesn't animate the punch traveling):
   `{ at, speedlines, flash, shake, debris, originX, originY }` plus `*Decay`
   and color options. `at` is seconds from when the panel is **fully visible**.
   Peaks land exactly on `at` (attack = 0) — a one-frame-late flash reads as
@@ -399,7 +399,7 @@ Everything below follows from that one line:
   | `Q6_K` (~6.3 bits/weight) | 5 of 9 | **every frame attempted** |
 
   Same ~233 s per edit, 5127 MiB of 6144 peak VRAM. **VRAM was never the reason
-  to quantise low** — ComfyUI streams weights from system RAM and this 6 GB card
+  to quantize low** — ComfyUI streams weights from system RAM and this 6 GB card
   runs a 14.2 GB LTX model routinely. `Q3_K_S` has been deleted.
 
   Expect to discard takes anyway — about a third of Q6 output is unusable, fused

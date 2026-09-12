@@ -6,7 +6,7 @@ mirrors that component's envelope (instant attack, (1-t)^1.8 decay), its 84
 radial lines, and its clear center so the figure is never buried. The real
 render goes through Remotion at 1080x1920 and also has debris.
 
-Why anime does this: it does not animate the punch travelling, it sells the
+Why anime does this: it does not animate the punch traveling, it sells the
 MOMENT OF CONTACT. One drawing plus lines, flash and shake reads as an impact.
 That is why this project never needed a paid image-to-video service.
 
@@ -46,7 +46,7 @@ def main():
     p.add_argument("--at", type=int, default=2, help="frame the impact lands on")
     p.add_argument("--attack", type=int, default=1)
     p.add_argument("--decay", type=int, default=9)
-    p.add_argument("--color", default="235,235,235", help="speed-line/flash colour r,g,b")
+    p.add_argument("--color", default="235,235,235", help="speed-line/flash color r,g,b")
     p.add_argument("--lines", type=float, default=1.0, help="speed-line strength 0-1+")
     p.add_argument("--flash", type=float, default=1.0)
     p.add_argument("--shake", type=float, default=1.0)

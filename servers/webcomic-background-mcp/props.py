@@ -28,8 +28,8 @@ import citygen as cg
 
 
 # ------------------------------------------------------------- mesh helpers --
-def _mesh(v, f, grey):
-    return cg._Mesh(np.array(v, dtype=np.float64), f, grey)
+def _mesh(v, f, gray):
+    return cg._Mesh(np.array(v, dtype=np.float64), f, gray)
 
 
 def _tube(p0, p1, width, z=0.0):
@@ -76,33 +76,33 @@ def build_bicycle(index: int = 0, r: float = 0.92):
     head_top = (d * 0.62, r * 1.62)
     handle = (d * 0.95, r * 2.15)                 # above saddle height
 
-    base = cg._grey(index * 2 + 1)
+    base = cg._gray(index * 2 + 1)
     tire_g = max(12, base - 35)
     rim_g = min(230, base + 25)
     frame_g = max(15, base - 15)
 
     meshes = []
     for hub in (rear_hub, front_hub):
-        meshes.append(_mesh(*_disc(hub[0], hub[1], r), grey=tire_g))
-        meshes.append(_mesh(*_disc(hub[0], hub[1], r * 0.82, z=-0.01), grey=rim_g))
-        meshes.append(_mesh(*_disc(hub[0], hub[1], r * 0.08, z=-0.02), grey=max(10, tire_g - 10)))
+        meshes.append(_mesh(*_disc(hub[0], hub[1], r), gray=tire_g))
+        meshes.append(_mesh(*_disc(hub[0], hub[1], r * 0.82, z=-0.01), gray=rim_g))
+        meshes.append(_mesh(*_disc(hub[0], hub[1], r * 0.08, z=-0.02), gray=max(10, tire_g - 10)))
 
     for p0, p1 in [(bb, seat_top), (seat_top, head_top), (head_top, bb),
                    (bb, head_bottom), (head_bottom, head_top),
                    (seat_top, rear_hub), (bb, rear_hub),
                    (head_bottom, front_hub)]:
-        meshes.append(_mesh(*_tube(p0, p1, tube_w), grey=frame_g))
+        meshes.append(_mesh(*_tube(p0, p1, tube_w), gray=frame_g))
 
     sx, sy = seat_top                              # saddle
     meshes.append(_mesh(*_tube((sx - 0.22 * r, sy + 0.1 * r),
-                               (sx + 0.12 * r, sy + 0.1 * r), 0.16 * r), grey=frame_g))
+                               (sx + 0.12 * r, sy + 0.1 * r), 0.16 * r), gray=frame_g))
     hx, hy = handle                                # stem + straight T-bar
     bar_half = r * 0.42
-    meshes.append(_mesh(*_tube(head_top, handle, tube_w), grey=frame_g))
+    meshes.append(_mesh(*_tube(head_top, handle, tube_w), gray=frame_g))
     meshes.append(_mesh(*_tube((hx - bar_half, hy), (hx + bar_half, hy),
-                               tube_w * 0.85), grey=frame_g))
-    meshes.append(_mesh(*_disc(bb[0], bb[1], r * 0.16, z=-0.015), grey=frame_g))  # crank
-    meshes.append(_mesh(*_tube(bb, (bb[0] + 0.22 * r, bb[1] - 0.1 * r), 0.08 * r), grey=frame_g))
+                               tube_w * 0.85), gray=frame_g))
+    meshes.append(_mesh(*_disc(bb[0], bb[1], r * 0.16, z=-0.015), gray=frame_g))  # crank
+    meshes.append(_mesh(*_tube(bb, (bb[0] + 0.22 * r, bb[1] - 0.1 * r), 0.08 * r), gray=frame_g))
 
     for m in meshes:                               # face -X (matches reference)
         m.v[:, 0] *= -1
@@ -124,7 +124,7 @@ def place(meshes, x=0.0, z=0.0, yaw_deg=0.0, scale=1.0):
         zr = v[:, 0] * s + v[:, 2] * c
         v[:, 0] = xr + x
         v[:, 2] = zr + z
-        out.append(cg._Mesh(v, m.f, m.grey))
+        out.append(cg._Mesh(v, m.f, m.gray))
     return out
 
 
@@ -154,7 +154,7 @@ def bike_row(n=4, spacing=2.2, x=0.0, z0=0.0, yaw=0.0, jitter=4.0):
 
 
 # ------------------------------------------------------------------ shelter --
-def build_shelter(meshes_bbox, grey_wall=70, grey_post=50, grey_roof=60):
+def build_shelter(meshes_bbox, gray_wall=70, gray_post=50, gray_roof=60):
     """A simple carport over the props: back wall, posts, flat roof slab.
     Deliberately crude — SD paints the gothic detail; this only gives the
     sketch believable large forms. Sized from the props' bounding box."""
@@ -163,15 +163,15 @@ def build_shelter(meshes_bbox, grey_wall=70, grey_post=50, grey_roof=60):
     depth = z1 - z0
     meshes = []
     wv, wf = cg._box((x0 + 1.0), 0, (z0 + z1) / 2, 2.0, 9.5, depth + 4)   # back wall
-    meshes.append(cg._Mesh(wv, wf, grey_wall))
+    meshes.append(cg._Mesh(wv, wf, gray_wall))
     n_posts = max(2, int(depth // 5))
     for i in range(n_posts + 1):
         pz = z0 + depth * i / n_posts
         pv, pf = cg._box(pts_min[0] - 0.8, 0, pz, 0.55, 7.0, 0.55)        # posts
-        meshes.append(cg._Mesh(pv, pf, grey_post))
+        meshes.append(cg._Mesh(pv, pf, gray_post))
     rv, rf = cg._box((x0 + pts_min[0] - 0.8) / 2, 7.0, (z0 + z1) / 2,      # roof slab
                      (x0 - pts_min[0]) + 2.6, 0.5, depth + 2)
-    meshes.append(cg._Mesh(rv, rf, grey_roof))
+    meshes.append(cg._Mesh(rv, rf, gray_roof))
     return meshes
 
 

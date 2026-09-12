@@ -61,12 +61,12 @@ def _pyramid(cx, base_y, cz, w, h, d):
 
 
 class _Mesh:
-    __slots__ = ("v", "f", "grey")
-    def __init__(self, v, f, grey):
-        self.v, self.f, self.grey = v, f, grey
+    __slots__ = ("v", "f", "gray")
+    def __init__(self, v, f, gray):
+        self.v, self.f, self.gray = v, f, gray
 
 
-def _grey(i: int) -> int:
+def _gray(i: int) -> int:
     """Distinct flat gray per mesh -> silhouette edges everywhere, no shading."""
     g = 0.15 + 0.65 * ((i * 2654435761) % 97) / 97
     return int(g * 255)
@@ -86,7 +86,7 @@ def build_city(seed: int = 40001):
 def _adder(meshes):
     """Appender that assigns each mesh its distinct flat gray."""
     def add(v, f):
-        meshes.append(_Mesh(v, f, _grey(len(meshes))))
+        meshes.append(_Mesh(v, f, _gray(len(meshes))))
     return add
 
 
@@ -291,7 +291,7 @@ def render_lineart(meshes, camera="vista", width=1344, height=732,
     Good enough for Canny; not a beauty render (SD supplies the beauty)."""
     cam = _resolve_cam(camera)
     gv, gf = _ground(np.array(cam["pos"], dtype=np.float64))
-    draw = [(gv, gf, 110)] + [(m.v, m.f, m.grey) for m in meshes]
+    draw = [(gv, gf, 110)] + [(m.v, m.f, m.gray) for m in meshes]
     return _rasterize(draw, cam, width, height, near, 255)
 
 

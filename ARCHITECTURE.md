@@ -463,7 +463,7 @@ building* are resolved:
 - **Model:** ACE-Step, confirmed — and easier than expected. **ComfyUI has
   shipped it natively since ~0.25** (`comfy_extras/nodes_ace.py`), so unlike the
   LTX video path there are **no custom nodes to install at all**.
-- **6 GB:** **yes, comfortably.** No quantisation exists or is needed — Comfy-Org
+- **6 GB:** **yes, comfortably.** No quantization exists or is needed — Comfy-Org
   publishes bf16 split files and ComfyUI streams weights. Peak ~5.9 GB for a
   120-second track, no OOM. `--lowvram` turned out to make no measurable
   difference (87 s/5972 MiB with it, 91 s/5904 MiB without, same seed), so the
@@ -505,7 +505,7 @@ the other GPU servers, and hand back an mp3/wav the Remotion pipeline can drop s
 - **Model.** ACE-Step is the obvious candidate: it is the only strong open local model that
   does *songs with vocals*, which is what a theme song needs. MusicGen and Stable Audio Open
   are instrumental-only — fine for BGM, useless for a vocal track.
-- **Whether 6 GB is enough.** Untested. Assume quantisation will be needed, as with
+- **Whether 6 GB is enough.** Untested. Assume quantization will be needed, as with
   LTX-2.3 (GGUF Q4_K_M) and FLUX Kontext (Q3_K_S). If it will not fit, the fallback is
   instrumental-only BGM locally and vocals stay a manual step.
 - **Language.** His track is Japanese. Vocal quality in Japanese specifically must be

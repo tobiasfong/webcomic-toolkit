@@ -49,10 +49,10 @@ Nothing in this module talks to ComfyUI — it returns a dict. comfy.py submits.
 
 from __future__ import annotations
 
-# ⚠ QUANTISATION IS A QUALITY DIAL, NOT ONLY A SIZE ONE, and this line was set
+# ⚠ QUANTIZATION IS A QUALITY DIAL, NOT ONLY A SIZE ONE, and this line was set
 # wrong for months. Q3_K_S is 5.2 GB for a 12B model — about 3.3 bits per weight
 # — and fine structure under hard constraints (hands, faces, text) is what
-# degrades first when you quantise that far. FLUX's reputation for hands is
+# degrades first when you quantize that far. FLUX's reputation for hands is
 # earned at fp8/fp16. Fused fingers and extra digits out of a FLUX-based model
 # are a BIT-DEPTH symptom, not an architecture one.
 #

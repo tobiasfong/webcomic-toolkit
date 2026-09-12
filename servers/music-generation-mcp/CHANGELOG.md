@@ -19,7 +19,7 @@ choosing among them is a guess.
 
 `_reconcile_bpm` now decides by RATIO: ~1 means agreement; a simple harmonic
 (2, 3, 1/2, 1/3, 3/2, 2/3, 4/3, 3/4) means the detector picked the wrong peak
-and the request wins; anything else means the model did not honour the request
+and the request wins; anything else means the model did not honor the request
 and the measurement wins. The result gains `bpm_basis` naming the source used.
 
 `bpm` is consequently no longer an override — detection always runs and the two
@@ -52,8 +52,8 @@ nodes are needed at all**. `comfy_extras/nodes_ace.py` provides both
 generations. This is a materially easier install than the LTX video path, which
 needed city96's third-party GGUF loaders.
 
-**"Whether 6 GB is enough. Untested. Assume quantisation will be needed, as
-with LTX-2.3 and FLUX Kontext."** No quantisation is available or needed —
+**"Whether 6 GB is enough. Untested. Assume quantization will be needed, as
+with LTX-2.3 and FLUX Kontext."** No quantization is available or needed —
 Comfy-Org publishes bf16 split files and ComfyUI streams weights. **Verified
 later the same day: yes, comfortably** — ~5.9 GB peak for a 120 s track, no
 OOM, and faster than real time. `--lowvram` turned out to make no measurable
@@ -125,7 +125,7 @@ Four real generations ran end to end, through both the CLI driver and the MCP
 | A/B re-run, male, `--lowvram` | 120 s | 87 s | 5972 MiB |
 | A/B re-run, male, plain launcher | 120 s | 91 s | 5904 MiB |
 
-- **6 GB is enough.** No OOM at any point, no quantisation available or needed.
+- **6 GB is enough.** No OOM at any point, no quantization available or needed.
 - **It runs faster than real time**, which inverts §7a's assumption that
   auditioning would be costly. `generate_variations` at n=5 is ~9 minutes.
 - **`--lowvram` is not needed.** 87 s/5972 MiB with it vs 91 s/5904 MiB without,

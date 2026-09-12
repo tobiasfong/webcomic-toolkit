@@ -107,7 +107,7 @@ def main() -> int:
         # the art occupies a centered column of the ORIGINAL aspect ratio
         w = round(1080 * 704 / 1216)
         px = out.load()
-        assert px[1920 // 2, 540] == (200, 30, 30), "art missing from centre"
+        assert px[1920 // 2, 540] == (200, 30, 30), "art missing from center"
         assert px[(1920 - w) // 2 - 6, 540] != (200, 30, 30), \
             "art bled past its aspect-correct width — it was stretched"
     check("contain letterboxes instead of stretching", fit_preserves_aspect)

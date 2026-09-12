@@ -1,7 +1,7 @@
 """
 Webcomic Background Generator — MCP Server
 ==========================================
-A local Model Context Protocol server that generates stylised background
+A local Model Context Protocol server that generates stylized background
 art for comic panels in any aesthetic the user references, wrapping a local
 ComfyUI + FLUX.1-dev pipeline (GGUF unet + ControlNet + Kontext editing).
 
@@ -642,7 +642,7 @@ def extract_palette(image_path: str, n: int = 5) -> str:
             f"  hex:   {', '.join(hexes)}\n"
             f"  words: {', '.join(words)}\n"
             f"  prompt fragment: \"{', '.join(words)}\"\n"
-            f"NOTE: Add colour words only — do NOT add mood/lighting wording "
+            f"NOTE: Add color words only — do NOT add mood/lighting wording "
             f"(\"grimdark\", \"deep shadow\"); that pushes FLUX toward "
             f"semi-realism. Darken with grade_plate afterwards instead.")
 
