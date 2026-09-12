@@ -98,8 +98,9 @@ def load_patterns(path=None):
     # like a real regression. Setting them here means forgetting to assign is
     # no longer possible.
     global SKIP_LINE, FENCE_START, FENCE_END, SPEAKER, SPEC_START, SPEC_LINE
-    global ANNOTATION
+    global ANNOTATION, NOTE_LINE
     SKIP_LINE = [re.compile(x, re.I) for x in cfg.get('skip_line', [])]
+    NOTE_LINE = [re.compile(x, re.I) for x in cfg.get('note_line', [])]
     FENCE_START = [re.compile(x, re.I) for x in cfg.get('fence_start', [])]
     FENCE_END = [re.compile(x, re.I) for x in cfg.get('fence_end', [])]
     SPEAKER = re.compile(cfg["speaker"])
@@ -119,6 +120,18 @@ SKIP_LINE = []
 # 4-tuple and widening it would break every one of them at once.
 FENCE_START = []
 FENCE_END = []
+
+# ⚠ NOTE_LINE IS CHECKED AFTER SPEC_START, AND THAT ORDER IS THE WHOLE POINT.
+#
+# It is for paragraphs that are ENTIRELY an author note -- a whole
+# parenthetical -- which are skipped and open nothing. It cannot go in
+# SKIP_LINE, which is checked BEFORE spec_start: a note like
+# "(Note to Claude: new in-game item ...)" both looks like a whole
+# parenthetical AND opens a spec region, and taking the skip path meant the
+# region never opened. Fourteen lines of a spirit beast's stat block were
+# emitted as narration on 2026-09-13 for exactly that reason, which is the
+# same class of leak the fence exists to prevent.
+NOTE_LINE = []
 
 SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns()
 
@@ -203,6 +216,14 @@ def bind_interpolations(scr_text, doc):
     return out
 
 
+# Openers that never found their closer, from the LAST prose_mask() call.
+# A module global for the same reason SKIP_LINE is one: prose_mask is called
+# by every emitter and by read_docx, and threading a second return value
+# through all of them would change 30 call sites to carry a value only the
+# CLI and verify_all read.
+UNCLOSED_FENCES = []
+
+
 def prose_mask(paras):
     """Which paragraphs are PROSE, as opposed to spec notes, choice cards and
     scenario headers -- the same state machine read_docx uses, exposed so an
@@ -213,10 +234,12 @@ def prose_mask(paras):
     Takes the raw paragraph list (already stripped) and returns a list of
     bools of the same length.
     """
+    del UNCLOSED_FENCES[:]
+    stripped = [t.strip() for t in paras]
     mask = []
     in_spec = False
     fenced = False
-    for t in paras:
+    for _i, t in enumerate(paras):
         t = t.strip()
         if not t or t.lower() in ("prologue",):
             mask.append(False)
@@ -240,7 +263,36 @@ def prose_mask(paras):
                 fenced = False
             continue
         if any(rx.match(t) for rx in FENCE_START):
-            fenced = True
+            # ⚠ A FENCE ONLY COUNTS IF ITS CLOSER EXISTS. Look ahead before
+            # opening one.
+            #
+            # The author writes "(To Claude Code: ...)" in TWO shapes and no
+            # pattern can separate them, because both are one self-closing
+            # line: a REGION header, whose card copy follows and which he
+            # closes with "(after player chooses)", and a one-line NOTE about
+            # a mechanic, which nothing follows. Every opener in his document
+            # closes its own bracket, so "balanced parens means a one-liner"
+            # is false -- it was tried and it would have broken the sword
+            # cards.
+            #
+            # The only honest discriminator is whether a closer is actually
+            # there. Without this, a note opened a fence nothing closed and
+            # "ignore everything until the closer" ran to the end of the
+            # document: 173 paragraphs of finished prose masked as spec on
+            # 2026-09-13. And it was SILENT, because the docx side and the
+            # emitter share this mask -- so both agreed the text did not
+            # exist and the diff said "in sync". That is the hole CLAUDE.md
+            # warns about, from the other direction.
+            #
+            # An unclosed opener is treated exactly like SKIP_LINE: the line
+            # itself is skipped, it opens nothing, and the prose after it
+            # stays prose. It is also RECORDED, so a forgotten closer on a
+            # real card block fails loudly instead of eating the rest of the
+            # book.
+            if any(rx.match(u) for u in stripped[_i + 1:] for rx in FENCE_END):
+                fenced = True
+            else:
+                UNCLOSED_FENCES.append(t)
             mask.append(False)
             continue
         # A standalone marker: skipped, but it does NOT open a spec region.
@@ -259,6 +311,11 @@ def prose_mask(paras):
                 mask.append(False)
                 continue
             in_spec = False
+        # A paragraph that is ENTIRELY an author note. Last, so a note that
+        # also OPENS a spec region has already done so above.
+        if any(rx.match(t) for rx in NOTE_LINE):
+            mask.append(False)
+            continue
         mask.append(True)
     return mask
 
@@ -469,6 +526,21 @@ def main():
             print()
     SPEAKER, SPEC_START, SPEC_LINE, ANNOTATION = load_patterns(patterns)
     doc = read_docx(docx_path)
+    # PRINTS FIRST, like the missing-patterns warning above, because it says
+    # how the document was READ and the counts below depend on it. It is not
+    # an error: a one-line note has no closer by nature. If one of these was
+    # meant to open a block, the consequence shows up in this same run as NEW
+    # blocks, which is the loud path.
+    if UNCLOSED_FENCES:
+        print("WARNING: %d fence opener(s) in the docx have no closing line."
+              % len(UNCLOSED_FENCES))
+        for t in UNCLOSED_FENCES:
+            print("    %s" % t[:110])
+        print("  Each was read as a ONE-LINE note and the prose after it left alone.")
+        print("  That is the normal case and needs nothing done.")
+        print("  Act only if one was meant to OPEN a block: its copy is then")
+        print("  unfenced and appears below as NEW blocks. Add the closer.")
+        print()
     scr = read_scenes(scenes)
     scr_text = bind_interpolations([t for t, _ in scr], doc)
 

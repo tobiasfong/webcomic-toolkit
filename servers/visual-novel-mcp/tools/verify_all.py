@@ -80,6 +80,13 @@ def step_diff(project, docx):
     code, out = run([PY, os.path.join(HERE, "script_diff.py"), docx, scenes, patterns])
     if "in sync" not in out:
         raise Fail(out)
+    # ⚠ AN UNCLOSED FENCE OPENER IS NOT A FAILURE, deliberately. The author
+    # writes one-line "(To Claude Code: ...)" notes routinely and they have no
+    # closer by nature, so failing here would block every run forever. What
+    # protects the case that matters -- a REAL card block whose closer was
+    # forgotten -- is that its copy is then prose on the docx side and absent
+    # from the scenes, so it lands in this same diff as NEW blocks and fails
+    # right here. script_diff prints the openers it found for the record.
     blocks = re.search(r"rpy\s*:\s*(\d+) blocks", out)
     return "in sync%s" % (" at %s blocks" % blocks.group(1) if blocks else "")
 
