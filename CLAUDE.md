@@ -523,6 +523,49 @@ in the generator's output folder. The CGs actually installed in the game are
 all 1920x1080. The output folder holds what was MADE; the game folder holds
 what was ACCEPTED, and only the second is a standard.
 
+### AN OVERHEAD FLOOR PLATE COMES BACK WITH A SPOTLIGHT. TILE IT.
+
+Settled 2026-09-13, building a plank floor to receive a figure lying down.
+
+**The pool is a PRIOR, not a prompt problem.** Two renders with opposite
+wording, same result — a hard-edged bright disc in the middle of the frame:
+
+| prompt | center/edge luma |
+|---|---|
+| "flat even dim daylight, the boards evenly lit corner to corner" | 150.6 / 65.2 — ratio 2.31 |
+| no mention of light ANYWHERE in the prompt | 144.5 / 88.3 — ratio 1.64 |
+
+Naming the light three times was its own mistake, the same family as writing
+"soft" into a prompt you want sharp. But deleting every light word did not fix
+it, which is what settles the question: an overhead floor is lit from above by
+default and the model draws where the light lands.
+
+⚠ **AND A FLAT-FIELD DIVIDE DOES NOT REMOVE IT.** Dividing the plate by a
+heavily blurred copy of itself is the textbook fix for a vignette, and it
+measured beautifully — ratio 2.31 down to 1.26, mean on canon. The author
+looked at it and said the ring was still there. He was right: **in flat-color
+art a light pool has a drawn EDGE**, often with a second concentric arc inside
+it, and a blur-divide preserves every hard edge by construction. It took the
+brightness out of the disc and left the disc. Reporting the ratio as if it
+settled the matter was the actual error — the number answered a different
+question from the one asked.
+
+**What works: TILE A CLEAN PATCH.** A frame-scale pool cannot survive tiling,
+because there is no frame for it to sit in the middle of. Scan the render for
+the flattest window by LOW-FREQUENCY luminance (blur first, or the grain
+dominates), mirror-tile it so every seam meets its own reflection, then
+flat-field the result for any residual drift. Measured: ratio 1.00, dead flat,
+grain intact, no GPU. Scaling the patch DOWN before tiling shrinks boards and
+debris together, which is the single knob for "make it smaller".
+
+Costs, both real: mirror-tiling produces visible butterfly pairs, and small
+debris is what gives the repetition away — grain reads as texture, but a leaf
+reads as an object you have seen before. Prefer a patch with no debris in it
+and scatter the debris separately as its own matted layer.
+
+⚠ Keep the SOURCE render even though it looks like a reject. The tile is a crop
+of it, so it is the only thing that can rebuild the floor at another scale.
+
 ### A figure in CONTACT needs the thing it touches IN THE RENDER
 
 A lean drawn against empty white comes back looking like a man falling over —
@@ -550,6 +593,26 @@ head resting on the floor and slack limbs for free. Enumerating those
 separately is the same failure as the per-limb pose description that produced a
 three-legged figure and the added limb detail that produced a seashell against
 a cheek: naming the parts competes with naming the thing.
+
+⚠ **AND NOT EVERY STATE WORD CARRIES IT. `asleep` DOES; `unconscious` DOES
+NOT.** Confirmed 2026-09-13 on a second collapsed figure, three renders:
+
+| wording | eyes |
+|---|---|
+| "...her eyes are closed, her brows drawn together" (enumerated) | OPEN |
+| "unconscious with fever ... her arms loose where they fell" | OPEN |
+| "lying fast asleep ... her arms loose where they fell" | **closed** |
+
+So the rule is narrower than "name the state, not the parts": the state has to
+be one the prior has actually SEEN drawn, and sleep is drawn constantly while
+unconsciousness mostly is not. When a state word fails, the next move is a
+DIFFERENT word with the same body language, not a fourth adjective — and the
+author's own sentence is the best source for it.
+
+The costume/condition detail rides on top and survives fine: `asleep` set the
+eyes while "cheeks flushed deep red with fever, forehead beaded with sweat,
+lips parted" all landed in the same render. Use the known state for the POSE
+and describe only what the state does not imply.
 
 ### Shadows depend on the camera
 
@@ -1511,6 +1574,14 @@ so late turns were carrying an enormous payload before any work happened.
    normalization was wrong. Use numbers to filter, his eye to judge.
 6. **When a session has read many images, COMPACT OR START FRESH.** The cost is
    already sunk into context and every further turn pays it again.
+
+⚠ **AND ANYTHING THE AUTHOR MIGHT WANT GOES TO THE PROJECT OUTPUT, NEVER THE
+SCRATCHPAD.** Two finished floor plates were generated into the session temp
+directory and sent from there; they rendered fine in chat and existed nowhere
+he could open — "I can't find them anywhere". The session scratchpad is for
+intermediate steps only. If it is worth showing him, write it under
+`output/<project>/` first and send it from there, with a name that says what it
+is rather than a seed number.
 
 ## Visual novel — working rules
 
