@@ -616,12 +616,71 @@ a cheek: naming the parts competes with naming the thing.
   as a soft drawing). Compare against the other sprites rather than against an
   absolute: it is the outlier that matters, and the scale depends on the art.
 
+  ⚠ **MEASURE THE MATTED BODY, NEVER THE RAW RENDER, AND SCORE A KNOWN-GOOD
+  SPRITE IN THE SAME PASS.** Both halves of that were violated on 2026-09-13
+  and it nearly cost a reroll the author had already approved.
+
+  A raw concept is a figure on a large flat backdrop. Gradient averaged over
+  the WHOLE canvas is therefore mostly measuring empty background, and it
+  scales with how much of the frame the figure happens to fill — which is a
+  framing statistic, not a sharpness one. Measured both ways on the same
+  files:
+
+  | sprite | matted interior | raw canvas |
+  |---|---|---|
+  | an elderly figure (the 7.36 reference) | 4.66 | — |
+  | a second elderly figure | **4.16** | **2.07** |
+  | two approved sprites | 3.40, 3.35 | — |
+
+  The second was reported to the author as "2.07 against a cast of 6 to 9,
+  the softest ever recorded" and proposed for a reroll. He looked at it and
+  said it was fine. He was right: on a consistent metric it is SHARPER than
+  two sprites already approved and installed.
+
+  Note also that the interior numbers do not reproduce the 6–9 recorded
+  above — the same figure scores 7.36 there and 4.66 here. The absolute
+  scale depends on the erosion width and the gradient estimator, so **a
+  number from a previous session is not a threshold**. Always measure a
+  sprite the author has already accepted inside the same run and compare
+  against that. Numbers filter; his eye judges.
+
   ⚠ **Check every gate on every reroll.** The second draw fixed the softness and
   broke the framing — the terminal-feature clause ("clear empty space below his
   shoes") is a bias, not a guarantee, and that draw ignored it and cropped the
   legs. Two rerolls failed on two DIFFERENT criteria. Score sharpness and
   clearance together before showing the author anything, or you trade one defect
   for another and burn a review round finding out.
+
+  ⚠⚠ **AND WHEN A FIGURE CLIPS REPEATEDLY, READ ITS DESCRIPTION BEFORE
+  BLAMING THE SEED. The word "tall" fills the canvas.** Measured 2026-09-13
+  across six rolls of one character.
+
+  One of three figures in a matching costume set clipped on every roll — topknot and boots both cut
+  — while his two brothers, on a BYTE-IDENTICAL costume prompt and the same
+  canvas, came back with clearance every time. The escalation went: name both
+  terminal features (helped, not enough), then raise the canvas 1216 → 1344
+  (he filled that too, 192 px of boot against the bottom edge).
+
+  The only difference between the three was the build clause. He was "**tall**
+  and lean"; they were "heavily built" and "slight and wiry". Deleting that one
+  word took the bottom-edge contact from **192 px to 15** at the same canvas
+  and the same wording otherwise.
+
+  | roll | canvas | description | bottom-edge contact |
+  |---|---|---|---|
+  | 8401–8461, five rolls | 1216 then 1344 | "tall and lean" | 123–192 px, twice clipped at BOTH ends |
+  | 8471 | 1344 | "lean" | **15 px** |
+
+  The rule underneath: **the framing clause is a BIAS and the description is a
+  FACT, so when they conflict the description wins.** "Clear empty space above
+  his topknot" cannot win an argument against "tall", any more than "no magic
+  circle" beats "casting a spell" — it is the same failure as every other
+  clause that fights a noun already in the prompt.
+
+  And a sprite does not need height in its RENDER at all: relative cast height
+  is carried by `height_cm` at registration, which is what the scaler uses.
+  Describing a character as tall encodes it twice and the second copy costs
+  you the frame.
 
 - **⚠ NEVER answer "the model will not turn this character" with "draw it
   yourself."** This server is for everyone, not just artists — anyone who can
@@ -982,9 +1041,30 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   30.6 (2.2x). Prompt wording is a real lever there and inert on dev.
 - **cfg is not the motion knob.** Lowering it 3.0 -> 1.0 *reduced* motion
   (2.6 -> 1.5), the opposite of the obvious guess.
-- ComfyUI does not auto-start for this work:
-  `Start-Process C:\AI\ComfyUI_windows_portable
-un_nvidia_gpu.bat`.
+- **ComfyUI does not auto-start, and `Start-Process` ON THE .bat DOES NOT
+  WORK.** Launch the interpreter directly, with the working directory set:
+
+  ```powershell
+  Start-Process -FilePath "C:/AI/ComfyUI_windows_portable/python_embeded/python.exe" -ArgumentList "-s","ComfyUI/main.py","--windows-standalone-build" -WorkingDirectory "C:/AI/ComfyUI_windows_portable" -WindowStyle Hidden
+  ```
+
+  The .bat's only command is `.\python_embeded\python.exe -s ComfyUI\main.py
+  --windows-standalone-build` -- RELATIVE paths. Launched from anywhere but its
+  own folder it finds no interpreter, prints its own "did ComfyUI not start?"
+  line and sits on `pause` forever with nothing listening on 8188. The window
+  is hidden, so the failure is SILENT: the symptom is a refused connection on
+  8188 several minutes later, not an error. `-WorkingDirectory` is the whole
+  fix. Corrected 2026-09-13 after it cost a morning -- the instruction that had
+  stood here since August had evidently never been run.
+
+  ⚠ It was also CORRUPTED IN THIS FILE, and the corruption recurred when
+  this very warning was first written -- which is the lesson. The path was
+  typed outside a code fence with a backslash directly before the word
+  `run`. That two-character sequence is a carriage-return escape, it was
+  interpreted as the control character, and the stored text lost the `r`
+  to a line break -- so anything copied out of it was broken before it was
+  typed. Keep every Windows path in this file inside a code fence, and
+  prefer forward slashes; PowerShell accepts them either way.
 
 ## Music: ACE-Step text-to-music (local, 6 GB card)
 
