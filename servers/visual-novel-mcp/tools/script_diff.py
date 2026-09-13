@@ -121,6 +121,25 @@ SKIP_LINE = []
 FENCE_START = []
 FENCE_END = []
 
+# ⚠ HOW FAR AHEAD A FENCE MAY LOOK FOR ITS CLOSER, AND WHY IT IS BOUNDED.
+#
+# The look-ahead exists so an opener with no closer is treated as a one-line
+# note instead of masking the rest of the document. Unbounded, it creates the
+# mirror-image bug: a genuine one-line note finds some UNRELATED closer
+# hundreds of paragraphs later and opens a fence across everything between.
+#
+# That is not hypothetical -- it happened the moment a new closing phrase was
+# added to a project's patterns. A short author note suddenly matched a closer
+# far below it and swallowed an entire scene as spec; twelve staging anchors
+# in the emitter for that scene stopped resolving at once, which is the only
+# reason it was caught. The diff itself could not see it, because both sides
+# share this mask and agreed the text was not prose.
+#
+# A spec block is short by nature -- a roster, a few moves, their numbers. The
+# longest in practice runs to about thirty paragraphs. Sixty is generous for a
+# real block and far too short to reach across a scene.
+FENCE_MAX = 60
+
 # ⚠ NOTE_LINE IS CHECKED AFTER SPEC_START, AND THAT ORDER IS THE WHOLE POINT.
 #
 # It is for paragraphs that are ENTIRELY an author note -- a whole
@@ -289,7 +308,8 @@ def prose_mask(paras):
             # stays prose. It is also RECORDED, so a forgotten closer on a
             # real card block fails loudly instead of eating the rest of the
             # book.
-            if any(rx.match(u) for u in stripped[_i + 1:] for rx in FENCE_END):
+            if any(rx.match(u) for u in stripped[_i + 1:_i + 1 + FENCE_MAX]
+                   for rx in FENCE_END):
                 fenced = True
             else:
                 UNCLOSED_FENCES.append(t)
