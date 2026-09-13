@@ -299,14 +299,38 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 
 | tool | what it does |
 |---|---|
-| `script_diff.py` | diffs the author's docx master against the converted scenes |
-| `fx_plates.py` | draws impact plates — convergence bursts, slash beams, an ice crescent |
-| `make_nvl_scrim.py` | draws the NVL scrim gradient |
-| `make_battle_ui.py` | draws the battle panel and selection cursor as 9-patch frames |
-| `serve_web.py` | serves a web build with threading and Range support |
-| `install_renpy.py` | downloads the pinned SDK and its separate web component |
-| `renpy_sdk.py` | resolves where that SDK is — nothing else may hold a path |
-| `build_web.py` | builds the browser version, and can serve it |
+| `blood_overlay.py` | Draw a dried-blood layer for a matted character sprite |
+| `build_web.py` | Build the browser version of a Ren'Py project, and optionally serve it |
+| `choice_glyphs.py` | Draw pictogram choice cards: flat symbols, not illustrations |
+| `choice_squad.py` | Build a choice card from registered sprites: a group, on a dark field |
+| `combat_calls.py` | Every combat the document SPECIFIES must be one the player actually fights |
+| `convert_scene.py` | Turn a hand-written Ren'Py scene into an emitter that regenerates it from |
+| `decay_overlay.py` | Draw an ADDITIVE decay layer for a background plate: mold, rust, stains, |
+| `emitlib.py` | The helpers every scene emitter needs, defined ONCE |
+| `fx_plates.py` | Draw the fight-scene impact plates: convergence bursts, slash beams, and |
+| `import_sfx.py` | Import downloaded sound effects into the game, matched to the beats |
+| `install_renpy.py` | Download and install the Ren'Py SDK, so the harness does the setup |
+| `make_battle_ui.py` | Draw the battle UI panels: the box frame and the selection cursor |
+| `make_nvl_scrim.py` | Draw the NVL scrim: a vertical fade that darkens ONLY the band the text |
+| `menu_fx.py` | Draw the ambient pieces a static title screen needs to stop feeling dead |
+| `night_sky.py` | Replace a daytime sky with a drawn night sky, and grade the rest to match |
+| `nvlpage.py` | The NVL page model: which entries share a screen, and how tall it is |
+| `paginate_nvl.py` | Place NVL page breaks by measured height -- Fate-style pagination, at emit time |
+| `promo_video.py` | Render a promo video from a title screen: the cover, its ambience, a track |
+| `renpy_sdk.py` | Locate the Ren'Py SDK that install_renpy.py put on this machine |
+| `script_diff.py` | Diff an author's docx master against the converted Ren'Py scenes |
+| `serve_web.py` | Serve a Ren'Py web build locally, and keep serving until Ctrl-C |
+| `sfx_plates.py` | Synthesize the battle sound effects, the way fx_plates.py draws the visuals |
+| `slot_audit.py` | Two sprites standing in one slot -- found by walking, not by playing |
+| `spec_check.py` | The author's numbers in the docx against the numbers the game actually uses |
+| `sprite_audit.py` | Report speakers who talk with no sprite on screen |
+| `sprite_overlap.py` | Report sprites that stand on top of each other, and say who is buried |
+| `static_audit.py` | Cheap static checks over a project that nothing else in the sequence runs |
+| `subset_font.py` | Subset a CJK font down to the glyphs a game actually displays |
+| `sync_cards.py` | Generate a choice screen's option data from the author's docx |
+| `verify_all.py` | The whole verification sequence, in one command, stopping at the first failure |
+| `vnpaths.py` | Locate the visual novel's game tree without naming the project |
+| `vnrich.py` | Paragraph text WITH the author's emphasis kept |
 
 The drawing tools exist because their output is GEOMETRY — lines meeting at a
 vanishing point, an arc of exact curvature, a rounded panel that stretches
@@ -321,6 +345,13 @@ a `patterns.json` beside the game tree, not here. Without one the tool falls
 back to generic defaults and will report spec blocks as unconverted story.
 
 ## Verifying
+
+**Run `tools/verify_all.py <project> "<master.docx>"`.** It runs the whole
+sequence -- emit, diff, lint, sprites, slots, spec, combat, static, overlap,
+sound, story, nvl, pyflakes, skill -- in order and stops at the first failure.
+The repo's CLAUDE.md documents each step and the bug that put it there. The
+table above is generated from each tool's own docstring (2026-09-14), after a
+hand-kept version listed eight tools of thirty and none of the audits.
 
 `renpy lint` parses; it does not execute. It passed on the menu that crashed
 the moment it drew. Two checks that do catch things:

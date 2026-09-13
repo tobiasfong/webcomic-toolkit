@@ -1601,8 +1601,9 @@ Each step caught a real bug in one week. None substitutes for another.
 servers/visual-novel-mcp/.venv/Scripts/python.exe servers/visual-novel-mcp/tools/verify_all.py vn/<project> "<master.docx>"
 ```
 
-`verify_all.py` (added 2026-09-08) runs every step below in order and stops
-at the first failure with that step's output. It exists because the steps,
+`verify_all.py` (added 2026-09-08) runs every step below in order -- the
+numbering here follows the tool's order exactly -- and stops at the first
+failure with that step's output. It exists because the steps,
 run by hand, get skipped, reordered, or filtered wrong — the lint step in
 particular was grepped for `game/x.rpy:42` and reported a clean sheet while
 the game would not compile, since a parse error prints in a different
@@ -1746,10 +1747,7 @@ The steps are listed individually below so each one's REASON survives.
    day someone looked -- so `verify_all` prints the top pair on every green
    run. Read it. Do not make it fail.
 
-5. **`check_story`** via the MCP — after RESTARTING the server if anything
-   under `servers/visual-novel-mcp/` was edited. The running process keeps
-   the old module; a parser fix was invisible for an hour.
-6. **Sound coverage** — every `show fx X` has a `play sound` on the line
+5. **Sound coverage** — every `show fx X` has a `play sound` on the line
    before it, except ambient effects. Since 2026-09-11 the same step also
    checks that every plate a scene or a fight names is DECLARED in a .rpy.
    Ren'Py defines an image for every file under `images/` on its own, so an
@@ -1757,6 +1755,9 @@ The steps are listed individually below so each one's REASON survives.
    and it is drawn at its native 1280x720 in the middle of the 1080p frame,
    which is the two-thirds-screen failure presentation.rpy warns about. Two
    assassin plates ran that way for a month.
+6. **`check_story`** via the MCP — after RESTARTING the server if anything
+   under `servers/visual-novel-mcp/` was edited. The running process keeps
+   the old module; a parser fix was invisible for an hour.
 6b. **NVL page height** -- measured by `verify_all` with `nvlpage.py` as a
    FLOOR: a page it calls tall is tall; one it passes is not proven to fit.
    See "NVL pages turn on the entry cap" under the emitter rules for why the
