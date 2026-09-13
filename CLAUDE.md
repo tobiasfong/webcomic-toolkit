@@ -258,6 +258,31 @@ summed rather than one, and ADDITIVE accumulation. All three, or it looks
 painted. `add_glow` in the anime-production server is the moving-picture
 equivalent and pulses a sigil over a clip; it does nothing for a still.
 
+⚠ **BUT "DRAW GEOMETRY, GENERATE VOLUMETRIC OBJECTS" IS NOT ABOUT WHETHER THE
+SHAPE IS CONSTRUCTIBLE.** Corrected 2026-09-13, after a throwing dagger was
+drawn with PIL on exactly that reasoning — a blade is a polygon, a taper is a
+formula, so it looked like the magic-circle case. The author's verdict on the
+result was one line: "Dagger cannot be geometric. Generate it volumetrically.
+It looks funny." He was right, and a second pass at the profile did not rescue
+it; a generated one took a single render.
+
+The line is **whether the thing is made of LIGHT ON A SURFACE**:
+
+| | what it is | who makes it |
+|---|---|---|
+| magic circle, plaque lettering, rune band, fx geometry | FLAT SYMBOLIC MARKS. No thickness, no material, no light. A ring either is or is not a circle, and being exactly a circle is the whole requirement | DRAW it |
+| a blade, a helmet, a lantern, any prop | a LIT SOLID — bevels, a specular that travels, cast shadow into its own concavities, a material that reads as steel rather than as gray | GENERATE it |
+
+A drawn ring looks correct because there is nothing about a ring to get wrong.
+A drawn blade looks like a diagram of a blade, because everything that makes
+steel read as steel is shading, and shading by hand is a rendering problem you
+have just moved out of the renderer. The tell in review: if the honest fix for
+"it looks funny" is *more shading passes*, it was never geometry.
+
+A prop is generated like any other subject — plain flat mid-gray field (bright
+steel keys badly off white), style LoRA on, then matted. It carries no
+identity, so a reroll is cheap and costs no likeness.
+
 ### A CHILDISH face is a RESOLUTION problem, and CROPPING THE OUTPUT is a fix
 
 Seven renders on one sword CG, 2026-08-23.
@@ -433,6 +458,70 @@ afterwards to match if it must cut against the registered plate.
 downscaling a matched canvas. Fixed 2026-08-31 (MAX_SIDE 1600); the MCP server
 must be restarted for it to take effect, so until then pass width/height
 explicitly.
+
+### A CONTROLNET GUIDE SAYS *WHERE*, NEVER *WHAT*
+
+Settled 2026-09-13, building a forest plate to receive a full-height figure.
+
+Some cameras are not reachable by wording, and this file already records the
+evidence: three attempts at an enclosed forest shot all returned a central path
+converging on a vanishing point, and so did two more here — one of them through
+`location=`, whose img2img faithfully reproduced the canonical wide view. A
+converging ground under a flat-drawn figure is the projection error above, so
+the composition has to be IMPOSED. A drawn edge map through `sketch_path` is
+how.
+
+**The trap is drawing the SUBJECT instead of the LAYOUT.** The first guide put
+evenly spaced parallel verticals across the full width at strength 0.75, and
+the prompt agreed with it — "shoulder to shoulder, every culm vertical and
+parallel". That sentence is the description of a striped curtain, and a curtain
+is what came back: the author's words were "it doesn't look like bamboo at all.
+It looks like a green wall or curtain."
+
+Three changes together fixed it, and they are the recipe:
+
+1. **Make the guide IRREGULAR.** Varied thickness, real gaps, each element
+   leaning independently, and cross-marks (branches, leaf mass) that BREAK the
+   verticals so they cannot resolve into stripes. A regular comb renders as a
+   pattern, because a pattern is what it is.
+2. **Hold it LOOSELY and release it EARLY** — ~0.45 strength ending by ~0.38,
+   not 0.75 ending at 0.55. It then fixes the layout while composition is being
+   decided and lets the model paint the subject afterwards.
+3. **Delete any wording that ECHOES the guide.** The prompt must describe the
+   thing naturally; when it restates the geometry, the two reinforce each other
+   and you get the scaffold instead of the subject.
+
+⚠ The cost is real and worth budgeting: at the lower strength, two large
+foreground elements the guide placed at the frame edges did NOT survive. That
+is the trade — a guide strong enough to guarantee every element is strong
+enough to render as a diagram. Take the composition and accept some attrition.
+
+⚠ And a guide only constrains what it draws. "Grass, no road" removed the road
+and left boulders everywhere, because nothing in guide or prompt excluded them.
+
+### PLATE SIZE: 1536x864, NOT 1600x896
+
+Settled 2026-09-13 when the author asked "are these the right aspect ratios?"
+and the answer was no.
+
+**1600x896 is 1.7857. It is not 16:9.** Every plate built before that date used
+it, because 16:9 at 1600 wide is 900 and 900 is not a multiple of 16. The error
+is ~5 px in 1080 — small, but it is a real mismatch against a 16:9 delivery
+frame, and one scene had already been redone once over an aspect mismatch
+before anyone measured this one.
+
+**Use 1536x864**: exactly 16:9, both sides divisible by 16, and a flat 1.25x
+Lanczos to 1920x1080 with no stretch and no crop.
+
+This matters more than the arithmetic suggests, because the VN engine declares
+CGs with no transform on the assumption they are screen-sized: anything that is
+not renders small in the middle of the frame.
+
+⚠ **SURVEY THE INSTALLED ASSETS, NOT THE INTERMEDIATES.** The claim "1600x896
+is the CG standard" was asserted twice in one session from the plates sitting
+in the generator's output folder. The CGs actually installed in the game are
+all 1920x1080. The output folder holds what was MADE; the game folder holds
+what was ACCEPTED, and only the second is a standard.
 
 ### A figure in CONTACT needs the thing it touches IN THE RENDER
 
