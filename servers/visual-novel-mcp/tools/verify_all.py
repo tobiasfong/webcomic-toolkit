@@ -109,9 +109,9 @@ def step_lint(project, docx):
 def step_sprites(project, docx):
     code, out = run([PY, os.path.join(HERE, "sprite_audit.py"), project])
     m = re.search(r"UNINTENDED gaps \((\d+)\)", out)
-    if m or "NO SPRITE REGISTERED" in out:
+    if m or "NO SPRITE REGISTERED" in out or "STALE exemptions" in out:
         raise Fail(out)
-    return "no unintended gaps"
+    return "no unintended gaps, no stale exemptions"
 
 
 def step_slots(project, docx):
@@ -140,6 +140,31 @@ def step_combat(project, docx):
     if code:
         raise Fail(out)
     return out.strip().splitlines()[-1].replace("combat_calls: ", "")
+
+
+def step_static(project, docx):
+    """Cheap file-level checks nothing else runs: image paths, show names,
+    the sprite registry, duplicate defines, and file names in the docs."""
+    code, out = run([PY, os.path.join(HERE, "static_audit.py"), project])
+    if code:
+        raise Fail(out)
+    return "images, names, registry, defines, docs all resolve"
+
+
+def step_overlap(project, docx):
+    """A REPORT, never a failure. Coverage is width-only and a crowd is
+    meant to overlap, so no threshold separates staging the author has
+    approved from staging he has rejected -- both this week's rejections
+    scored 30-43%, and approved crowd scenes score 57-100%. What the number
+    IS good for is being seen: the reunion was fixed the day someone
+    looked at it. So the top pair is printed on every green run."""
+    code, out = run([PY, os.path.join(HERE, "sprite_overlap.py"),
+                     os.path.join(project, "game"), "30"])
+    rows = [l for l in out.splitlines() if re.match(r"\s*\d+%", l)]
+    if not rows:
+        return "no pair at or above 30% (report only)"
+    top = re.sub(r"\s+", " ", rows[0].strip())
+    return "%d pair(s) at or above 30%%; top: %s (report only)" % (len(rows), top)
 
 
 AMBIENT = ("snow", "fog", "rain", "ember", "dust", "petal", "aura", "mist", "glow")
@@ -268,7 +293,7 @@ def step_skill(project, docx):
 STEPS = [
     ("emit", step_emit), ("diff", step_diff), ("lint", step_lint),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
-    ("combat", step_combat),
+    ("combat", step_combat), ("static", step_static), ("overlap", step_overlap),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
     ("pyflakes", step_pyflakes), ("skill", step_skill),
 ]

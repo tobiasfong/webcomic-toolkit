@@ -980,7 +980,7 @@ and describe only what the state does not imply.
 
 Verified working 2026-08-04 — 25 frames @ 832x576 in **161 s** on the RTX 3060
 Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
-`anime-production/tools/ltx_run.py`.
+`servers/anime-production-skill/assets/tools/ltx_run.py`.
 
 - **A GGUF text encoder will NOT load through the core node.**
   `LTXAVTextEncoderLoader` reads `models/checkpoints/`, and ComfyUI's
@@ -1646,7 +1646,12 @@ The steps are listed individually below so each one's REASON survives.
 
    Expected: no findings AND no `errors.txt`.
 4. **Sprite audit** — see below. Expected: only the documented deliberate
-   gaps.
+   gaps, AND no stale ones. Since 2026-09-14 an exemption on the deliberate
+   list that no line hits any more is a FAILURE, because it is not clutter:
+   it silently forgives the regression if someone later removes the `show`
+   that made it obsolete. Three were found by hand that day, exempted one
+   afternoon and staged the next. Delete the exemption in the same edit
+   that stages the character.
 4b. **Slot audit** — `python servers/visual-novel-mcp/tools/slot_audit.py
    vn/<project>`. Expected: `no two sprites share a slot`. Showing a
    second sprite at an occupied slot is NOT an error in Ren'Py; the
@@ -1712,6 +1717,35 @@ The steps are listed individually below so each one's REASON survives.
    ANCHOR naming the file, where being wrong prints `UNANCHORED` instead of
    passing silently.
 
+4e. **Static audit** -- `python servers/visual-novel-mcp/tools/static_audit.py
+   vn/<project>`. Expected: `0 finding(s)`. Six file-level checks that were
+   being run BY HAND on every audit and therefore skipped, mistyped, or --
+   the case that prompted it, 2026-09-14 -- written with a regex the shell
+   mangled and trusted anyway: every literal image path resolves (Ren'Py
+   only complains when the image is DRAWN, so a broken path in a screen
+   nobody opened in testing ships -- eight such lines were found in the
+   small-screen variant that day); every `show`/`scene` name resolves;
+   sprites.json, sprites_generated.rpy, the sprite folders on disk and the
+   speakers in characters.rpy agree; no name is `define`d twice; every plate
+   that is not screen-sized is declared through a fitting Transform rather
+   than a bare path (the two-thirds-screen failure, caught at declaration
+   instead of in play); and every backticked `file.ext` in HANDOVER.md,
+   ROUTES.md and this file exists. The last is the stale-note guard -- a
+   note naming a file that is gone is how finished work gets handed back as
+   unfinished.
+
+4f. **Sprite overlap** -- `python servers/visual-novel-mcp/tools/
+   sprite_overlap.py vn/<project>/game 30`. **A REPORT, never a gate.**
+   Coverage is measured on WIDTH alone and a crowd is meant to overlap, so no
+   threshold separates staging the author has approved from staging he has
+   rejected: both of one week's rejections (a father covering his daughter
+   in the reunion, four figures reading as friends instead of two sides)
+   scored 30-43%, while approved crowd scenes score 57-100% and a wide,
+   low beast beside a standing figure scores 89% without hiding her face.
+   What the number is good for is BEING SEEN -- the reunion was fixed the
+   day someone looked -- so `verify_all` prints the top pair on every green
+   run. Read it. Do not make it fail.
+
 5. **`check_story`** via the MCP — after RESTARTING the server if anything
    under `servers/visual-novel-mcp/` was edited. The running process keeps
    the old module; a parser fix was invisible for an hour.
@@ -1723,6 +1757,11 @@ The steps are listed individually below so each one's REASON survives.
    and it is drawn at its native 1280x720 in the middle of the 1080p frame,
    which is the two-thirds-screen failure presentation.rpy warns about. Two
    assassin plates ran that way for a month.
+6b. **NVL page height** -- measured by `verify_all` with `nvlpage.py` as a
+   FLOOR: a page it calls tall is tall; one it passes is not proven to fit.
+   See "NVL pages turn on the entry cap" under the emitter rules for why the
+   model is not trusted to pack pages.
+
 7. **Web build** (`build_web.py`) when assets or the launcher changed.
 
 Repo-wide, on any change under `servers/`:

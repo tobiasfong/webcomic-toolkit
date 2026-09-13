@@ -198,7 +198,25 @@ def main(argv):
             print("  %s:%d  %s speaks, tag %r not shown" % (n, l, v, t))
     else:
         print("UNINTENDED gaps: none.")
-    return len(gaps)
+
+    # A DEAD EXEMPTION IS WORSE THAN A MISSING ONE. An entry on the
+    # deliberate list that no line hits any more is not harmless clutter: it
+    # sits there silently forgiving the regression if someone later removes
+    # the `show` that made it obsolete. Three of them were found by hand on
+    # 2026-09-14 -- bandits exempted one day and staged the next -- and the
+    # only tell was that "confirmed present (N)" had quietly become smaller
+    # than the list. So a stale entry FAILS, the same as a real gap: the fix
+    # is to delete it, in the same edit that staged the character.
+    hit_keys = {"%s:%s" % (n, v) for n, l, v, _ in deliberate_hit}
+    stale = [k for k in deliberate if k not in hit_keys]
+    if stale:
+        print()
+        print("STALE exemptions (%d) -- on the deliberate list, but no line "
+              "is exempt any more. Delete them from sprite_audit.json:"
+              % len(stale))
+        for k in stale:
+            print("  %s" % k)
+    return len(gaps) + len(stale)
 
 
 if __name__ == "__main__":

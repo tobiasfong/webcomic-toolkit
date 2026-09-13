@@ -126,7 +126,9 @@ def read_zorder(game):
 
 
 def read_widths(game):
-    """tag -> displayed pixel width (body width * the emitted zoom)."""
+    """tag -> displayed pixel width (body width * the emitted zoom).
+
+    Also fills HEIGHTS the same way, for the low-figure rule in main()."""
     zooms, tag = {}, None
     gen = os.path.join(game, "sprites_generated.rpy")
     if os.path.exists(gen):
@@ -148,7 +150,20 @@ def read_widths(game):
         t, size = c.get("tag"), c.get("body_size")
         if t and size:
             widths[t] = size[0] * zooms.get(t, 1.0)
+            HEIGHTS[t] = size[1] * zooms.get(t, 1.0)
     return widths
+
+
+HEIGHTS = {}
+
+# A figure in front that stands well below the one behind it cannot cover
+# that figure's face or shoulders, whatever the widths say: the metric is
+# horizontal, and this is the vertical fact it lacks. A low, wide beast beside
+# a standing character scored 89-100% on width alone in two approved scenes
+# and sat at the top of every report, above the two staging faults the report
+# exists to surface. 0.70 is a geometric floor, not a tuned one -- below it
+# the front figure ends around the buried figure's waist.
+LOW_FRONT = 0.70
 
 
 def main(argv):
@@ -227,6 +242,8 @@ def main(argv):
                     buried, front = (other, tag) if zo < za else (tag, other)
                 else:
                     buried, front = (other, tag) if oseq < seq else (tag, other)
+                if HEIGHTS.get(front, 1e9) < LOW_FRONT * HEIGHTS.get(buried, 0):
+                    continue
                 rows.append(((hi - lo) / width[buried], fn, n, buried,
                              stage[buried][2], front, stage[front][2],
                              int(hi - lo)))
