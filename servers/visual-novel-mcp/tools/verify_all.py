@@ -129,6 +129,19 @@ def step_spec(project, docx):
     return "no disagreements%s" % (", %s claims agree" % m.group(1) if m else "")
 
 
+def step_combat(project, docx):
+    """Every specified fight is actually entered.
+
+    Separate from step_spec on purpose: that one proves the NUMBERS in a
+    combat fence match the engine, which a fight nobody calls satisfies
+    perfectly. This one proves the fight happens.
+    """
+    code, out = run([PY, os.path.join(HERE, "combat_calls.py"), docx, project])
+    if code:
+        raise Fail(out)
+    return out.strip().splitlines()[-1].replace("combat_calls: ", "")
+
+
 AMBIENT = ("snow", "fog", "rain", "ember", "dust", "petal", "aura", "mist", "glow")
 
 
@@ -255,6 +268,7 @@ def step_skill(project, docx):
 STEPS = [
     ("emit", step_emit), ("diff", step_diff), ("lint", step_lint),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
+    ("combat", step_combat),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
     ("pyflakes", step_pyflakes), ("skill", step_skill),
 ]

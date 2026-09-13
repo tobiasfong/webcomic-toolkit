@@ -1678,6 +1678,40 @@ The steps are listed individually below so each one's REASON survives.
    the DOCX -- like against like, two pieces of prose making one claim -- and
    the docx-vs-engine comparison closes the loop transitively.
 
+4d. **Combat reachability** -- `python servers/visual-novel-mcp/tools/
+   combat_calls.py "<master.docx>" vn/<project>`. Expected: `0 unreached, 0
+   unanchored`. Added 2026-09-13 after a fully specified three-enemy fight
+   turned out never to have been wired: the scene cut from the enemies
+   lunging straight to one of them asking how his technique had been broken,
+   so the player won a battle they never fought and every step above was
+   green while it happened.
+
+   ⚠ **EACH OTHER CHECK MISSES THIS FOR ITS OWN REASON, and together they
+   describe the class.** The combat spec is FENCED, so `script_diff` drops it
+   from the docx side AND the emitter side and the two agree about nothing --
+   the same hole 4c and the fence bug already record. `spec_check` proves the
+   NUMBERS in the fence match the engine, and a fight nobody enters has
+   numbers that agree perfectly. Lint does not consider a missing `call` a
+   syntax error. The sprite audit was satisfied because the enemies had
+   sprites; nobody showed them. **Agreement is not execution, and no amount
+   of cross-checking two descriptions of a thing proves the thing runs.**
+
+   It counts PER SCENE FILE -- how many fights the document specifies there
+   against how many that file calls -- rather than matching each spec to a
+   line window. A window has to know how far a `call` may sit from the prose
+   around it, and the honest answer is "however much staging the emitter put
+   between them": in one scene the call is seven lines and five `show`
+   statements clear of the next spoken line, which reported three correctly
+   wired fights as unreached. Counting needs no such constant and still
+   catches the original, where one file specified TWO fights and called ONE.
+
+   It finds the markers with a RAW REGEX over the raw paragraphs, not through
+   `prose_mask`. That is deliberate and it is the point: the fence patterns
+   are what was wrong the last two times, so a checker for fence-shaped bugs
+   must not ask the fence what it thinks. The mask picks only the prose
+   ANCHOR naming the file, where being wrong prints `UNANCHORED` instead of
+   passing silently.
+
 5. **`check_story`** via the MCP — after RESTARTING the server if anything
    under `servers/visual-novel-mcp/` was edited. The running process keeps
    the old module; a parser fix was invisible for an hour.
