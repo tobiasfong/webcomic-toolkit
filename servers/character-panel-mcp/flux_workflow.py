@@ -775,11 +775,26 @@ def generate_turnaround_sheet(
 # pale_figure_risk and clamps at 110 when the measured tolerance wanted 173-187.
 
 
-def matte_image(image_path: str, out_dir: str, model: str = "RMBG-2.0",
+def matte_image(image_path: str, out_dir: str, model: str = "BEN2",
                 sensitivity: float = 1.0, process_res: int = 1024,
                 mask_blur: int = 0, mask_offset: int = 0,
                 refine_foreground: bool = True, timeout: int = 300) -> str:
     """Cut an EXISTING image out onto transparency with a learned matting model.
+
+    ⚠ THE DEFAULT IS BEN2, NOT RMBG-2.0, SINCE 2026-09-16 -- A LICENSE
+    DECISION. RMBG-2.0 is BRIA's and its downloaded weights are licensed for
+    non-commercial use only (the licensed route is their paid API). Every
+    sprite in a game meant for sale had been cut with it, and all of them had
+    to be re-cut. BEN2 and INSPYRENET are MIT (verified at their original
+    sources, not at this node's header comment, which mis-states two of the
+    licenses); BiRefNet, the model RMBG-2.0 is a fine-tune of, is MIT too.
+    Check a model's license at its ORIGINAL source the day it enters the
+    pipeline -- that is the step that was skipped.
+
+    BEN2 through this node leaves a few stray near-opaque blobs at the frame
+    corners of a flat backdrop, so a raw getbbox() spans the whole canvas.
+    Callers keep the largest connected region plus a soft-edge band and drop
+    the rest before cropping -- see the project's rematte_all.clean_alpha.
 
     The only route that works on art already made -- locked panels, approved
     concept panels, anything the author drew. ~4 s.
