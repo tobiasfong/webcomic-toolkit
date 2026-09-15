@@ -1764,6 +1764,13 @@ The steps are listed individually below so each one's REASON survives.
    model is not trusted to pack pages.
 
 7. **Web build** (`build_web.py`) when assets or the launcher changed.
+   Run `optimize_png.py <project>` first whenever images were added: the
+   web build ships every PNG byte-for-byte under progressive download, so
+   their size IS the browser download. Lossless, and it hashes every
+   file's pixels before and after so a change fails the run (10.9% off
+   201 files in 85 s, 2026-09-16). ⚠ Run the build from the REPO ROOT: a
+   shell whose working directory is inside the distribution folder holds
+   it open, and the launcher's error blames a server that is not running.
 
 Repo-wide, on any change under `servers/`:
 
