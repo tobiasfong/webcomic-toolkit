@@ -775,14 +775,14 @@ def generate_turnaround_sheet(
 # pale_figure_risk and clamps at 110 when the measured tolerance wanted 173-187.
 
 
-def matte_image(image_path: str, out_dir: str, model: str = "BEN2",
+def matte_image(image_path: str, out_dir: str, model: str = "BiRefNet-general",
                 sensitivity: float = 1.0, process_res: int = 1024,
                 mask_blur: int = 0, mask_offset: int = 0,
                 refine_foreground: bool = True, timeout: int = 300) -> str:
     """Cut an EXISTING image out onto transparency with a learned matting model.
 
-    ⚠ THE DEFAULT IS BEN2, NOT RMBG-2.0, SINCE 2026-09-16 -- A LICENSE
-    DECISION. RMBG-2.0 is BRIA's and its downloaded weights are licensed for
+    ⚠ THE DEFAULT IS BiRefNet-general, NOT RMBG-2.0, SINCE 2026-09-16 -- A
+    LICENSE DECISION, and then a measured one. RMBG-2.0 is BRIA's and its downloaded weights are licensed for
     non-commercial use only (the licensed route is their paid API). Every
     sprite in a game meant for sale had been cut with it, and all of them had
     to be re-cut. BEN2 and INSPYRENET are MIT (verified at their original
@@ -791,10 +791,13 @@ def matte_image(image_path: str, out_dir: str, model: str = "BEN2",
     Check a model's license at its ORIGINAL source the day it enters the
     pipeline -- that is the step that was skipped.
 
-    BEN2 through this node leaves a few stray near-opaque blobs at the frame
-    corners of a flat backdrop, so a raw getbbox() spans the whole canvas.
-    Callers keep the largest connected region plus a soft-edge band and drop
-    the rest before cropping -- see the project's rematte_all.clean_alpha.
+    BEN2 was tried first and is NOT good enough: it leaves stray near-opaque
+    blobs at the frame corners of a flat backdrop, and on a jade slab on a
+    tray it dropped the tray -- 92-95% recall of the RMBG-2.0 mask at every
+    sensitivity and resolution. BiRefNet-general, the model RMBG-2.0 is a
+    fine-tune of, recovered 100.0% of that mask with 0.2% extra and corners
+    at exactly 0. Same architecture, same behavior, MIT. Callers still keep
+    the largest connected region plus a soft-edge band before cropping.
 
     The only route that works on art already made -- locked panels, approved
     concept panels, anything the author drew. ~4 s.
@@ -815,14 +818,27 @@ def matte_image(image_path: str, out_dir: str, model: str = "BEN2",
     """
     ensure_comfy_running()
     uploaded = _upload_image(image_path)
+    # The node pack carries two matting nodes with the same shape of inputs:
+    # `RMBG` (RMBG-2.0, INSPYRENET, BEN, BEN2) and `BiRefNetRMBG` (the
+    # BiRefNet family). A model name starting with "BiRefNet" routes to the
+    # second, which takes no process_res -- it sizes from its own config.
+    if model.startswith("BiRefNet"):
+        node = {"class_type": "BiRefNetRMBG",
+                "inputs": {"image": ["1", 0], "model": model,
+                           "sensitivity": sensitivity,
+                           "mask_blur": mask_blur, "mask_offset": mask_offset,
+                           "invert_output": False, "refine_foreground": refine_foreground,
+                           "background": "Alpha", "background_color": "#222222"}}
+    else:
+        node = {"class_type": "RMBG",
+                "inputs": {"image": ["1", 0], "model": model,
+                           "sensitivity": sensitivity, "process_res": process_res,
+                           "mask_blur": mask_blur, "mask_offset": mask_offset,
+                           "invert_output": False, "refine_foreground": refine_foreground,
+                           "background": "Alpha", "background_color": "#222222"}}
     g = {
         "1": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
-        "2": {"class_type": "RMBG",
-              "inputs": {"image": ["1", 0], "model": model,
-                         "sensitivity": sensitivity, "process_res": process_res,
-                         "mask_blur": mask_blur, "mask_offset": mask_offset,
-                         "invert_output": False, "refine_foreground": refine_foreground,
-                         "background": "Alpha", "background_color": "#222222"}},
+        "2": node,
         "3": {"class_type": "SaveImage",
               "inputs": {"images": ["2", 0], "filename_prefix": "flux_matte"}},
     }
