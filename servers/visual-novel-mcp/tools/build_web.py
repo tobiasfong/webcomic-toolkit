@@ -64,6 +64,7 @@ def build(sdk, project):
 
 
 ROTATE_MARK = "<!-- rotate-card -->"
+ROTATE_END = "<!-- /rotate-card -->"
 ROTATE_CARD = ROTATE_MARK + """
 <style>
 #rotateCard{display:none;position:fixed;inset:0;z-index:99999;background:#000;color:#eee;
@@ -74,11 +75,38 @@ ROTATE_CARD = ROTATE_MARK + """
 @keyframes rotateHint{0%,35%{transform:rotate(0)}65%,100%{transform:rotate(-90deg)}}
 @media (orientation: portrait) and (hover: none) and (pointer: coarse){#rotateCard{display:flex}}
 </style>
-<div id="rotateCard"><div class="phone"></div><div>Turn your phone sideways to play.</div></div>"""
+<div id="rotateCard"><div class="phone"></div><div>Turn your phone sideways to play.</div></div>
+<script>
+(function(){
+  // Hold the canvas to the largest 16:9 box centered in the window. The
+  // engine sizes its drawing buffer from the canvas element's own box, and
+  // left at 100% x 100% it fills the window's width, so on any screen wider
+  // than 16:9 -- every phone held sideways -- the frame overflows the height
+  // and the quick menu falls off the bottom.
+  var fit = function(){
+    var W = window.innerWidth, H = window.innerHeight;
+    var w = W, h = Math.round(W * 9 / 16);
+    if (h > H) { h = H; w = Math.round(H * 16 / 9); }
+    var ids = ["canvas", "overlayDiv"];
+    for (var i = 0; i < ids.length; i++) {
+      var e = document.getElementById(ids[i]);
+      if (!e) continue;
+      e.style.width = w + "px"; e.style.height = h + "px";
+      e.style.left = Math.round((W - w) / 2) + "px"; e.style.top = Math.round((H - h) / 2) + "px";
+    }
+  };
+  fit();
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", function(){ setTimeout(fit, 300); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
+})();
+</script>
+""" + ROTATE_END
 
 
 def add_rotate_card(root):
-    """Ask a phone held upright to turn sideways.
+    """Ask a phone held upright to turn sideways, and keep the frame inside
+    the window once it has.
 
     A 16:9 game on a portrait phone renders at about a third of the screen's
     height and the text is unreadable (the author, 2026-09-18: "it looks a
@@ -86,16 +114,28 @@ def add_rotate_card(root):
     landscape when the game is installed to the home screen, but a page in
     a browser tab cannot force rotation, so it asks instead -- the way phone
     VNs have always done it. The card shows only on a touch device held in
-    portrait, so a desktop browser never sees it, and it is injected after
-    every build because the engine regenerates index.html each time.
+    portrait, so a desktop browser never sees it.
+
+    The script beside it fixes what rotation then exposes: the engine's
+    canvas is 100% x 100% of the window and the frame follows the WIDTH, so
+    on a phone held sideways (wider than 16:9) the bottom of the frame, and
+    the quick menu with it, falls off the screen. The author saw it: "the
+    menu words are cut off." Holding the canvas to a centered 16:9 box makes
+    fit-to-width the same as fit-inside.
+
+    Injected after every build, because the engine regenerates index.html
+    each time; an older block is replaced, so the page carries one copy.
     """
     for page in glob.glob(os.path.join(root, "*-dists", "*-web", "index.html")):
         html = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK in html:
-            continue
-        html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
+            a = html.index(ROTATE_MARK)
+            b = html.index(ROTATE_END, a) + len(ROTATE_END) if ROTATE_END in html[a:] else html.index("</div>", html.index('id="rotateCard"', a)) + len("</div>")
+            html = html[:a] + ROTATE_CARD + html[b:]
+        else:
+            html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
         io.open(page, "w", encoding="utf-8", newline="\n").write(html)
-        print("  rotate card added to %s" % os.path.relpath(page, root))
+        print("  rotate card and 16:9 fit added to %s" % os.path.relpath(page, root))
 
 
 def explain(code):
