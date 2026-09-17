@@ -306,6 +306,7 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `combat_calls.py` | Every combat the document SPECIFIES must be one the player actually fights |
 | `convert_scene.py` | Turn a hand-written Ren'Py scene into an emitter that regenerates it from |
 | `decay_overlay.py` | Draw an ADDITIVE decay layer for a background plate: mold, rust, stains, |
+| `draw_ctc.py` | Draw the click-to-continue mark: a right-pointing triangle centered on a line-tall canvas |
 | `emitlib.py` | The helpers every scene emitter needs, defined ONCE |
 | `fx_plates.py` | Draw the fight-scene impact plates: convergence bursts, slash beams, and |
 | `import_sfx.py` | Import downloaded sound effects into the game, matched to the beats |
@@ -315,6 +316,7 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `menu_fx.py` | Draw the ambient pieces a static title screen needs to stop feeling dead |
 | `night_sky.py` | Replace a daytime sky with a drawn night sky, and grade the rest to match |
 | `nvlpage.py` | The NVL page model: which entries share a screen, and how tall it is |
+| `optimize_png.py` | Losslessly shrink every PNG under a Ren'Py project's game folder |
 | `paginate_nvl.py` | Place NVL page breaks by measured height -- Fate-style pagination, at emit time |
 | `promo_video.py` | Render a promo video from a title screen: the cover, its ambience, a track |
 | `renpy_sdk.py` | Locate the Ren'Py SDK that install_renpy.py put on this machine |
