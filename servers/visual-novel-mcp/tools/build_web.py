@@ -27,6 +27,8 @@ support.
 directory open and the build dies with `PermissionError: [WinError 32]`.
 """
 import argparse
+import glob
+import io
 import os
 import subprocess
 import sys
@@ -59,6 +61,41 @@ def build(sdk, project):
     print("  %s" % " ".join('"%s"' % c if " " in c else c for c in cmd))
     proc = subprocess.run(cmd, cwd=sdk)
     return proc.returncode
+
+
+ROTATE_MARK = "<!-- rotate-card -->"
+ROTATE_CARD = ROTATE_MARK + """
+<style>
+#rotateCard{display:none;position:fixed;inset:0;z-index:99999;background:#000;color:#eee;
+  font:20px/1.4 sans-serif;text-align:center;align-items:center;justify-content:center;
+  flex-direction:column;padding:24px}
+#rotateCard .phone{width:34px;height:60px;border:3px solid #eee;border-radius:7px;
+  margin:0 auto 18px;animation:rotateHint 2.4s ease-in-out infinite}
+@keyframes rotateHint{0%,35%{transform:rotate(0)}65%,100%{transform:rotate(-90deg)}}
+@media (orientation: portrait) and (hover: none) and (pointer: coarse){#rotateCard{display:flex}}
+</style>
+<div id="rotateCard"><div class="phone"></div><div>Turn your phone sideways to play.</div></div>"""
+
+
+def add_rotate_card(root):
+    """Ask a phone held upright to turn sideways.
+
+    A 16:9 game on a portrait phone renders at about a third of the screen's
+    height and the text is unreadable (the author, 2026-09-18: "it looks a
+    bit too small"). The manifest the engine writes already asks for
+    landscape when the game is installed to the home screen, but a page in
+    a browser tab cannot force rotation, so it asks instead -- the way phone
+    VNs have always done it. The card shows only on a touch device held in
+    portrait, so a desktop browser never sees it, and it is injected after
+    every build because the engine regenerates index.html each time.
+    """
+    for page in glob.glob(os.path.join(root, "*-dists", "*-web", "index.html")):
+        html = io.open(page, encoding="utf-8").read()
+        if ROTATE_MARK in html:
+            continue
+        html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
+        io.open(page, "w", encoding="utf-8", newline="\n").write(html)
+        print("  rotate card added to %s" % os.path.relpath(page, root))
 
 
 def explain(code):
@@ -106,6 +143,7 @@ def main():
     # inside it, so the server is pointed at the parent.
     root = os.path.dirname(project)
     print("\nBuilt. Distribution is under %s" % root)
+    add_rotate_card(root)
 
     if a.serve is None:
         print("Serve it with:")

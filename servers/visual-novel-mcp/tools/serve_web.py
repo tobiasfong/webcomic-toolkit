@@ -105,17 +105,33 @@ if __name__ == "__main__":
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     if not args:
         sys.exit("usage: python serve_web.py <dir-containing-*-dists> [port] "
-                 "[--open]")
+                 "[--open] [--lan]")
     root = find_build(os.path.abspath(args[0]))
     port = int(args[1]) if len(args) > 1 else 8124
-    url = f"http://127.0.0.1:{port}/"
+    # --lan binds every interface so a phone on the same Wi-Fi can load the
+    # game: the only way to test the phone layout on a phone. The printed URL
+    # is the machine's own address on that network. Windows may ask once to
+    # allow Python through the firewall on private networks; say yes. Note
+    # that over plain http on a LAN address the browser treats the page as
+    # insecure, so the service worker and storage persistence do not engage;
+    # saves still work for the session, and the layout test is unaffected.
+    host = "0.0.0.0" if "--lan" in flags else "127.0.0.1"
+    shown = "127.0.0.1"
+    if host == "0.0.0.0":
+        import socket
+        try:
+            s_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s_.connect(("8.8.8.8", 80))
+            shown = s_.getsockname()[0]; s_.close()
+        except OSError:
+            shown = socket.gethostbyname(socket.gethostname())
+    url = f"http://{shown}:{port}/"
 
     # Bind BEFORE opening the browser. A caller that launches the browser
     # first races the server and lands on ERR_CONNECTION_REFUSED, which looks
     # exactly like a failed build -- so the browser is opened from here, after
     # the socket is listening, rather than from whatever script invoked this.
     httpd = ThreadingHTTPServer(
-        ("127.0.0.1", port), functools.partial(Handler, directory=root)
+        (host, port), functools.partial(Handler, directory=root)
     )
     print(f"Serving {os.path.basename(root)}")
     print(f"  -> {url}")

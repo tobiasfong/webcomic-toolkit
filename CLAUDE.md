@@ -1924,6 +1924,15 @@ Settled 2026-09-05, after four wasted rebuild cycles.
   there answers "did init run" without a build.
 - Each web cycle costs ~4 minutes (120 MB build, ~3 min WASM unpack). Say so
   before the second cycle, not after the fourth.
+- **Phones play it sideways.** A 16:9 game on a portrait phone is a third
+  of the screen tall; every phone VN asks for landscape instead. The
+  engine's manifest already requests it for an installed app, and
+  `build_web.py` injects a "turn your phone sideways" card into the page
+  after every build, shown only on a touch device held upright (settled
+  2026-09-18). To test on a real phone, `serve_web.py ... --lan` binds the
+  Wi-Fi address and prints it. Do NOT trust the in-app browser's phone
+  emulation for this: it drew the frame at double size after Start while
+  the author's phone and Chrome's device toolbar drew it correctly.
 
 ## Practical
 
