@@ -20,6 +20,7 @@ WIRING. Declare it as a blinking image and give it to every speaker:
 
     image ctc_blink:
         "gui/ctc.png"
+        zoom (0.5 * _preferences.font_size)   # see below
         alpha 1.0
         pause 0.6
         alpha 0.0
@@ -31,6 +32,12 @@ WIRING. Declare it as a blinking image and give it to every speaker:
 
 Nestled means the mark sits after the text's last character. The NVL screen
 shows it with no change of its own.
+
+SCALE IT WITH THE TEXT. A text-size preference scales the text and not the
+image, so at a larger size the mark sits at half the line's height. Draw it at
+twice the size you want (`--line 80 --height 48 --gap 14` for a 40 px line) and
+zoom by `0.5 * _preferences.font_size`, which is re-evaluated each time the mark
+is shown: crisp at the default, and it grows with the line at larger sizes.
 """
 import argparse
 import sys
