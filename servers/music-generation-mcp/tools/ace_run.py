@@ -7,7 +7,7 @@ the same reason: LTX's real settings (strength 0.8, fps 48, near-native
 resolution) were found by sweeping a plain CLI, not through an MCP tool. The
 defaults in ace_workflow.VARIANTS are starting points that have NOT been swept
 on this hardware — use this to fix that, then write what you learn into
-CLAUDE.md the way the LTX findings were.
+AGENTS.md the way the LTX findings were.
 
 Examples
 --------

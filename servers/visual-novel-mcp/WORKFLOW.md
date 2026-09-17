@@ -351,7 +351,7 @@ back to generic defaults and will report spec blocks as unconverted story.
 **Run `tools/verify_all.py <project> "<master.docx>"`.** It runs the whole
 sequence -- emit, diff, lint, sprites, slots, spec, combat, static, overlap,
 sound, story, nvl, pyflakes, skill -- in order and stops at the first failure.
-The repo's CLAUDE.md documents each step and the bug that put it there. The
+The repo's AGENTS.md documents each step and the bug that put it there. The
 table above is generated from each tool's own docstring (2026-09-14), after a
 hand-kept version listed eight tools of thirty and none of the audits.
 

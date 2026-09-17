@@ -60,7 +60,7 @@ view, use `generate_turnaround_sheet` instead: it keeps the likeness.
 - **Generation is minutes, not seconds.** Compositing is instant and GPU-free —
   that separation is deliberate, and it is why panel assembly is CPU-side.
 
-See `../../CLAUDE.md` for the full set of rules this pipeline accumulated in
+See `../../AGENTS.md` for the full set of rules this pipeline accumulated in
 production.
 
 ## What it does

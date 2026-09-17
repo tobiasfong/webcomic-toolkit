@@ -39,7 +39,7 @@ WHAT IT CHECKS, and what each one has caught or would have
              failure -- while the file exists, the name resolves, and every
              other checker stays green.
   docs       every `file.ext` named in backticks in the project's HANDOVER.md
-             and ROUTES.md and the repo's CLAUDE.md exists somewhere it could
+             and ROUTES.md and the repo's AGENTS.md exists somewhere it could
              plausibly mean. A note naming a file that is gone is how the
              sword art was handed back to the author as unfinished three
              days after he finished it.
@@ -231,7 +231,7 @@ def check_defines(project):
 def check_docs(project, repo):
     docs = [os.path.join(project, "HANDOVER.md"), os.path.join(project, "ROUTES.md")]
     if repo:
-        docs.append(os.path.join(repo, "CLAUDE.md"))
+        docs.append(os.path.join(repo, "AGENTS.md"))
     roots = [project, os.path.join(project, "game"), os.path.join(project, "tools"),
              os.path.join(project, "game", "scenes"), os.path.join(project, "game", "images", "fx")]
     if repo:
@@ -281,7 +281,7 @@ def main(argv):
     else:
         # vn/<project> sits two levels under the repo root by convention
         cand = os.path.abspath(os.path.join(project, "..", ".."))
-        if os.path.exists(os.path.join(cand, "CLAUDE.md")):
+        if os.path.exists(os.path.join(cand, "AGENTS.md")):
             repo = cand
 
     total = 0

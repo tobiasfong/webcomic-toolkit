@@ -300,7 +300,7 @@ def prose_mask(paras):
             # document: 173 paragraphs of finished prose masked as spec on
             # 2026-09-13. And it was SILENT, because the docx side and the
             # emitter share this mask -- so both agreed the text did not
-            # exist and the diff said "in sync". That is the hole CLAUDE.md
+            # exist and the diff said "in sync". That is the hole AGENTS.md
             # warns about, from the other direction.
             #
             # An unclosed opener is treated exactly like SKIP_LINE: the line

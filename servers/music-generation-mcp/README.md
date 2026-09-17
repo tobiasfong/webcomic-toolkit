@@ -156,7 +156,7 @@ good take being silently overwritten by a worse one is the expensive failure.
   `cfg`, sampler and scheduler in `ace_workflow.VARIANTS` have not been swept on
   this hardware. `tools/ace_run.py` is the sweep harness — the same role
   `ltx_run.py` played when it found LTX's real settings. Write what you learn
-  into the repo's `CLAUDE.md`.
+  into the repo's `AGENTS.md`.
 - **Judge by ear.** There is no motion-metric equivalent here, and no spectral
   statistic tells you whether you like the vocal — which is the whole reason this
   server exists.
