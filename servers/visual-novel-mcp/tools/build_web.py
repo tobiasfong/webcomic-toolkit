@@ -25,6 +25,16 @@ support.
 
 ⚠ STOP A RUNNING SERVER BEFORE REBUILDING. It holds the distribution
 directory open and the build dies with `PermissionError: [WinError 32]`.
+
+⚠ THE LAUNCHER RETURNS BEFORE THE BUILD IS DONE. Measured 2026-09-18: it
+came back 15 s after starting, the distribution folder was deleted and
+recreated 80 s later, and its last file landed 5 s after that. Anything
+done to the page in between -- the phone block below -- was done to the
+PREVIOUS build's page, which the real build then replaced while the log
+said the block had been added; the author saw the page's corner menu still
+there. `wait_for_build` waits for the folder itself to settle, so nothing
+here touches a page the build has not finished writing. Never run the
+injector or the server by hand straight after the launcher.
 """
 import argparse
 import glob
@@ -32,6 +42,7 @@ import io
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import renpy_sdk                                            # noqa: E402
@@ -109,6 +120,44 @@ ROTATE_CARD = ROTATE_MARK + """
 """ + ROTATE_END
 
 
+def wait_for_build(root, started, settle=10, limit=1500):
+    """Block until the launcher's build has actually landed on disk.
+
+    The launcher returns long before the build is finished (see the module
+    docstring), so the signal is the distribution and not the process: a
+    page written after this build started, and nothing under its folder
+    touched for `settle` seconds. A launcher that does wait costs `settle`
+    seconds here and nothing else. Returns the page.
+    """
+    pattern = os.path.join(root, "*-dists", "*-web", "index.html")
+    deadline = time.time() + limit
+    waiting = False
+    while time.time() < deadline:
+        for page in glob.glob(pattern):
+            if os.path.getmtime(page) < started - 1:
+                continue                        # the previous build's page
+            newest = 0.0
+            for dn, _dirs, files in os.walk(os.path.dirname(page)):
+                for fn in files:
+                    try:
+                        newest = max(newest, os.path.getmtime(os.path.join(dn, fn)))
+                    except OSError:             # a file mid-write
+                        newest = time.time()
+            if time.time() - newest >= settle:
+                if waiting:
+                    print("  the build landed %d s after it started"
+                          % int(time.time() - started))
+                return page
+        if not waiting:
+            print("  the launcher has returned; waiting for the build to land ...",
+                  flush=True)
+            waiting = True
+        time.sleep(2)
+    sys.exit("The launcher returned, but no new distribution settled under\n"
+             "  %s\nwithin %d s. Look for a launcher process still running, or"
+             " an error it printed above." % (root, limit))
+
+
 def add_rotate_card(root):
     """Ask a phone held upright to turn sideways, and keep the frame inside
     the window once it has.
@@ -130,7 +179,12 @@ def add_rotate_card(root):
 
     Injected after every build, because the engine regenerates index.html
     each time; an older block is replaced, so the page carries one copy.
+    Only after `wait_for_build`: the launcher returns early, and a page
+    patched before the build lands is overwritten by it. Re-reads the page
+    afterwards and fails if the block is not there. Returns the number of
+    pages carrying it.
     """
+    done = 0
     for page in glob.glob(os.path.join(root, "*-dists", "*-web", "index.html")):
         html = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK in html:
@@ -140,7 +194,13 @@ def add_rotate_card(root):
         else:
             html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
         io.open(page, "w", encoding="utf-8", newline="\n").write(html)
-        print("  rotate card and 16:9 fit added to %s" % os.path.relpath(page, root))
+        check = io.open(page, encoding="utf-8").read()
+        if ROTATE_MARK not in check or ROTATE_END not in check:
+            sys.exit("The phone block did not land in %s" % page)
+        print("  phone block (rotate card, 16:9 fit, corner menu hidden) in %s"
+              % os.path.relpath(page, root))
+        done += 1
+    return done
 
 
 def explain(code):
@@ -179,6 +239,7 @@ def main():
         )
 
     project = project_dir(a.project)
+    started = time.time()
     code = build(sdk, project)
     if code != 0:
         explain(code)
@@ -187,8 +248,10 @@ def main():
     # The launcher writes `<name>-<version>-dists/` beside the project, not
     # inside it, so the server is pointed at the parent.
     root = os.path.dirname(project)
+    wait_for_build(root, started)
     print("\nBuilt. Distribution is under %s" % root)
-    add_rotate_card(root)
+    if not add_rotate_card(root):
+        sys.exit("No page found under %s to carry the phone block." % root)
 
     if a.serve is None:
         print("Serve it with:")

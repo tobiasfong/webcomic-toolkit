@@ -106,6 +106,13 @@ if __name__ == "__main__":
     if not args:
         sys.exit("usage: python serve_web.py <dir-containing-*-dists> [port] "
                  "[--open] [--lan]")
+    # The page carries the phone block only if the build's injection ran
+    # AFTER the launcher wrote index.html, and the launcher returns before
+    # it has (build_web.py, wait_for_build). Adding the block here as well
+    # means the served page always has it, whatever the build did, and an
+    # edit to the block is served without a rebuild. Idempotent.
+    import build_web
+    build_web.add_rotate_card(os.path.abspath(args[0]))
     root = find_build(os.path.abspath(args[0]))
     port = int(args[1]) if len(args) > 1 else 8124
     # --lan binds every interface so a phone on the same Wi-Fi can load the

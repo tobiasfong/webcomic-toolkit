@@ -446,6 +446,17 @@ cost an evening.
   needs threading and Range support.
 - **Stop that server before rebuilding.** It holds the distribution directory
   open and the build dies with `PermissionError: [WinError 32]`.
+- **The launcher returns before the build is done.** Measured 2026-09-18:
+  `renpy.exe launcher web_build` came back 15 s after it started, the
+  distribution folder was deleted and recreated 80 s later, and its last
+  file landed 5 s after that. A script that patches the page or starts a
+  server as soon as the launcher returns is working on the PREVIOUS build,
+  which the real one then replaces without a word -- the page block below
+  went missing that way while the build log said it had been added.
+  `build_web.py` waits for a page newer than the build's start and for the
+  folder to go quiet, then injects and re-reads the page to prove it;
+  `serve_web.py` injects again before serving, so the served page always
+  carries the block and an edit to it needs no rebuild.
 - Tell the author to hard-refresh: the service worker will otherwise serve the
   previous `game.zip`.
 - Large images are deferred to progressive download with placeholders left in

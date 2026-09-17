@@ -1776,6 +1776,15 @@ The steps are listed individually below so each one's REASON survives.
    201 files in 85 s, 2026-09-16). ⚠ Run the build from the REPO ROOT: a
    shell whose working directory is inside the distribution folder holds
    it open, and the launcher's error blames a server that is not running.
+   ⚠ And THE LAUNCHER RETURNS BEFORE THE BUILD IS DONE: measured
+   2026-09-18, it came back in 15 s and the distribution folder was
+   deleted and rewritten 80 s later. Anything done to the page in between
+   is done to the previous build's page, which the real build then
+   replaces -- that is how the phone block went missing from a page whose
+   build log said it had been added. `build_web.py` now waits for the
+   folder to settle and re-reads the page after injecting; `serve_web.py`
+   injects too. Never patch the page or start the server by hand straight
+   after the launcher.
 
 Repo-wide, on any change under `servers/`:
 
