@@ -1933,6 +1933,25 @@ Settled 2026-09-05, after four wasted rebuild cycles.
   Wi-Fi address and prints it. Do NOT trust the in-app browser's phone
   emulation for this: it drew the frame at double size after Start while
   the author's phone and Chrome's device toolbar drew it correctly.
+  The full how-to is the **Phones** chapter of
+  `servers/visual-novel-mcp/WORKFLOW.md`, with the reusable code in
+  `servers/visual-novel-mcp/snippets/` and the mark in `draw_ctc.py`. The
+  four rules a session must carry even without reading it:
+  1. The engine's canvas follows the window WIDTH; the injected page block
+     holds it to a centered 16:9 box, or a phone held sideways loses the
+     quick menu off the bottom.
+  2. Text size is three states, and the factor scales TEXT, NOT BOXES:
+     every screen with a size in pixels must read `_preferences.font_size`
+     (rows too), the NVL page scrolls by drag rather than overflowing, and
+     every new screen gets one look at the biggest state -- the sequence
+     does not test scaling.
+  3. A command menu needs two taps on a phone (arm and show stats, then
+     use), keyed on the browser's own `(hover: none)` -- the engine's touch
+     and mobile variants missed on a real phone -- with hover doing NOTHING
+     on touch, because a tap arrives as hover then click.
+  4. **Accommodate the device; never make it a setting.** A tap-twice
+     preference was rejected: desktop would inherit it, and a phone reader
+     who cannot see the stats will not guess a setting exists.
 
 ## Practical
 
