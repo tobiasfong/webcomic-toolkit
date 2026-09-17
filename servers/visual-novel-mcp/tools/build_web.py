@@ -74,6 +74,11 @@ ROTATE_CARD = ROTATE_MARK + """
   margin:0 auto 18px;animation:rotateHint 2.4s ease-in-out infinite}
 @keyframes rotateHint{0%,35%{transform:rotate(0)}65%,100%{transform:rotate(-90deg)}}
 @media (orientation: portrait) and (hover: none) and (pointer: coarse){#rotateCard{display:flex}}
+/* The page's own corner menu duplicates the game: its export and import live on the
+   save and load screens, the log is a developer's tool, and the engine credit is on
+   the About screen. Only the button is hidden; the file input the game's Load-from-local
+   button clicks stays in the page. */
+#ContextButton{display:none}
 </style>
 <div id="rotateCard"><div class="phone"></div><div>Turn your phone sideways to play.</div></div>
 <script>
