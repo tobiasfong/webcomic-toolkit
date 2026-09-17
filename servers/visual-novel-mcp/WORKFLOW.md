@@ -449,6 +449,111 @@ cost an evening.
 - Large images are deferred to progressive download with placeholders left in
   `game.zip`; fonts are not. A CJK font lands entirely in the initial download.
 
+## Phones
+
+Settled 2026-09-18 on a real phone, on a 16:9 game. Everything in this
+chapter is engine-level and project-agnostic; the reusable parts are
+`snippets/touch_input.rpy`, `snippets/text_size.rpy`, `tools/draw_ctc.py`,
+and what `tools/build_web.py` and `tools/serve_web.py` already do.
+
+### Landscape, and how to get a phone into it
+
+A 16:9 game on a portrait phone renders at about a third of the screen's
+height and the text is unreadable. The answer is landscape, not a 9:16
+build: a portrait build would re-author every plate, every full-screen
+illustration and the sprite staging for a frame that keeps a third of each
+picture, and no visual novel does it. Four things carry landscape:
+
+- The manifest the engine writes already requests landscape when the game
+  is installed to a home screen. A page in a browser tab cannot force
+  rotation, so `build_web.py` injects a "turn your phone sideways" card
+  into the page after every build, shown only on a touch device held
+  upright (the CSS query `(orientation: portrait) and (hover: none)`).
+- **The engine's canvas fills the window's WIDTH and the frame follows it,**
+  so on any screen wider than 16:9 -- every phone held sideways -- the
+  bottom of the frame and the quick menu fall off the screen. The same
+  injected block holds the canvas to the largest 16:9 box centered in the
+  window, on load, resize and rotation. The engine sizes its drawing buffer
+  from the canvas element's own box, so fit-to-width becomes fit-inside.
+- Test on a real phone: `serve_web.py <dir> <port> --lan` binds the Wi-Fi
+  address and prints it. Chrome's device toolbar, rotated then reloaded, is
+  the desktop stand-in (the engine picks its layout once, at load).
+- ⚠ Do NOT trust an in-app browser's phone emulation for this: one drew the
+  frame at double size after Start while the phone and Chrome drew it
+  correctly. The splash image is HTML, sized by CSS, and letterboxes
+  perfectly whatever the engine does after it -- it proves nothing.
+
+### Reading on a phone
+
+- A tap anywhere advances. No tap button, no mouse icon, no console glyph:
+  a mouse icon is wrong on a phone and a console button is wrong everywhere
+  but that console.
+- **The click-to-continue mark** is the cue every platform shows: a small
+  right-pointing triangle blinking at the end of the current line.
+  `tools/draw_ctc.py` draws it centered on a canvas as tall as the line,
+  because the engine aligns an inline image to the top of the line and a
+  short glyph floats there. Wire it as `ctc="ctc_blink",
+  ctc_position="nestled"` on every speaker AND the narrator; the docstring
+  shows both lines.
+- Pinch zoom is not a reading mode: it scales the page like a photo and
+  taps land where the engine thinks they land at the unscaled size. Text
+  size is the reading control.
+
+### Text size
+
+Phones differ in physical size, so the reader picks. Three fixed states
+(the default, a big and a biggest, as ratios of the body size) beat a
+slider: each is a state every screen can be checked at, and a reader picks
+in one tap. The engine's own factor, `_preferences.font_size`, scales every
+piece of text; `snippets/text_size.rpy` has the Preferences block.
+
+⚠ **The factor scales text, not boxes.** Every screen with a size in pixels
+breaks at the larger states unless it reads the factor: names wrap past a
+card's bottom, descriptions run off the screen, fixed-height rows overlap,
+a long button label wraps into the row below it, and a highlight frame
+wraps half of a two-row label. All of it was found at the biggest state on
+one project and none at the default. The snippet has the rules: boxes and
+rows multiply by the factor (capped where the box would leave the screen),
+a grid that must keep its footprint switches to one wide column above
+~1.15x and scrolls, images inside a box give back what the text takes, and
+a name-to-dialogue offset fixed in a style must scale too.
+
+⚠ **NVL pages are nearly full at the default.** Measure with the page model
+before offering larger text: on one project the tallest four-entry page
+stood at 925 of the 1010 px above the quick menu, so a 5% increase already
+ran into the menu. The fix is not fewer entries but a drag-scrolled
+viewport opened at the bottom (in the snippet): the newest line is always
+in view and a taller page is read by dragging up; the wheel keeps rollback.
+The quick menu gets `box_wrap True`, or its last button falls off the right
+edge at large text and leaves History as the only door into the game menu.
+
+**Check every new screen once at the biggest state.** The verification
+sequence does not test text scaling or the phone layout; this is the one
+manual glance that remains, thirty seconds per screen.
+
+### Commands that need hover
+
+A command menu shows a move's stats on hover and uses it on click. A phone
+has no hover, so the stats cannot appear and the first tap uses the move.
+Two taps: the first arms and highlights a move and shows its stats, the
+second on the highlighted move uses it. `snippets/touch_input.rpy` has the
+detection and the pattern, and its header carries the three traps:
+
+- **Detect the device; never make it a setting.** A "tap twice / click
+  once" preference was tried and rejected: desktop would inherit a choice
+  that means nothing there, and a phone reader who cannot see the stats
+  will not guess that a setting exists to fix it. The game accommodates the
+  device from the start.
+- **The engine's `touch` and `mobile` variants are not reliable** -- both
+  were unset on a real phone while every other phone feature worked. Ask
+  the browser the actual question: `(hover: none)` over the emscripten
+  bridge, once, cached.
+- **On touch a tap arrives as hover, then click.** A `hovered` action that
+  arms the move makes the click of the same tap land on an armed button.
+  On touch, hover must do nothing.
+- Give the button style a `selected_background`: the mouse's hover frame
+  is what an armed move must show, or arming is invisible.
+
 ## Privacy
 
 Game content (scripts, names, world detail) must never reach the public
