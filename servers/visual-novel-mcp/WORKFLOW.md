@@ -116,7 +116,7 @@ sent but never ruled on is not in the manifest, and the sweep deletes it.
 A dev build running in a browser has no filesystem, so an in-play tool that
 RECORDS the author's decisions could only offer a download -- and then he has
 to find the file and say where it landed. `serve_web.py` takes `POST
-/__notes` and writes the body beside the build, so the page sends its own
+/dev-notes` and writes the body beside the build, so the page sends its own
 notes and the converter reads them with no argument. The body must parse as
 JSON, the filename may come from `?name=`, and the DIRECTORY never does.
 
@@ -128,6 +128,28 @@ falls back to a browser download when the POST fails -- that is the case of a
 build opened from somewhere other than this server.
 
 ## Ren'Py engine traps
+
+### ⚠ A `__` PREFIX IN A .rpy IS MANGLED -- EVEN INSIDE A STRING
+
+Ren'Py renames anything beginning with a double underscore to
+`_m1_<script file>__<rest>`, so that two files can use `__private` names
+without colliding. It does this to the SOURCE, which means a string literal
+carries the rename too.
+
+A playtest tool posted its results to `"/__notes"`. Every request arrived as
+`/_m1_face_notes__notes` and the server answered 404, correctly. Nothing in
+the game reported a bad URL, because from the game's side the URL it held
+WAS the mangled one.
+
+So: never write a `__` prefix into a .rpy for a URL path, a dict key, a
+filename, a query parameter or anything else that leaves the process and has
+to match on the other side. The fix is one character -- use one underscore,
+or no underscore at all.
+
+Corollary for debugging: a 404 is worth more when it names what it refused.
+`send_error(404)` alone sent this hunt to the endpoint, which was fine;
+printing the requested path identified the cause on the first line.
+
 
 Every one of these was hit in practice and cost real debugging. They are
 grouped by what they break, and none of them are caught by `renpy lint`.

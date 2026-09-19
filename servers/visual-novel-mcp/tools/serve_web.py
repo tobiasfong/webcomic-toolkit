@@ -63,11 +63,20 @@ class Handler(SimpleHTTPRequestHandler):
     ## so the tooling reads it directly. Anything the game wants to write
     ## back can use this -- the name comes from the query string, the
     ## DIRECTORY never does.
+    ##
+    ## ⚠ NO DOUBLE UNDERSCORE IN THIS PATH. It was "/__notes" for an hour
+    ## and every request arrived as "/_m1_<file>__notes": Ren'Py mangles a
+    ## leading double underscore per script file, and it does it to the
+    ## string, so a URL written in a .rpy is not the URL that is sent.
     notes_dir = None
 
     def do_POST(self):
-        if self.path.split("?")[0] != "/__notes" or not self.notes_dir:
-            return self.send_error(404)
+        if self.path.split("?")[0] != "/dev-notes" or not self.notes_dir:
+            # Name what was refused. A bare 404 here sent one debugging
+            # session chasing the endpoint when the caller was asking for
+            # something else entirely.
+            return self.send_error(404, "no POST handler for %s (notes_dir=%r)"
+                                        % (self.path, self.notes_dir))
         name = "face_notes.json"
         if "?" in self.path:
             from urllib.parse import parse_qs
