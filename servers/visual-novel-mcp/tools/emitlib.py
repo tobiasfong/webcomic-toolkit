@@ -103,7 +103,18 @@ def load_expressions(project_dir=None):
 
     `<project>/expressions.json`:
         {"anchors": [{"text": "first ~40 characters of the paragraph",
+                      "prev": "same, of the paragraph before it (optional)",
                       "tag": "pc", "face": "anger"}, ...]}
+
+    ⚠ `prev` EXISTS BECAUSE SOME PARAGRAPHS ARE THEIR OWN OPENING. A bare
+    ellipsis is 30 separate lines in one manuscript, and an anchor on the
+    text alone would change the face on all 30. The author, 2026-09-20, on
+    being offered the obvious workaround: "You can't seriously change the
+    expression on a neighboring line, that defeats the purpose... How can
+    the character look shocked AFTER the dialogue?" He is right -- a face
+    belongs to its line. So a short line is pinned by the line BEFORE it,
+    which is the same device `find()` already uses for verbatim repeats in
+    the docx. A pair anchor wins over a plain one.
 
     One list for every emitter, read here, so a face change is staging in
     the same sense a `show` is: anchored on the prose, emitted before the
@@ -123,12 +134,16 @@ def load_expressions(project_dir=None):
     data = json.load(open(path, encoding="utf-8"))
     table = {}
     for a in data.get("anchors", []):
-        table[a["text"].strip()] = (a["tag"], a["face"])
+        table[((a.get("prev") or "").strip(), a["text"].strip())] = (a["tag"], a["face"])
     return table
 
 
 EXPRESSIONS = load_expressions()
 ANCHOR_LEN = 40
+# the opening of the paragraph `say` emitted last, for pair anchors. Scenes
+# are emitted paragraph by paragraph in order, so this is exactly the
+# context the note was taken against.
+_PREV = [""]
 
 
 def bind(speakers):
@@ -188,7 +203,11 @@ def bind(speakers):
         # keyed on the spoken BODY's opening, quotes stripped and before escaping,
         # which is exactly what the engine holds in _last_say_what: a note taken
         # in play and an entry written by hand land on the same key
-        face = EXPRESSIONS.get(body[:ANCHOR_LEN].strip()) if EXPRESSIONS else None
+        key = body[:ANCHOR_LEN].strip()
+        face = None
+        if EXPRESSIONS:
+            face = EXPRESSIONS.get((_PREV[0], key)) or EXPRESSIONS.get(("", key))
+        _PREV[0] = key
         if face:
             line = indent + "show %s %s" % face + chr(10) + line
         return line
