@@ -36,6 +36,7 @@ from the body whether the docx wrote them straight or curly. Every generated
 scene was byte-identical before and after the consolidation -- that diff is
 the proof, and it is worth re-running any time this file changes.
 """
+import os
 import re
 
 import docx
@@ -97,6 +98,39 @@ def strip_note(t):
     return re.sub(r"\s*\([^)]*\)\s*([.!?\u2026]?)\s*$", r"\1", t).strip()
 
 
+def load_expressions(project_dir=None):
+    """The face changes, keyed by the opening of the paragraph they precede.
+
+    `<project>/expressions.json`:
+        {"anchors": [{"text": "first ~40 characters of the paragraph",
+                      "tag": "pc", "face": "anger"}, ...]}
+
+    One list for every emitter, read here, so a face change is staging in
+    the same sense a `show` is: anchored on the prose, emitted before the
+    line, never typed into a scene file. Keyed on the paragraph's opening
+    rather than its index because the document moves. A face persists until
+    the next entry for that tag; `scene` resets everyone to neutral, so an
+    entry with face "neutral" is only needed mid-scene. Missing file: no
+    faces, which is what every project starts with.
+    """
+    import json, sys
+    if project_dir is None:
+        # emitters live in <project>/tools/, and run as scripts
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+    path = os.path.join(project_dir, "expressions.json")
+    if not os.path.isfile(path):
+        return {}
+    data = json.load(open(path, encoding="utf-8"))
+    table = {}
+    for a in data.get("anchors", []):
+        table[a["text"].strip()] = (a["tag"], a["face"])
+    return table
+
+
+EXPRESSIONS = load_expressions()
+ANCHOR_LEN = 40
+
+
 def bind(speakers):
     """The five helpers, bound to one emitter's SPEAKERS table."""
 
@@ -150,7 +184,11 @@ def bind(speakers):
         body = body.strip()
         if len(body) >= 2 and body[0] in "“\"" and body[-1] in "”\"":
             body = body[1:-1]
-        return indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
+        line = indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
+        face = EXPRESSIONS.get(t[:ANCHOR_LEN].strip()) if EXPRESSIONS else None
+        if face:
+            line = indent + "show %s %s" % face + chr(10) + line
+        return line
 
     def block(paras, prose, forced, a, b, resolved):
         """Paragraphs [a, b) as say lines with blank spacers, honoring the

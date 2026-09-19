@@ -470,6 +470,22 @@ def register_expression(character: str, expression: str, patch_path: str,
 
 
 @mcp.tool()
+def register_body(character: str, name: str, rgba_path: str,
+                  project: str | None = None) -> dict:
+    """Register a FULL-BODY expression or pose variant: a matted RGBA render of
+    the same character, shown with `show <tag> <name>`. Scaled to the neutral
+    body's height and centered on its canvas; refused if wider. Use this where
+    a face patch cannot be seamed into the art (see sprites.py). Then
+    emit_sprites."""
+    slug, entry = _resolve(project)
+    manifest = sprites_module.load(entry["state_dir"])
+    rec = sprites_module.register_body(
+        manifest, entry["game_dir"], character, name, rgba_path)
+    sprites_module.save(entry["state_dir"], manifest)
+    return {"project": slug, "character": character, "body": name, "record": rec}
+
+
+@mcp.tool()
 def preview_expression(character: str, expression: str,
                        project: str | None = None) -> dict:
     """Composite body + patch over magenta and save a preview PNG — the

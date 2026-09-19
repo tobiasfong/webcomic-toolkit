@@ -915,7 +915,8 @@ and describe only what the state does not imply.
 - **The reference carries POSE bias too.** Check what it actually shows before
   blaming the prompt — a "back turnaround" whose head is turned to
   three-quarter will keep producing a visible face.
-- **Expression must be set at generation time.** It is not a safe edit: two
+- **Expression must be set at generation time.** (For a VN SPRITE that means a
+  second full body; see the visual novel rules.) It is not a safe edit: two
   masked passes at 780px of face failed to turn a grin into alarm.
   ⚠ REFINED 2026-08-24: the boundary is narrower than "expression cannot be
   edited". A shouting mouth WAS successfully reduced to a speaking one with a
@@ -1879,6 +1880,69 @@ no-sprite state. The speaker VARIABLE is not always the sprite TAG — look
 it up. What remains is a short hand-checked list, and an off-screen voice
 is sometimes the point; confirm intent in the file's comments before
 "fixing" it.
+
+### Expressions are FULL BODIES, drawn on the turnaround path -- settled 2026-09-19
+
+The registry was built for one body plus face patches. On this art the
+patch route FAILED, in three ways that are worth knowing because each one
+looked like the fix for the last:
+
+| attempt | what came back |
+|---|---|
+| masked Kontext edit of the face, bare model | a Western-comic mouth and nose on a manhwa face: "two different styles meshed together" |
+| the same with the style LoRA on the editor | the right style, and a fuller cheek whose new contour the OLD jaw line cut through: "as if someone bit off part of his face" |
+| the whole head from the edit, with its own matte | the same, plus white fringe in the hair |
+
+A face redrawn in place redraws its own contour, and the seam between the
+new contour and the old one is inside the face, where no feather hides it.
+So an expression is a SECOND BODY under the same tag, a pose change
+allowed, the way a Fate/stay night sprite crosses its arms when it shouts.
+`register_body` in the sprite registry scales it to the neutral's height,
+centers it on the neutral canvas, and emits a body group so
+`show <tag> anger` swaps the figure in place.
+
+**The recipe that produced an approved body**, after nine renders, one
+lever at a time:
+
+1. **The turnaround path, not the plain edit.** `single_view` (the
+   turnaround LoRA stacked on the style LoRA, "create a front three-quarter
+   view of this exact character") with the expression as an extra clause.
+   The plain unmasked edit drew a big head on short legs on every seed and
+   canvas, because it builds a new body from the description with the
+   reference steering only the surface; the turnaround LoRA rotates a body
+   it can see and keeps its proportions.
+2. **A TALL canvas, 832x1408.** The edit inherits the reference's framing,
+   the turnaround panel is cut tight, and a three-quarter stance made to
+   fill the same height loses it from the torso and legs. The author read
+   that off the render and was right; the taller canvas fixed the
+   proportions where seed and padding had not.
+3. **The sprite's OWN render as the reference**, not the bible's concept
+   crop: the sprite came off a later turnaround and its costume differs.
+   The plain edit also obeyed a "gold piping" clause in the bible text that
+   the approved sprite does not carry -- check the description against the
+   installed sprite before trusting it in a prompt.
+4. **Name the state, not the parts.** "Shouting angrily" read; "jaw
+   clenched, lips pressed, corners down" read as a grimace.
+
+⚠ The TURNAROUND SHEET is not a way to get expressions: asked for eight
+figures shouting it returned a different character in the same clothes,
+the style LoRA overwritten by an American cartoon style. And the editor's
+default is the BARE model: any repaint of a sprite must carry the style
+LoRA that drew it, or it comes back in another style.
+
+⚠ Two process failures the same afternoon, so they are rules: when a rerun
+comes back IDENTICAL to the last one, the inputs did not change -- a
+reference override had silently failed to land in the script -- so diff
+the two renders numerically before believing a lever did nothing; and a
+one-line patch written through a heredoc turned a `\n` escape into a real
+newline and broke the file, which pyflakes caught. Assert every replace.
+
+Which lines get a face is data too: `expressions.json` in the project,
+anchors on the opening of a paragraph, read by `emitlib.py` for every
+emitter, so a face change is staging in the same sense a `show` is. The
+list is proposed by scanning the author's own narration for cues
+("laughed", "snarled", "eyes widened") and reviewed by him; his line
+count decides who gets faces at all.
 
 ### Engine traps confirmed here
 

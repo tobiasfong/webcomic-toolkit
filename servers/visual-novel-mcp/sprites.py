@@ -27,10 +27,26 @@ sprites.json:
       "expressions": {
         "worried": {"patch": "images/sprites/.../expr_worried.png",
                     "offset": [412, 188]}   # top-left px of patch on body canvas
+      },
+      "bodies": {                          # FULL-BODY variants, see below
+        "anger": {"body": "images/sprites/.../body_anger.png", "size": [360, 894]}
       }
     }
   }
 }
+
+FULL-BODY VARIANTS (added 2026-09-19). The patch route above assumes the
+face can be repainted in place. On flat cel art it could not: an edited face
+redraws its own contour, the old jaw line then cuts through the new cheek,
+and the author's verdict on three attempts was "as if someone bit off part
+of his face". A second BODY under the same tag is the alternative, the way
+a Fate/stay night sprite crosses its arms when it shouts: a pose change is
+allowed, the slot and the tag are kept, so `show pc anger` swaps the figure
+in place. register_body() resizes the variant to the neutral body's height
+(both are the same character, so the same height on screen) and pads it,
+centered, onto the neutral canvas so every layer is still one size and the
+figure does not shift when the face changes. A variant wider than the
+neutral is refused rather than shifting every existing patch offset.
 """
 
 import os
@@ -151,6 +167,37 @@ def register_expression(manifest: dict, game_dir: str, character: str,
     return entry["expressions"][expression]
 
 
+def register_body(manifest: dict, game_dir: str, character: str, name: str,
+                  rgba_path: str) -> dict:
+    """Register a full-body variant (a matted RGBA render of the same
+    character in another expression or pose) under the character's tag.
+    Scaled to the neutral body's height and centered on its canvas."""
+    from PIL import Image
+    if character not in manifest["characters"]:
+        raise SpriteError(f"Register the character body first: {character}")
+    if not os.path.isfile(rgba_path):
+        raise SpriteError(f"Variant PNG not found: {rgba_path}")
+    entry = manifest["characters"][character]
+    bw, bh = entry["body_size"]
+    im = Image.open(rgba_path).convert("RGBA")
+    im = im.crop(im.getbbox())
+    w = max(1, round(im.width * bh / im.height))
+    im = im.resize((w, bh), Image.LANCZOS)
+    if w > bw:
+        raise SpriteError(
+            f"Variant {name!r} is {w}px wide at the body's height, wider than the "
+            f"{bw}px body canvas. Widening the canvas would move every patch; "
+            f"crop the render tighter or reroll a narrower stance.")
+    canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    canvas.paste(im, ((bw - w) // 2, 0))
+    rel = f"images/sprites/{character}/body_{name}.png"
+    dst = os.path.join(game_dir, rel)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    canvas.save(dst)
+    entry.setdefault("bodies", {})[name] = {"body": rel, "size": [bw, bh]}
+    return entry["bodies"][name]
+
+
 def _pad_patch(game_dir: str, character: str, expression: str,
                patch_rel: str, offset: list, body_size: list) -> str:
     """Pad a face patch onto a transparent body-sized canvas (jitter-proof
@@ -210,8 +257,17 @@ def emit(manifest: dict, game_dir: str) -> dict:
         lines.append(f"layeredimage {tag}:")
         if zoom:
             lines.append(f"    at Transform(zoom={zoom})")
-        lines.append("    always:")
-        lines.append(f'        "{entry["body"]}"')
+        bodies = entry.get("bodies") or {}
+        if bodies:
+            # full-body variants: the neutral body is the default attribute of a
+            # body group, so `show <tag> anger` swaps the figure in place
+            lines.append("    group body:")
+            lines.append(f'        attribute neutral default "{entry["body"]}"')
+            for name, b in sorted(bodies.items()):
+                lines.append(f'        attribute {name} "{b["body"]}"')
+        else:
+            lines.append("    always:")
+            lines.append(f'        "{entry["body"]}"')
         if entry["expressions"]:
             lines.append("    group expression:")
             lines.append("        attribute neutral default Null()")

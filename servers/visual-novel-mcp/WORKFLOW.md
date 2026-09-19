@@ -43,6 +43,26 @@ keep sprites from jittering mid-conversation.
 Character appearance still resolves from the character bible, never from
 memory (repo rule). Event CGs use the normal panel pipeline and its rules.
 
+## Expressions
+
+The registry supports two kinds. Face PATCHES (`register_expression`) are
+small deltas over the neutral body, for art where a face can be repainted
+in place. FULL BODIES (`register_body`, added 2026-09-19) are a second
+matted render under the same tag, scaled to the neutral's height and
+centered on its canvas, emitted as a body group so `show <tag> anger` swaps
+the figure in place. Use full bodies for flat cel art: a repainted face
+redraws its own contour and the seam against the old one sits inside the
+face. The measured recipe for a full body is in the repo's AGENTS.md under
+the visual novel rules: the turnaround path with the expression as an
+extra clause, a tall canvas, the sprite's own render as the reference, the
+state named simply.
+
+Which line gets which face is `expressions.json` in the project, read by
+`emitlib.py` for every emitter and anchored on the opening of a paragraph,
+so a face is staging like a `show` and never typed into a scene file. A
+face persists until the next entry for that tag, and `scene` resets
+everyone to neutral.
+
 ## Ren'Py engine traps
 
 Every one of these was hit in practice and cost real debugging. They are
