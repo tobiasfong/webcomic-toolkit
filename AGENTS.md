@@ -1921,8 +1921,34 @@ lever at a time:
    The plain edit also obeyed a "gold piping" clause in the bible text that
    the approved sprite does not carry -- check the description against the
    installed sprite before trusting it in a prompt.
-4. **Name the state, not the parts.** "Shouting angrily" read; "jaw
+4. **Name the state, and nothing else.** "Shouting angrily" read; "jaw
    clenched, lips pressed, corners down" read as a grimace.
+
+5. **No adverbs.** The author, after three soft smiles: "keep the prompt
+   simple and use smile, no need for adverbs like happily or small or
+   gently." "Smiling happily" gave one character a smile too wide to read
+   as natural and gave two others no smile at all. The limb total and the
+   clearance clause stay -- those are framing guards, not description.
+
+**What varies and what does not, measured over a dozen bodies in one
+afternoon:** ANGER hit on the first draw for every character. SMILES are
+the flaky one and should be budgeted two or three draws. The SEED decides
+BUILD as well as expression -- one reroll came back "thinner and younger",
+another "like a dwarf" -- so show the author the matted figure's
+width-to-height beside the neutral's with every comparison; it catches the
+slim draws, though only his eye catches a bad face.
+
+⚠ A narrow, low-resolution reference is the other suspect when a body comes
+back deformed (a three-legged figure with a fused hand, in one case). The
+references that worked were 832x1216; the one that failed was 420 wide.
+Check the reference's size before spending seeds.
+
+Not every character needs both faces, and that is the author's call, not a
+gap: one stays neutral when angry by design, and one whose neutral art
+already smiles has that art registered under the smile name so a line
+anchored to smile still resolves. `register_body` widens the body canvas
+when a wider stance needs it, but only for a character with no face
+patches -- patches carry pixel offsets that widening would move.
 
 ⚠ The TURNAROUND SHEET is not a way to get expressions: asked for eight
 figures shouting it returned a different character in the same clothes,

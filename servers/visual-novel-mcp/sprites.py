@@ -184,10 +184,26 @@ def register_body(manifest: dict, game_dir: str, character: str, name: str,
     w = max(1, round(im.width * bh / im.height))
     im = im.resize((w, bh), Image.LANCZOS)
     if w > bw:
-        raise SpriteError(
-            f"Variant {name!r} is {w}px wide at the body's height, wider than the "
-            f"{bw}px body canvas. Widening the canvas would move every patch; "
-            f"crop the render tighter or reroll a narrower stance.")
+        # The canvas may only be widened when nothing is positioned against it.
+        # Face PATCHES carry pixel offsets, so widening would move every one of
+        # them; full-body variants carry none. A wider stance (a shout with the
+        # arms out) is the normal case for a character who has only bodies, so
+        # widen symmetrically and re-pad what is already registered.
+        if entry["expressions"]:
+            raise SpriteError(
+                f"Variant {name!r} is {w}px wide at the body's height, wider than the "
+                f"{bw}px body canvas, and {character} has face patches whose offsets "
+                f"widening would move. Crop the render tighter or reroll a narrower stance.")
+        for rel in [entry["body"]] + [b["body"] for b in (entry.get("bodies") or {}).values()]:
+            fp = os.path.join(game_dir, rel)
+            old_im = Image.open(fp).convert("RGBA")
+            wide = Image.new("RGBA", (w, bh), (0, 0, 0, 0))
+            wide.paste(old_im, ((w - old_im.width) // 2, 0))
+            wide.save(fp)
+        for b in (entry.get("bodies") or {}).values():
+            b["size"] = [w, bh]
+        entry["body_size"] = [w, bh]
+        bw = w
     canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
     canvas.paste(im, ((bw - w) // 2, 0))
     rel = f"images/sprites/{character}/body_{name}.png"
