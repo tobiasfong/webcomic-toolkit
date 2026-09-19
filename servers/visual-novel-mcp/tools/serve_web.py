@@ -55,6 +55,45 @@ def find_build(root):
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"          # keep-alive; avoids reset storms
 
+    ## A DEV BUILD IN A BROWSER HAS NO WAY TO HAND A FILE BACK. Added
+    ## 2026-09-20: a playtest overlay that records decisions (which sprite
+    ## face goes on which line) could only offer a browser download, which
+    ## means the author fishes a file out of Downloads and says where it
+    ## landed. The page POSTs it here instead and it lands beside the build,
+    ## so the tooling reads it directly. Anything the game wants to write
+    ## back can use this -- the name comes from the query string, the
+    ## DIRECTORY never does.
+    notes_dir = None
+
+    def do_POST(self):
+        if self.path.split("?")[0] != "/__notes" or not self.notes_dir:
+            return self.send_error(404)
+        name = "face_notes.json"
+        if "?" in self.path:
+            from urllib.parse import parse_qs
+            asked = (parse_qs(self.path.split("?", 1)[1]).get("name") or [""])[0]
+            if re.fullmatch(r"[A-Za-z0-9_.-]{1,60}\.json", asked or ""):
+                name = asked
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self.send_error(400)
+        if not 0 < length <= 8 << 20:
+            return self.send_error(413)
+        body = self.rfile.read(length)
+        try:
+            import json
+            json.loads(body.decode("utf-8"))    # a write is worth one parse
+        except Exception as exc:
+            return self.send_error(400, "not JSON: %s" % exc)
+        dest = os.path.join(self.notes_dir, name)
+        with open(dest, "wb") as f:
+            f.write(body)
+        print("  <- %s (%d bytes)" % (dest, len(body)), flush=True)
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
         rng = self.headers.get("Range")
         if not rng:
@@ -137,6 +176,7 @@ if __name__ == "__main__":
     # first races the server and lands on ERR_CONNECTION_REFUSED, which looks
     # exactly like a failed build -- so the browser is opened from here, after
     # the socket is listening, rather than from whatever script invoked this.
+    Handler.notes_dir = os.path.abspath(args[0])
     httpd = ThreadingHTTPServer(
         (host, port), functools.partial(Handler, directory=root)
     )

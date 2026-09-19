@@ -111,6 +111,22 @@ check the description before blaming the seed.
 **Sweep only after every character's set is confirmed.** A render that was
 sent but never ruled on is not in the manifest, and the sweep deletes it.
 
+### A playtest overlay hands its decisions back over HTTP
+
+A dev build running in a browser has no filesystem, so an in-play tool that
+RECORDS the author's decisions could only offer a download -- and then he has
+to find the file and say where it landed. `serve_web.py` takes `POST
+/__notes` and writes the body beside the build, so the page sends its own
+notes and the converter reads them with no argument. The body must parse as
+JSON, the filename may come from `?name=`, and the DIRECTORY never does.
+
+⚠ Send after every decision, not only on a button. A web build served over
+plain http on a LAN address gets no persistent storage (`serve_web.py` says
+so in its own header), so a closed tab takes the session's decisions with it.
+The button stays, sending synchronously so it can report the status, and
+falls back to a browser download when the POST fails -- that is the case of a
+build opened from somewhere other than this server.
+
 ## Ren'Py engine traps
 
 Every one of these was hit in practice and cost real debugging. They are
