@@ -185,7 +185,10 @@ def bind(speakers):
         if len(body) >= 2 and body[0] in "“\"" and body[-1] in "”\"":
             body = body[1:-1]
         line = indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
-        face = EXPRESSIONS.get(t[:ANCHOR_LEN].strip()) if EXPRESSIONS else None
+        # keyed on the spoken BODY's opening, quotes stripped and before escaping,
+        # which is exactly what the engine holds in _last_say_what: a note taken
+        # in play and an entry written by hand land on the same key
+        face = EXPRESSIONS.get(body[:ANCHOR_LEN].strip()) if EXPRESSIONS else None
         if face:
             line = indent + "show %s %s" % face + chr(10) + line
         return line

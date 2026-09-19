@@ -279,6 +279,12 @@ def emit(manifest: dict, game_dir: str) -> dict:
                 lines.append(f'        attribute {name} "{full_rel}"')
         lines.append("")
 
+    # which faces each tag has, for anything in-game that offers them (a
+    # playtest panel, a debug menu): neutral plus the registered bodies
+    faces = {e["tag"]: ["neutral"] + sorted(e.get("bodies") or {})
+             for e in manifest["characters"].values() if "body" in e and e.get("bodies")}
+    lines.append("define sprite_bodies = %r" % faces)
+    lines.append("")
     out_path = os.path.join(game_dir, GENERATED_RPY)
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
