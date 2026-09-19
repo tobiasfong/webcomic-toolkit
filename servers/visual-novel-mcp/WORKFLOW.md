@@ -63,6 +63,54 @@ so a face is staging like a `show` and never typed into a scene file. A
 face persists until the next entry for that tag, and `scene` resets
 everyone to neutral.
 
+### Making an expression body: what a day of it taught
+
+Measured over ~60 renders on twelve characters, 2026-09-19.
+
+**The prompt carries the WHOLE costume description**, expression clauses
+stripped. The turnaround prompt names no costume of its own, so without it a
+skirt came back as trousers and a robe lost its trim. It also fixes
+expressions that were failing: the same word and seed that gave one character
+no smile gave a good one once her costume was in the prompt.
+
+**The state word is a ladder, and each character sits on a different rung.**
+For a smile: smiling, grinning, laughing, widest last. For anger: angry,
+glaring, shouting. Plain "smiling" and plain "angry" move most faces not at
+all; "grinning" and "shouting" are the reliable middle. A word only reads as
+a change when it moves something the neutral is not already doing, so a
+character whose resting face is stern needs an open mouth and one who already
+half-smiles needs a grin or a laugh. No adverbs: they overshoot.
+
+**For a detail-heavy character, ask for a FRONT view, not three-quarter.**
+Nine three-quarter draws of one character lost his topknot, his shoes or his
+robe in turn; a front view held all three first time. The rotation is what
+gives every fiddly element a reason to be redrawn, so when a figure carries
+glasses, a complicated hairstyle, layers and a prop, buy fewer of them.
+
+**A squeeze fixes width, never length.** Scaling a body horizontally to match
+the neutral's width-to-height is the standard finish and was used on half the
+set. It cannot fix short legs: "stumpy" means reroll.
+
+**Conditioning on an existing CG works when words fail.** One character's face
+did not move for five different words; his own CG already carried the look,
+and conditioning on it (padded first, since it fills its frame) produced the
+body. Several characters have a CG with an expression already in it.
+
+⚠ **Masked repair is a no-op on this path.** Three seeds of a masked foot
+repair measured 7.05 inside the mask against 4.58 outside, and all three
+landed within 0.01 of each other -- the seed changed nothing. Masked face
+edits come back off-style even with the style LoRA loaded. Repair by hand or
+reroll; do not spend seeds on a mask.
+
+**A detail that is in the art but not in the description will be lost.** One
+character's shoulder emblem arrived by accident in his original render, was
+kept because the author liked it, and was never written down -- so every
+expression render dropped or reinvented it. When a render loses a detail,
+check the description before blaming the seed.
+
+**Sweep only after every character's set is confirmed.** A render that was
+sent but never ruled on is not in the manifest, and the sweep deletes it.
+
 ## Ren'Py engine traps
 
 Every one of these was hit in practice and cost real debugging. They are
