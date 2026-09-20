@@ -132,9 +132,17 @@ def load_expressions(project_dir=None):
     if not os.path.isfile(path):
         return {}
     data = json.load(open(path, encoding="utf-8"))
+    ## ⚠ KEYED BY LINE AND TAG, AND EVERY MATCH IS EMITTED. Keyed by line
+    ## alone, two characters changing on the same paragraph collided and one
+    ## silently replaced the other -- the author lost a scowl he had
+    ## recorded, to a second anchor for a different character on the very
+    ## same line, and the only symptom was a face that would not stick.
+    ## More than one of the cast reacting to the same beat is ordinary, so
+    ## the table holds a list.
     table = {}
     for a in data.get("anchors", []):
-        table[((a.get("prev") or "").strip(), a["text"].strip())] = (a["tag"], a["face"])
+        key = ((a.get("prev") or "").strip(), a["text"].strip())
+        table.setdefault(key, {})[a["tag"]] = a["face"]
     return table
 
 
@@ -204,12 +212,14 @@ def bind(speakers):
         # which is exactly what the engine holds in _last_say_what: a note taken
         # in play and an entry written by hand land on the same key
         key = body[:ANCHOR_LEN].strip()
-        face = None
+        faces = {}
         if EXPRESSIONS:
-            face = EXPRESSIONS.get((_PREV[0], key)) or EXPRESSIONS.get(("", key))
+            # a plain anchor first, so a PAIR anchor for the same tag wins
+            faces.update(EXPRESSIONS.get(("", key)) or {})
+            faces.update(EXPRESSIONS.get((_PREV[0], key)) or {})
         _PREV[0] = key
-        if face:
-            line = indent + "show %s %s" % face + chr(10) + line
+        for tag in sorted(faces):
+            line = indent + "show %s %s" % (tag, faces[tag]) + chr(10) + line
         return line
 
     def block(paras, prose, forced, a, b, resolved):
