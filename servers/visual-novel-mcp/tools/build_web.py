@@ -78,37 +78,66 @@ ROTATE_MARK = "<!-- rotate-card -->"
 ROTATE_END = "<!-- /rotate-card -->"
 ROTATE_CARD = ROTATE_MARK + """
 <style>
-#rotateCard{display:none;position:fixed;inset:0;z-index:99999;background:#000;color:#eee;
-  font:20px/1.4 sans-serif;text-align:center;align-items:center;justify-content:center;
-  flex-direction:column;padding:24px}
-#rotateCard .phone{width:34px;height:60px;border:3px solid #eee;border-radius:7px;
-  margin:0 auto 18px;animation:rotateHint 2.4s ease-in-out infinite}
-@keyframes rotateHint{0%,35%{transform:rotate(0)}65%,100%{transform:rotate(-90deg)}}
-@media (orientation: portrait) and (hover: none) and (pointer: coarse){#rotateCard{display:flex}}
 /* The page's own corner menu duplicates the game: its export and import live on the
    save and load screens, the log is a developer's tool, and the engine credit is on
    the About screen. Only the button is hidden; the file input the game's Load-from-local
    button clicks stays in the page. */
 #ContextButton{display:none}
+html,body{margin:0;padding:0;overflow:hidden;background:#000}
 </style>
-<div id="rotateCard"><div class="phone"></div><div>Turn your phone sideways to play.</div></div>
 <script>
 (function(){
-  // Hold the canvas to the largest 16:9 box centered in the window. The
-  // engine sizes its drawing buffer from the canvas element's own box, and
-  // left at 100% x 100% it fills the window's width, so on any screen wider
-  // than 16:9 -- every phone held sideways -- the frame overflows the height
-  // and the quick menu falls off the bottom.
+  // Hold the frame to the largest 16:9 box that fits, centred.
+  //
+  // The engine sizes its drawing buffer from the canvas element's own box,
+  // and left at 100% x 100% it fills the window's WIDTH, so on any screen
+  // wider than 16:9 -- every phone held sideways -- the frame overflows the
+  // height and the quick menu falls off the bottom.
+  //
+  // A PHONE HELD UPRIGHT IS TURNED, NOT ASKED. There used to be a card here
+  // saying "turn your phone sideways to play". The author, 2026-09-20:
+  // "remove the rotate to landscape instruction when the mobile is
+  // portrait. Just go straight to landscape view (even if it's rotated 90
+  // degrees). The user will naturally rotate their phone." So in portrait
+  // the same 16:9 box is laid out to fit the window's SHORT side and turned
+  // a quarter turn. Nothing is asked and nothing is lost -- the game is
+  // already playable, sideways, before the phone moves.
+  var coarse = window.matchMedia
+             ? window.matchMedia("(hover: none) and (pointer: coarse)").matches : false;
   var fit = function(){
     var W = window.innerWidth, H = window.innerHeight;
-    var w = W, h = Math.round(W * 9 / 16);
-    if (h > H) { h = H; w = Math.round(H * 16 / 9); }
+    var turn = coarse && H > W, w, h;
+    if (turn) {
+      // Landscape box that fits SIDEWAYS: its height must clear the
+      // window's width, its width the window's height.
+      w = Math.min(H, Math.round(W * 16 / 9)); h = Math.round(w * 9 / 16);
+    } else {
+      w = W; h = Math.round(W * 9 / 16);
+      if (h > H) { h = H; w = Math.round(H * 16 / 9); }
+    }
     var ids = ["canvas", "overlayDiv"];
     for (var i = 0; i < ids.length; i++) {
       var e = document.getElementById(ids[i]);
       if (!e) continue;
+      e.style.position = "absolute";
       e.style.width = w + "px"; e.style.height = h + "px";
-      e.style.left = Math.round((W - w) / 2) + "px"; e.style.top = Math.round((H - h) / 2) + "px";
+      e.style.left = Math.round((W - w) / 2) + "px";
+      e.style.top = Math.round((H - h) / 2) + "px";
+      // Rotating about the centre keeps the turned box centred too: it
+      // becomes h wide and w tall, and both were chosen to fit.
+      e.style.transformOrigin = "50% 50%";
+      e.style.transform = turn ? "rotate(90deg)" : "";
+      // A TURNED FRAME DOES NOT TAKE TAPS. Measured 2026-09-20: the engine
+      // sizes its drawing buffer from the element's on-screen box, which
+      // after a quarter turn is still portrait (749x1333 on a 375x812
+      // phone), so it draws the game in PORTRAIT space and the browser
+      // rotates the finished pixels. Its input mapping uses that same
+      // portrait box, so a tap arrives a quarter turn away from whatever
+      // the player is looking at -- they would aim at one button and hit
+      // another. Sideways is therefore a PREVIEW: it shows the game is
+      // there and which way to turn, and the phone turning is what makes
+      // it live. One property, and no wrong tap is possible.
+      e.style.pointerEvents = turn ? "none" : "";
     }
   };
   fit();
@@ -159,23 +188,27 @@ def wait_for_build(root, started, settle=10, limit=1500):
 
 
 def add_rotate_card(root):
-    """Ask a phone held upright to turn sideways, and keep the frame inside
-    the window once it has.
+    """Hold the frame to a centred 16:9 box, and turn it on an upright phone.
 
     A 16:9 game on a portrait phone renders at about a third of the screen's
     height and the text is unreadable (the author, 2026-09-18: "it looks a
-    bit too small"). The manifest the engine writes already asks for
-    landscape when the game is installed to the home screen, but a page in
-    a browser tab cannot force rotation, so it asks instead -- the way phone
-    VNs have always done it. The card shows only on a touch device held in
-    portrait, so a desktop browser never sees it.
+    bit too small"). The manifest the engine writes asks for landscape when
+    the game is installed to the home screen, but a page in a browser tab
+    cannot force rotation.
 
-    The script beside it fixes what rotation then exposes: the engine's
-    canvas is 100% x 100% of the window and the frame follows the WIDTH, so
-    on a phone held sideways (wider than 16:9) the bottom of the frame, and
-    the quick menu with it, falls off the screen. The author saw it: "the
-    menu words are cut off." Holding the canvas to a centered 16:9 box makes
-    fit-to-width the same as fit-inside.
+    This used to put up a card reading "turn your phone sideways to play".
+    The author, 2026-09-20: "remove the rotate to landscape instruction when
+    the mobile is portrait. Just go straight to landscape view (even if it's
+    rotated 90 degrees). The user will naturally rotate their phone." So the
+    same 16:9 box is laid out to fit the window's short side and given a
+    quarter turn. The game is playable, sideways, before the phone moves.
+
+    The box also fixes what landscape exposes: the engine's canvas is
+    100% x 100% of the window and the frame follows the WIDTH, so on a phone
+    held sideways (wider than 16:9) the bottom of the frame, and the quick
+    menu with it, falls off the screen. The author saw it: "the menu words
+    are cut off." A centred 16:9 box makes fit-to-width the same as
+    fit-inside.
 
     Injected after every build, because the engine regenerates index.html
     each time; an older block is replaced, so the page carries one copy.
@@ -189,7 +222,7 @@ def add_rotate_card(root):
         html = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK in html:
             a = html.index(ROTATE_MARK)
-            b = html.index(ROTATE_END, a) + len(ROTATE_END) if ROTATE_END in html[a:] else html.index("</div>", html.index('id="rotateCard"', a)) + len("</div>")
+            b = html.index(ROTATE_END, a) + len(ROTATE_END)
             html = html[:a] + ROTATE_CARD + html[b:]
         else:
             html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
@@ -197,7 +230,7 @@ def add_rotate_card(root):
         check = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK not in check or ROTATE_END not in check:
             sys.exit("The phone block did not land in %s" % page)
-        print("  phone block (rotate card, 16:9 fit, corner menu hidden) in %s"
+        print("  phone block (portrait turn, 16:9 fit, corner menu hidden) in %s"
               % os.path.relpath(page, root))
         done += 1
     return done
