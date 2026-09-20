@@ -127,45 +127,46 @@ The button stays, sending synchronously so it can report the status, and
 falls back to a browser download when the POST fails -- that is the case of a
 build opened from somewhere other than this server.
 
-### ⚠ SOME REFERENCES WILL NOT GIVE UP THEIR FACE, and one reference is all you get
+### ⚠ THE EXPRESSION RIDES ON THE REDRAW
 
-Measured 2026-09-20 across five renders on one alternate-costume sprite, and
-worth reading before spending an afternoon the same way.
+Eight renders on one alternate-costume sprite, 2026-09-20, seven of them
+spent on the wrong question. The recipe was never broken; it was being asked
+for the wrong thing.
 
-| route | face | costume |
+**A generation only applies an expression to what it REDRAWS.** Ask for the
+view the reference is already in and there is nothing to redraw, so the
+source comes back essentially unchanged and the expression clause lands on
+nothing. The author, on a front view asked of a front-facing reference: "it
+looks like a copy paste. Why even go through the trouble of using FLUX?"
+Every body that has ever worked here asked for a view the reference was NOT
+in -- the rotation is the opportunity.
+
+A cheap way to catch it before showing anybody: mean absolute pixel
+difference from the reference, both resized small. Everything under ~25 that
+day carried no expression; everything over ~25 did. Near zero is a copy and
+there is nothing to judge.
+
+| attempt | distance | result |
 |---|---|---|
-| its own render + "smiling" | unmoved | correct |
-| its own render + "grinning" | unmoved | correct |
-| a DIFFERENT render of the same character already smiling | **smile lands** | comes with the reference |
-| img2img on its own render, denoise 0.40 | unmoved | held |
-| img2img on its own render, denoise 0.55 | unmoved | held |
+| img2img, denoise 0.40 / 0.55 | 2.6 / 4.1 | copies -- bounded so they *could not* redraw |
+| front view from a front-facing reference | 16.7 / 21.3 | "copy paste" |
+| three-quarter from a Kontext-made concept | 23.0 / 20.9 | no expression |
+| three-quarter from a different render already smiling | 33.8 / 40.2 | smiled, wore that render's costume |
+| **two-step (below)** | | **smiled, costume correct** |
 
-Two things this settles. First, the word ladder is not guaranteed: two rungs
-moved nothing at all here, where on other characters of the same cast they
-worked first or second time. A reference carrying a strongly neutral face can
-simply impose it.
+**And the reference must be one this stack drew.** The concept for that
+costume was made by a Kontext edit rather than by the turnaround path, and
+it capped how far every render would walk from it. So step one renders a
+plain view THROUGH THE TURNAROUND STACK to get an in-distribution reference,
+and step two conditions on that and asks for three-quarter. Both halves are
+recorded elsewhere in this file -- a reference the generator itself drew
+conditions more strongly, and single views rotate reliably -- but they had
+never been chained.
 
-Second, and the reason there is no clever way round it: **a generation
-conditions on ONE image, and that image decides the costume.** Borrowing an
-expression from another render of the same character borrows its clothes as
-well -- the emblem and the robe came across and no amount of describing the
-right costume in the prompt pulled them back. This is the same one-reference
-limit that forces multi-character panels to be composited, showing up on two
-aspects of a single character instead of two characters.
-
-img2img is the honest test of whether a middle ground exists, because the
-source is the starting latent and the costume is held by construction rather
-than by wording. If the face does not move at a denoise the costume survives,
-there is no window, and pushing higher trades the costume for the face by
-another route.
-
-So when this happens, the choice is a face or a costume, not both, and it
-belongs to the author. Do not reach for a masked pass to escape it without
-asking -- it is a change of MEANING rather than degree, which is the class
-that fails on flat cel art, and masked edits on this path have separately
-measured as near no-ops.
-
-## Ren'Py engine traps
+⚠ Do not conclude that a character "cannot" hold an expression. That
+conclusion was reached here and was wrong, and the author was right to
+refuse it: "We literally did several dozen smiling and angry expressions for
+many characters yesterday... Find out how. Solve the problem."
 
 ### ⚠ A `__` PREFIX IN A .rpy IS MANGLED -- EVEN INSIDE A STRING
 
