@@ -127,6 +127,44 @@ The button stays, sending synchronously so it can report the status, and
 falls back to a browser download when the POST fails -- that is the case of a
 build opened from somewhere other than this server.
 
+### ⚠ SOME REFERENCES WILL NOT GIVE UP THEIR FACE, and one reference is all you get
+
+Measured 2026-09-20 across five renders on one alternate-costume sprite, and
+worth reading before spending an afternoon the same way.
+
+| route | face | costume |
+|---|---|---|
+| its own render + "smiling" | unmoved | correct |
+| its own render + "grinning" | unmoved | correct |
+| a DIFFERENT render of the same character already smiling | **smile lands** | comes with the reference |
+| img2img on its own render, denoise 0.40 | unmoved | held |
+| img2img on its own render, denoise 0.55 | unmoved | held |
+
+Two things this settles. First, the word ladder is not guaranteed: two rungs
+moved nothing at all here, where on other characters of the same cast they
+worked first or second time. A reference carrying a strongly neutral face can
+simply impose it.
+
+Second, and the reason there is no clever way round it: **a generation
+conditions on ONE image, and that image decides the costume.** Borrowing an
+expression from another render of the same character borrows its clothes as
+well -- the emblem and the robe came across and no amount of describing the
+right costume in the prompt pulled them back. This is the same one-reference
+limit that forces multi-character panels to be composited, showing up on two
+aspects of a single character instead of two characters.
+
+img2img is the honest test of whether a middle ground exists, because the
+source is the starting latent and the costume is held by construction rather
+than by wording. If the face does not move at a denoise the costume survives,
+there is no window, and pushing higher trades the costume for the face by
+another route.
+
+So when this happens, the choice is a face or a costume, not both, and it
+belongs to the author. Do not reach for a masked pass to escape it without
+asking -- it is a change of MEANING rather than degree, which is the class
+that fails on flat cel art, and masked edits on this path have separately
+measured as near no-ops.
+
 ## Ren'Py engine traps
 
 ### ⚠ A `__` PREFIX IN A .rpy IS MANGLED -- EVEN INSIDE A STRING
