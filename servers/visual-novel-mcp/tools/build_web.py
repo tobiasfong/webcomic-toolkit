@@ -251,7 +251,7 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
       if (e) { e.style.width = (w - 2) + "px"; e.style.height = (h - 2) + "px"; }
     }
     remeasure();
-    requestAnimationFrame(function(){ fit(); remeasure(); report("kicked"); });
+    requestAnimationFrame(function(){ fit(); remeasure(); });
   };
   var until = 0, watching = false;
   var tick = function(){
@@ -264,7 +264,7 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
     until = Date.now() + 2500;
     if (!watching) { watching = true; requestAnimationFrame(tick); }
   };
-  setInterval(function(){ if (!synced()) { fit(); remeasure(); report("heartbeat-mismatch"); } }, 1000);
+  setInterval(function(){ if (!synced()) { fit(); remeasure(); } }, 1000);
   document.addEventListener("fullscreenchange", settle);
   if (screen.orientation && screen.orientation.addEventListener) {
     screen.orientation.addEventListener("change", settle);
@@ -275,31 +275,7 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
   // wrong on a real device can be read as numbers instead of inferred from
   // a screenshot. Posts only to the dev server; anywhere else it 404s and
   // the catch swallows it. DELETE once the phone layout is settled.
-  // TEMPORARY, 2026-09-20: a rolling LOG, not a snapshot. A single snapshot
-  // kept overwriting itself and I kept reading the wrong moment. DELETE
-  // once the phone layout is settled.
-  var log = [], t0 = Date.now();
-  var report = function(why){
-    try {
-      var c = document.getElementById("canvas"), r = c.getBoundingClientRect();
-      var d = window.devicePixelRatio || 1;
-      log.push({t: Date.now() - t0, why: why,
-        inner:[window.innerWidth, window.innerHeight],
-        screen:[screen.width, screen.height], dpr: d, turned: c.style.transform !== "",
-        css:[c.style.width, c.style.height, c.style.left, c.style.top],
-        rect:[Math.round(r.left), Math.round(r.top),
-              Math.round(r.width), Math.round(r.height)],
-        buffer:[c.width, c.height],
-        want:[Math.round(r.width * d), Math.round(r.height * d)]});
-      if (log.length > 40) log.shift();
-      fetch("/dev-notes?name=phone_log.json", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify(log)}).catch(function(){});
-    } catch (e) {}
-  };
-  setTimeout(function(){ report("load"); }, 4000);
-  setTimeout(function(){ report("load"); }, 15000);
-  window.addEventListener("resize", function(){ fit(); if (!syncing) { report("resize"); settle(); } });
+  window.addEventListener("resize", function(){ fit(); if (!syncing) settle(); });
   window.addEventListener("orientationchange", function(){ setTimeout(fit, 300); });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
 })();
