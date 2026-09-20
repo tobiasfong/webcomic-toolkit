@@ -25,15 +25,23 @@ THE STEPS
 ---------
   1  emit       <project>/tools/emit_all.py, if present -- every scene from the docx
   2  diff       script_diff: the docx against the emitted scenes, "in sync"
-  3  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
-  4  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
-  5  slots      slot_audit: no two sprites in one slot, across scene boundaries
-  6  spec       spec_check: the author's numbers against the engine's
-  7  sound      every impact plate has a sound in the three lines before it, and is declared
-  8  story      check_story: no dangling jumps, unresolved images, missing audio
-  9  nvl        no NVL page taller than the screen, measured with the real font
- 10  pyflakes   the server's tools and the project's
- 11  skill      sync_skill --check, when this repository has it
+  3  speaker    no dialogue reached a scene as narration with its label in it
+  4  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
+  5  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
+  6  slots      slot_audit: no two sprites in one slot, across scene boundaries
+  7  spec       spec_check: the author's numbers against the engine's
+  8  combat     every combat spec is reachable and anchored
+  9  static     images, names, registry, defines and docs all resolve
+ 10  overlap    sprites that cover each other, reported not failed
+ 11  sound      every impact plate has a sound in the three lines before it, and is declared
+ 12  story      check_story: no dangling jumps, unresolved images, missing audio
+ 13  nvl        no NVL page taller than the screen, measured with the real font
+ 14  pyflakes   the server's tools and the project's
+ 15  skill      sync_skill --check, when this repository has it
+
+⚠ This list is written by hand and went stale once: three steps were added
+to STEPS without being added here, and the numbering ran 3, 4, 4. If you add
+a step, add it in both places.
 """
 import glob
 import io
@@ -89,6 +97,17 @@ def step_diff(project, docx):
     # right here. script_diff prints the openers it found for the record.
     blocks = re.search(r"rpy\s*:\s*(\d+) blocks", out)
     return "in sync%s" % (" at %s blocks" % blocks.group(1) if blocks else "")
+
+
+def step_speaker(project, docx):
+    # ⚠ THIS SITS NEXT TO step_diff BECAUSE IT ANSWERS WHAT step_diff CANNOT.
+    # script_diff compares what is SAID and reports "in sync" on a scene whose
+    # dialogue has lost its speaker, because the text is genuinely identical.
+    # See speaker_audit.py's header for why sprite_audit is blind to it too.
+    code, out = run([PY, os.path.join(HERE, "speaker_audit.py"), project])
+    if code:
+        raise Fail(out)
+    return "no dialogue emitted as narration"
 
 
 def step_lint(project, docx):
@@ -291,7 +310,8 @@ def step_skill(project, docx):
 
 
 STEPS = [
-    ("emit", step_emit), ("diff", step_diff), ("lint", step_lint),
+    ("emit", step_emit), ("diff", step_diff), ("speaker", step_speaker),
+    ("lint", step_lint),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
     ("combat", step_combat), ("static", step_static), ("overlap", step_overlap),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
