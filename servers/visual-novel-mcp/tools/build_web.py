@@ -102,8 +102,23 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
   // the same 16:9 box is laid out to fit the window's SHORT side and turned
   // a quarter turn. Nothing is asked and nothing is lost -- the game is
   // already playable, sideways, before the phone moves.
-  var coarse = window.matchMedia
-             ? window.matchMedia("(hover: none) and (pointer: coarse)").matches : false;
+  // ⚠ "(hover: none) and (pointer: coarse)" IS NOT A PHONE TEST. It is the
+  // right question everywhere else in this project, but Chrome's "Desktop
+  // site" switch makes a phone answer it FALSE: measured on the author's
+  // Galaxy, hover/pointer came back desktop while screen.width was 360 and
+  // the layout viewport was 720 at 0.57 zoom. The turn never fired and the
+  // page looked untouched.
+  //
+  // The HARDWARE cannot be switched off: a touch digitiser and a physical
+  // screen under ~900 CSS px on its short side is a phone, whatever the
+  // browser has been told to claim. A desktop touchscreen is far wider, so
+  // it stays on the desktop path. This accommodates the device rather than
+  // a setting, which is the standing rule -- the old check just trusted a
+  // browser that was repeating a preference back to us.
+  var touch = (navigator.maxTouchPoints || 0) > 0
+           || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  var small = Math.min(screen.width, screen.height) <= 900;
+  var coarse = touch && small;
   var fit = function(){
     var W = window.innerWidth, H = window.innerHeight;
     var turn = coarse && H > W, w, h;
@@ -140,8 +155,98 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
       e.style.pointerEvents = turn ? "none" : "";
     }
   };
+  // AND THE FIRST TAP MAKES IT REAL. A turned frame is a picture of the
+  // game, not the game: the engine sizes its buffer and maps its input from
+  // the element's on-screen box, which a quarter turn leaves portrait. The
+  // browser can do the rotation properly instead -- fullscreen, then lock
+  // the screen to landscape -- and then the engine sees a genuine landscape
+  // window, renders at full size and takes taps where they land. It needs a
+  // user gesture, so it rides the first touch anywhere on the page. The
+  // listener is on the WINDOW, not the canvas, because a turned canvas
+  // takes no pointer events.
+  //
+  // Android Chrome supports the lock; iOS Safari does not, and there the
+  // turned preview stands and the player turns the phone, which reaches the
+  // same place through the ordinary landscape path. Nothing is asked for
+  // either way.
+  var golandscape = function(){
+    if (!coarse || window.innerWidth > window.innerHeight) return;
+    var o = screen.orientation;
+    if (!o || !o.lock) return;
+    // ⚠ NEVER GO FULLSCREEN UNLESS THE LOCK ACTUALLY TAKES. Fullscreen is
+    // only here because Chrome requires it before it will rotate the
+    // screen; it is a means, not a feature. Requesting it unconditionally
+    // broke the author's device emulator on 2026-09-20: the first tap put
+    // the page fullscreen on his real 2464px monitor while the emulated
+    // viewport stayed phone-sized, so the frame was laid out for a window
+    // nobody could see -- black down one side, the rest running off the
+    // other. Rotating out to portrait and back reproduced it every time.
+    //
+    // So: ask for the lock first. Only if that is refused for want of
+    // fullscreen do we take fullscreen, and if the lock STILL will not
+    // take, we hand fullscreen straight back rather than leave the page in
+    // a state it gained nothing from.
+    var lock = function(){ return o.lock("landscape"); };
+    var drop = function(){
+      try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }
+      catch (e) {}
+    };
+    try {
+      lock().catch(function(){
+        var el = document.documentElement;
+        var rq = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (!rq) return;
+        var p = rq.call(el);
+        if (!p || !p.then) { lock().catch(drop); return; }
+        p.then(function(){ lock().catch(drop); }).catch(function(){});
+      });
+    } catch (e) {}
+  };
+  window.addEventListener("pointerdown", golandscape, {once: true});
+  window.addEventListener("touchend", golandscape, {once: true});
+  // A LAYOUT THAT SURVIVES BEING TURNED BACK. Rotating landscape ->
+  // portrait -> landscape left the frame wrong: the window reports its old
+  // size while the rotation is still settling, and the engine resizes its
+  // own surface after we resize ours. A trailing pass a moment later costs
+  // nothing and lands on the settled numbers.
+  var settle = function(){ setTimeout(fit, 120); setTimeout(fit, 400); };
+  document.addEventListener("fullscreenchange", settle);
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener("change", settle);
+  }
+
   fit();
-  window.addEventListener("resize", fit);
+  // TEMPORARY, 2026-09-20: report the geometry once so a layout that looks
+  // wrong on a real device can be read as numbers instead of inferred from
+  // a screenshot. Posts only to the dev server; anywhere else it 404s and
+  // the catch swallows it. DELETE once the phone layout is settled.
+  var report = function(){
+    try {
+      var c = document.getElementById("canvas"), r = c.getBoundingClientRect();
+      fetch("/dev-notes?name=phone_geom.json", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          inner:[window.innerWidth, window.innerHeight],
+          visual: window.visualViewport
+                ? [Math.round(window.visualViewport.width),
+                   Math.round(window.visualViewport.height),
+                   window.visualViewport.scale] : null,
+          screen:[screen.width, screen.height], dpr: window.devicePixelRatio,
+          coarse: coarse, touch: touch, small: small,
+          maxTouch: navigator.maxTouchPoints,
+          mqCoarse: !!(window.matchMedia
+                    && window.matchMedia("(hover: none) and (pointer: coarse)").matches),
+          turned: c.style.transform !== "",
+          css:[c.style.width, c.style.height, c.style.left, c.style.top],
+          rect:[Math.round(r.left), Math.round(r.top),
+                Math.round(r.width), Math.round(r.height)],
+          buffer:[c.width, c.height], ua: navigator.userAgent})
+      }).catch(function(){});
+    } catch (e) {}
+  };
+  setTimeout(report, 4000);
+  setTimeout(report, 15000);
+  window.addEventListener("resize", function(){ fit(); settle(); });
   window.addEventListener("orientationchange", function(){ setTimeout(fit, 300); });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
 })();
