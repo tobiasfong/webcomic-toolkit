@@ -40,6 +40,7 @@ import argparse
 import glob
 import io
 import os
+import re
 import subprocess
 import sys
 import time
@@ -121,7 +122,7 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
   var coarse = touch && small;
   var fit = function(){
     var W = window.innerWidth, H = window.innerHeight;
-    var turn = coarse && H > W, w, h;
+    var turn = coarse && !framed && H > W, w, h;
     if (turn) {
       // Landscape box that fits SIDEWAYS: its height must clear the
       // window's width, its width the window's height.
@@ -169,47 +170,101 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
   // turned preview stands and the player turns the phone, which reaches the
   // same place through the ordinary landscape path. Nothing is asked for
   // either way.
-  var golandscape = function(){
-    if (!coarse || window.innerWidth > window.innerHeight) return;
-    var o = screen.orientation;
-    if (!o || !o.lock) return;
-    // ⚠ NEVER GO FULLSCREEN UNLESS THE LOCK ACTUALLY TAKES. Fullscreen is
-    // only here because Chrome requires it before it will rotate the
-    // screen; it is a means, not a feature. Requesting it unconditionally
-    // broke the author's device emulator on 2026-09-20: the first tap put
-    // the page fullscreen on his real 2464px monitor while the emulated
-    // viewport stayed phone-sized, so the frame was laid out for a window
-    // nobody could see -- black down one side, the rest running off the
-    // other. Rotating out to portrait and back reproduced it every time.
-    //
-    // So: ask for the lock first. Only if that is refused for want of
-    // fullscreen do we take fullscreen, and if the lock STILL will not
-    // take, we hand fullscreen straight back rather than leave the page in
-    // a state it gained nothing from.
-    var lock = function(){ return o.lock("landscape"); };
-    var drop = function(){
-      try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }
-      catch (e) {}
-    };
-    try {
-      lock().catch(function(){
-        var el = document.documentElement;
-        var rq = el.requestFullscreen || el.webkitRequestFullscreen;
-        if (!rq) return;
-        var p = rq.call(el);
-        if (!p || !p.then) { lock().catch(drop); return; }
-        p.then(function(){ lock().catch(drop); }).catch(function(){});
-      });
-    } catch (e) {}
-  };
-  window.addEventListener("pointerdown", golandscape, {once: true});
-  window.addEventListener("touchend", golandscape, {once: true});
+  // ⚠ A PHONE PLAYS INSIDE AN INNER FRAME, AND THE ROTATION IS APPLIED TO
+  // THE FRAME. The author's requirement, 2026-09-20: "I simply want the
+  // game to fire up in landscape all the time. Even if the user is holding
+  // his phone in portrait. When he sees the landscape version of the game,
+  // he will know to rotate it himself, rather than be told to rotate."
+  //
+  // Rotating the GAME's own canvas cannot do that at full size: the engine
+  // decides how big to draw by measuring the canvas's on-screen shape, and
+  // a quarter turn makes that shape portrait, so it letterboxes a 16:9 game
+  // into a portrait area -- (9/16)^2, a third of the width. Inside an inner
+  // frame the measurement is taken against THAT frame's own window, which a
+  // rotation outside it never touches. The engine sees an ordinary
+  // landscape window, draws full size, and takes taps where they land.
+  //
+  // ⚠ AND NOTHING ROTATES THE SCREEN. An earlier version asked Android to
+  // turn the display itself. That is the opposite of what was asked for --
+  // the player is meant to see the landscape picture and turn the phone --
+  // and it was the cause of the frame being thrown off-centre and cropped.
+  var framed = location.search.indexOf("framed=1") >= 0;
+  if (coarse && !framed) { location.replace("phone.html"); return; }
   // A LAYOUT THAT SURVIVES BEING TURNED BACK. Rotating landscape ->
   // portrait -> landscape left the frame wrong: the window reports its old
   // size while the rotation is still settling, and the engine resizes its
   // own surface after we resize ours. A trailing pass a moment later costs
   // nothing and lands on the settled numbers.
-  var settle = function(){ setTimeout(fit, 120); setTimeout(fit, 400); };
+  // ⚠ RESIZING OUR ELEMENT DOES NOT TELL THE ENGINE ANYTHING. It listens on
+  // WINDOW resize and then measures the canvas. A rotation fires that once,
+  // early, while the viewport is still settling, so it measures a box that
+  // is about to change and keeps that surface. Our own later passes fix the
+  // element and the engine never looks again -- the frame then draws at the
+  // wrong size, offset and cropped, which is what turning out to portrait
+  // and back produced.
+  //
+  // ⚠ AND FIXED DELAYS DO NOT WIN A RACE. Passes at 120/400/900 ms fixed it
+  // "sometimes" (the author, 2026-09-20: "Sometimes it works, sometimes it
+  // goes back"), because how long a rotation takes to settle is not ours to
+  // know. So the page checks the thing that actually matters instead of
+  // guessing when to check: the drawing buffer must equal the on-screen box
+  // times the pixel ratio. While it does not, ask the engine to measure
+  // again. A burst of frames after any resize catches it immediately, and a
+  // one-second heartbeat afterwards means that however the two get out of
+  // step -- an event we never saw, a rotation slower than any timeout -- it
+  // corrects itself within a second and stays corrected.
+  var syncing = false;
+  var synced = function(){
+    var c = document.getElementById("canvas");
+    if (!c) return true;
+    var r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+    if (!r.width || !r.height) return true;
+    return Math.abs(c.width - Math.round(r.width * d)) <= 2
+        && Math.abs(c.height - Math.round(r.height * d)) <= 2;
+  };
+  var remeasure = function(){
+    if (syncing) return;
+    syncing = true;
+    try { window.dispatchEvent(new Event("resize")); } catch (e) {}
+    syncing = false;
+  };
+  // ⚠ AN UNCHANGED SIZE IS NOT A RESIZE. Measured 2026-09-20: after a fast
+  // rotation the canvas buffer AGREES with the on-screen box and the game
+  // still draws at the wrong size, offset and cropped -- so the engine's
+  // own render size is stale while its canvas is correct, and nothing the
+  // page can measure will see that. The author spotted the tell: "it snaps
+  // back for portrait, but not landscape", which is the watchdog firing
+  // only in the one case where the two DO disagree.
+  //
+  // Asking it to measure again is useless when the answer has not changed.
+  // So give it a change it cannot coalesce away: shrink the box by 2px,
+  // let it measure, then restore and let it measure again. The last
+  // measurement is the right one, and 2px for one frame is invisible.
+  var kick = function(){
+    var c = document.getElementById("canvas");
+    if (!c) return;
+    var w = parseInt(c.style.width, 10), h = parseInt(c.style.height, 10);
+    if (!w || !h) return;
+    var ids = ["canvas", "overlayDiv"];
+    for (var i = 0; i < ids.length; i++) {
+      var e = document.getElementById(ids[i]);
+      if (e) { e.style.width = (w - 2) + "px"; e.style.height = (h - 2) + "px"; }
+    }
+    remeasure();
+    requestAnimationFrame(function(){ fit(); remeasure(); report("kicked"); });
+  };
+  var until = 0, watching = false;
+  var tick = function(){
+    fit();
+    if (!synced()) remeasure();
+    if (Date.now() < until) { requestAnimationFrame(tick); }
+    else { watching = false; kick(); }
+  };
+  var settle = function(){
+    until = Date.now() + 2500;
+    if (!watching) { watching = true; requestAnimationFrame(tick); }
+  };
+  setInterval(function(){ if (!synced()) { fit(); remeasure(); report("heartbeat-mismatch"); } }, 1000);
   document.addEventListener("fullscreenchange", settle);
   if (screen.orientation && screen.orientation.addEventListener) {
     screen.orientation.addEventListener("change", settle);
@@ -220,39 +275,76 @@ html,body{margin:0;padding:0;overflow:hidden;background:#000}
   // wrong on a real device can be read as numbers instead of inferred from
   // a screenshot. Posts only to the dev server; anywhere else it 404s and
   // the catch swallows it. DELETE once the phone layout is settled.
-  var report = function(){
+  // TEMPORARY, 2026-09-20: a rolling LOG, not a snapshot. A single snapshot
+  // kept overwriting itself and I kept reading the wrong moment. DELETE
+  // once the phone layout is settled.
+  var log = [], t0 = Date.now();
+  var report = function(why){
     try {
       var c = document.getElementById("canvas"), r = c.getBoundingClientRect();
-      fetch("/dev-notes?name=phone_geom.json", {method:"POST",
+      var d = window.devicePixelRatio || 1;
+      log.push({t: Date.now() - t0, why: why,
+        inner:[window.innerWidth, window.innerHeight],
+        screen:[screen.width, screen.height], dpr: d, turned: c.style.transform !== "",
+        css:[c.style.width, c.style.height, c.style.left, c.style.top],
+        rect:[Math.round(r.left), Math.round(r.top),
+              Math.round(r.width), Math.round(r.height)],
+        buffer:[c.width, c.height],
+        want:[Math.round(r.width * d), Math.round(r.height * d)]});
+      if (log.length > 40) log.shift();
+      fetch("/dev-notes?name=phone_log.json", {method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          inner:[window.innerWidth, window.innerHeight],
-          visual: window.visualViewport
-                ? [Math.round(window.visualViewport.width),
-                   Math.round(window.visualViewport.height),
-                   window.visualViewport.scale] : null,
-          screen:[screen.width, screen.height], dpr: window.devicePixelRatio,
-          coarse: coarse, touch: touch, small: small,
-          maxTouch: navigator.maxTouchPoints,
-          mqCoarse: !!(window.matchMedia
-                    && window.matchMedia("(hover: none) and (pointer: coarse)").matches),
-          turned: c.style.transform !== "",
-          css:[c.style.width, c.style.height, c.style.left, c.style.top],
-          rect:[Math.round(r.left), Math.round(r.top),
-                Math.round(r.width), Math.round(r.height)],
-          buffer:[c.width, c.height], ua: navigator.userAgent})
-      }).catch(function(){});
+        body: JSON.stringify(log)}).catch(function(){});
     } catch (e) {}
   };
-  setTimeout(report, 4000);
-  setTimeout(report, 15000);
-  window.addEventListener("resize", function(){ fit(); settle(); });
+  setTimeout(function(){ report("load"); }, 4000);
+  setTimeout(function(){ report("load"); }, 15000);
+  window.addEventListener("resize", function(){ fit(); if (!syncing) { report("resize"); settle(); } });
   window.addEventListener("orientationchange", function(){ setTimeout(fit, 300); });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
 })();
 </script>
 """ + ROTATE_END
 
+
+PHONE_PAGE = """<!doctype html>
+<html lang="en-us">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>%s</title>
+<style>
+  html, body { margin:0; padding:0; height:100%%; overflow:hidden; background:#000; }
+  #gameFrame { position:absolute; border:0 none; transform-origin:50%% 50%%; background:#000; }
+</style>
+</head>
+<body>
+<!-- The game runs in here. The turn is applied to the FRAME, so the engine
+     inside still measures an ordinary landscape window and draws full size.
+     Nothing asks the phone to rotate: the player sees the landscape picture
+     and turns it themselves. -->
+<iframe id="gameFrame" src="index.html?framed=1" allow="autoplay; fullscreen"></iframe>
+<script>
+(function(){
+  var f = document.getElementById("gameFrame");
+  var fit = function(){
+    var W = window.innerWidth, H = window.innerHeight, turn = H > W, w, h;
+    if (turn) { w = Math.min(H, Math.round(W * 16 / 9)); h = Math.round(w * 9 / 16); }
+    else { w = W; h = Math.round(W * 9 / 16); if (h > H) { h = H; w = Math.round(H * 16 / 9); } }
+    f.style.width = w + "px"; f.style.height = h + "px";
+    f.style.left = Math.round((W - w) / 2) + "px";
+    f.style.top = Math.round((H - h) / 2) + "px";
+    f.style.transform = turn ? "rotate(90deg)" : "";
+  };
+  fit();
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", function(){ setTimeout(fit, 300); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
+})();
+</script>
+</body>
+</html>
+"""
 
 def wait_for_build(root, started, settle=10, limit=1500):
     """Block until the launcher's build has actually landed on disk.
@@ -335,8 +427,14 @@ def add_rotate_card(root):
         check = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK not in check or ROTATE_END not in check:
             sys.exit("The phone block did not land in %s" % page)
-        print("  phone block (portrait turn, 16:9 fit, corner menu hidden) in %s"
-              % os.path.relpath(page, root))
+        title = "Loading"
+        m = re.search(r"<title>(.*?)</title>", check, re.S)
+        if m:
+            title = m.group(1).strip()
+        phone = os.path.join(os.path.dirname(page), "phone.html")
+        io.open(phone, "w", encoding="utf-8", newline="\n").write(PHONE_PAGE % title)
+        print("  phone block (inner frame turned in portrait, 16:9 fit, corner"
+              " menu hidden) in %s" % os.path.relpath(page, root))
         done += 1
     return done
 
