@@ -491,7 +491,15 @@ def read_scenes(scenes_dir):
             if s.startswith("#"):
                 continue
             # Character prefixes may contain digits (numbered mob speakers).
-            m = re.match(r'^(?:[a-z_][a-z0-9_]* )?"(.*)"$', s)
+            # ⚠ AND A SAY LINE MAY CARRY INLINE CHARACTER ARGUMENTS after the
+            # string -- `mc "..." (what_prefix="", what_suffix="")`. That is
+            # ordinary Ren'Py and the emitter uses it to suppress the ASCII
+            # quote pair on a line already wrapped in Japanese 「」. Without
+            # this the line simply stops being recognized as prose: the block
+            # count drops by one and the paragraph is reported MISSING from
+            # the scenes, which is a confusing way to learn that the emitter
+            # and this reader disagree about what a say statement looks like.
+            m = re.match(r'^(?:[a-z_][a-z0-9_]* )?"(.*)"(?:\s*\([^)]*\))?$', s)
             if not m:
                 continue
             t = m.group(1).replace('\\"', '"')

@@ -207,7 +207,22 @@ def bind(speakers):
         body = body.strip()
         if len(body) >= 2 and body[0] in "“\"" and body[-1] in "”\"":
             body = body[1:-1]
-        line = indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
+        # ⚠ A LINE ALREADY IN CJK CORNER BRACKETS MUST NOT GAIN ASCII QUOTES.
+        # Every speaking character carries what_prefix='"' and what_suffix='"'
+        # (characters.rpy), on the reasoning that a name plate alone does not
+        # read as speech. That is right for English and wrong for Japanese,
+        # where 「」 already IS the quotation mark -- the author, seeing a sung
+        # line in play: 'why the " " when we already have speech brackets for
+        # Japanese?' It rendered as " 「...」 ".
+        #
+        # The prefix is applied by the Character at runtime, so the emitter
+        # cannot strip it by changing the text. Ren'Py does accept per-say
+        # character arguments, which is exactly the escape hatch: this suppresses
+        # the pair for this ONE line and leaves every English line alone.
+        quoted = len(body) >= 2 and body[0] in "「『" and body[-1] in "」』"
+        tail = ' (what_prefix="", what_suffix="")' if (who and quoted) else ""
+        line = (indent + ('%s "%s"' % (who, esc(body)) if who else '"%s"' % esc(body))
+                + tail)
         # keyed on the spoken BODY's opening, quotes stripped and before escaping,
         # which is exactly what the engine holds in _last_say_what: a note taken
         # in play and an entry written by hand land on the same key

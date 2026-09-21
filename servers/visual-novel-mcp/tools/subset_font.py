@@ -41,6 +41,7 @@ modified, so a bad subset is undone by pointing the game back at it.
 import io
 import os
 import re
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -87,6 +88,17 @@ def used_codepoints(game):
     return used
 
 
+# ⚠ THIS TOOL PRINTS KANJI, AND A WINDOWS CONSOLE IS cp1252 BY DEFAULT.
+# Without this it raises UnicodeEncodeError while REPORTING the glyph set --
+# after the work is done and before the font is written, so it looks like a
+# subsetting failure and leaves the stale subset in place. verify_all carries
+# the same guard for the same reason.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+
 def main():
     game = game_dir()
     font = (sys.argv[2] if len(sys.argv) > 2
@@ -119,6 +131,23 @@ def main():
     s.subset(f)
     subset.save_font(f, out, opts)
     f.close()
+
+    # ⚠ INSTALL IT, DO NOT JUST REPORT IT. This wrote the subset beside the
+    # MASTER font and left the game's copy alone, so the tool printed a
+    # cheerful size saving while the stale subset stayed installed and the
+    # author's new kanji kept rendering as empty boxes. The failure is silent
+    # in both directions: nothing warns that the copy was skipped, and the
+    # game has no way to know its font is behind the script.
+    #
+    # The game directory is already argument one, so there is nothing to
+    # infer and no reason to leave this to somebody's memory.
+    installed = os.path.join(game, "gui", os.path.basename(out))
+    if os.path.isdir(os.path.dirname(installed)):
+        shutil.copyfile(out, installed)
+        print("installed -> %s" % installed)
+    else:
+        print("⚠ no gui/ under %s -- subset NOT installed, copy it in by hand"
+              % game)
 
     before, after = os.path.getsize(font), os.path.getsize(out)
     print("\n%-28s %7.1f MB" % (os.path.basename(font), before / 1e6))
