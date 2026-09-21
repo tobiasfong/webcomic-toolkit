@@ -26,18 +26,19 @@ THE STEPS
   1  emit       <project>/tools/emit_all.py, if present -- every scene from the docx
   2  diff       script_diff: the docx against the emitted scenes, "in sync"
   3  speaker    no dialogue reached a scene as narration with its label in it
-  4  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
-  5  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
-  6  slots      slot_audit: no two sprites in one slot, across scene boundaries
-  7  spec       spec_check: the author's numbers against the engine's
-  8  combat     every combat spec is reachable and anchored
-  9  static     images, names, registry, defines and docs all resolve
- 10  overlap    sprites that cover each other, reported not failed
- 11  sound      every impact plate has a sound in the three lines before it, and is declared
- 12  story      check_story: no dangling jumps, unresolved images, missing audio
- 13  nvl        no NVL page taller than the screen, measured with the real font
- 14  pyflakes   the server's tools and the project's
- 15  skill      sync_skill --check, when this repository has it
+  4  font       the installed CJK subset covers every CJK character in the scripts
+  5  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
+  6  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
+  7  slots      slot_audit: no two sprites in one slot, across scene boundaries
+  8  spec       spec_check: the author's numbers against the engine's
+  9  combat     every combat spec is reachable and anchored
+ 10  static     images, names, registry, defines and docs all resolve
+ 11  overlap    sprites that cover each other, reported not failed
+ 12  sound      every impact plate has a sound in the three lines before it, and is declared
+ 13  story      check_story: no dangling jumps, unresolved images, missing audio
+ 14  nvl        no NVL page taller than the screen, measured with the real font
+ 15  pyflakes   the server's tools and the project's
+ 16  skill      sync_skill --check, when this repository has it
 
 ⚠ This list is written by hand and went stale once: three steps were added
 to STEPS without being added here, and the numbering ran 3, 4, 4. If you add
@@ -108,6 +109,18 @@ def step_speaker(project, docx):
     if code:
         raise Fail(out)
     return "no dialogue emitted as narration"
+
+
+def step_font(project, docx):
+    # ⚠ THIS IS ABOUT GLYPHS, WHICH IS WHY EVERY OTHER STEP MISSES IT. The
+    # scripts can be in sync, compile, lint clean and still render empty
+    # boxes, because the installed CJK subset is cut to the characters the
+    # script used LAST time it was built. Nothing says it is stale; the
+    # author finds out in play.
+    code, out = run([PY, os.path.join(HERE, "font_audit.py"), project])
+    if code:
+        raise Fail(out)
+    return out.strip().splitlines()[-1] if out.strip() else "no CJK to check"
 
 
 def step_lint(project, docx):
@@ -311,7 +324,7 @@ def step_skill(project, docx):
 
 STEPS = [
     ("emit", step_emit), ("diff", step_diff), ("speaker", step_speaker),
-    ("lint", step_lint),
+    ("font", step_font), ("lint", step_lint),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
     ("combat", step_combat), ("static", step_static), ("overlap", step_overlap),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
