@@ -976,6 +976,36 @@ and describe only what the state does not imply.
 - **State limb totals once.** "Exactly two legs and two boots altogether."
   Enumerating limbs individually reads as a request for more of them; a
   per-limb pose description produced a three-legged figure.
+
+  ⚠ **BUT THAT ONLY HOLDS WHEN THE TOTAL AGREES WITH THE ARCHETYPE. Where it
+  disagrees, NAMING THE LIMB AT ALL is what multiplies it -- delete the
+  clause rather than rewording it.** Measured 2026-09-22 across nine renders
+  of a serpentine creature wanted with one pair of limbs, against a prior
+  where that silhouette is four-legged in essentially all reference art:
+
+  | leg wording | renders | outcome |
+  |---|---|---|
+  | none at all | 3 | legless, two, two -- never four |
+  | any leg clause | 6 | two once, four five times |
+
+  The decisive evidence is a SAME-SEED control, which is the only thing that
+  separates a setting from a draw: one seed rendered with no leg clause gave
+  two legs, and the identical seed with a clause gave four, with the
+  composition holding at 19.3 mean pixel distance -- so the pose survived and
+  only the limbs changed.
+
+  Three rewordings were tried first and all failed: the count ("exactly two
+  legs altogether"), the placement ("set close behind the head"), and the
+  prefix -- "foreleg" was suspected because it presupposes a rear pair, and
+  dropping it changed nothing. None of it matters. A number attached to a
+  noun caps nothing, because counting is what diffusion is worst at, and the
+  noun still summons the part. Same family as the magic circle that appeared
+  when it was negated.
+
+  The model gives an unasked silhouette its own modest set. Asking makes it
+  generous. So: for a HUMAN, where two legs IS the prior, state the total.
+  For a creature whose archetype carries more limbs than the design wants,
+  say nothing about limbs and let the silhouette decide.
 - **Two surfaces at the same depth fuse.** Stage limbs against background, never
   across the character's own torso.
 - Keep light direction identical across figures meant to be composited
