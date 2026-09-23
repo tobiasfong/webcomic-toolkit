@@ -288,6 +288,41 @@ A prop is generated like any other subject — plain flat mid-gray field (bright
 steel keys badly off white), style LoRA on, then matted. It carries no
 identity, so a reroll is cheap and costs no likeness.
 
+### STEAM, SPRAY AND FIRE — render on black, then turn brightness into alpha
+
+Settled 2026-09-24 on a two-creature fight CG. These are the third category:
+not flat marks and not lit solids, but LIGHT with no hard edge at all. So they
+are generated (a drawn wisp looks drawn) and never matted, because a matting
+model is worst exactly where steam lives — soft, semi-transparent edge.
+
+Render the effect alone on pure black, then make brightness the opacity: alpha
+is the pixel's BRIGHTEST CHANNEL, the color is divided by that alpha, and a
+small floor zeroes the faint haze a "black" render always carries. The result
+is an ordinary RGBA layer that needs no blend mode. Max channel, not
+luminance: saturated orange flame has low luminance and would come out far
+more transparent than it looks.
+
+⚠ **`generate()` DEFAULTS `clean_backdrop=True`, AND IT OVERRIDES "BLACK".**
+It silently appends ", solo, plain studio backdrop, standing pose, both hands
+visible, relaxed open hands" to the prompt. That is right for a character
+concept and wrong for everything else. Asked for "a pure flat solid black
+background", steam came back with 1% of its pixels near-black and froth with
+none; with `clean_backdrop=False` and nothing else changed, steam went to 58%.
+Pass False for any render that is not a standing figure — effects, plates,
+multi-figure scenes.
+
+**Ask for many SMALL SEPARATE things, and ask for the gaps positively.**
+"Thick billowing steam", "a roaring wall of flames" and "violent spray" each
+came back as one mass that buried the subject. What worked named many thin
+separate wisps or small separate flames "with wide stretches of black between
+them". Same rule as every negation here: "not dense" names density.
+
+⚠ **Drawing the effect INTO the finished CG did not work.** A masked Kontext
+edit changed nothing inside the box; an unmasked one added a little froth to
+one figure and nothing where it was asked. Deliver the effects as separate
+layers and let the author place, size and fade them in his own editor. For a
+still, placement and opacity are a compositing decision, not a generation one.
+
 ### A CHILDISH face is a RESOLUTION problem, and CROPPING THE OUTPUT is a fix
 
 Seven renders on one sword CG, 2026-08-23.
