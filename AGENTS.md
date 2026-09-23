@@ -325,6 +325,58 @@ a wide braced stance. Do not credit a prompt clause for an improvement without a
 controlled comparison — what actually helped between two of these runs is still
 unidentified.
 
+### TWO CREATURES IN A NEW POSE — compose from scratch, then recolor on it
+
+Settled 2026-09-23 on a CG of two serpentine creatures fighting, after four
+routes failed. The general shape of the problem: a CG needs figures in a
+pose their approved sprites are not in, and more than one of them.
+
+**What failed, and the reason each one did:**
+
+| route | result | why |
+|---|---|---|
+| `edit_image` on a panel built from both sprites, 3 seeds | where identity held, the pose did not move; where the pose moved, the creature was lost | the reference carries the POSE along with the identity. With two subjects there is not enough budget to hold both identities and re-pose both |
+| solo `edit_image` re-pose, one creature each | anatomy destroyed — a tail grew out of a head | Kontext restyles, it does not restructure; coil-to-S is the largest silhouette change a body can undergo |
+| crop the reference to head and neck | framing worked | the author: a cropped head implies a body continuing somewhere, and a CG has nowhere for it to go |
+| canny ControlNet guide | bodies placed, anatomy and facing wrong, edges faded out | a guide says WHERE, never WHAT; loose guides lose their frame edges |
+
+⚠ **Every one of those kept a REFERENCE or a GUIDE, and that is the finding.**
+Four failures down one axis are one test, not four. The fifth route was the
+author's, and it removed the common ingredient.
+
+**What works, in two steps:**
+
+1. **Compose from scratch — no reference, no guide.** Plain `generate()`
+   with both descriptions resolved from the bible and the action stated as
+   one scene line. Nothing pins the bodies, so the pose is free. This got the
+   composition on the first batch of three seeds.
+2. **Recolor by `edit_image` conditioned on that approved render.** The
+   pose-inheritance that sank the first routes — static sprites in, static
+   sprites out — now holds the composition while the instruction changes
+   only the surface. A panel that already contains both figures is also the
+   documented exception to one identity per generation. A recolor is the edit
+   class Kontext does reliably.
+
+⚠ **Step 1 will render whatever the DESCRIPTION says, not what the approved
+sprite looks like.** One creature's bible said "ashen gray" while its
+approved sprite had been darkened to charred black by later passes, and the
+from-scratch render faithfully produced a pale beige animal. Check every
+description against its approved art before a from-scratch pass — a detail
+that exists only in the art is lost on every render made from the words.
+
+⚠ **Strip parts you want exactly one of from the descriptions too.** Both
+bible entries named the TAIL, and naming the tail is what gave two renders
+two tails each. The same rule as limbs (see "state limb totals once").
+
+**Matting a multi-figure CG: never keep only the largest component.** That
+is the right cleanup for a single sprite and it deletes all but one figure
+here. Keep every piece above a size floor, and keep the layer full-frame —
+it has to register against a background, so do not crop it to the figures.
+
+**Upscale a transparent CG with PREMULTIPLIED alpha.** Pixels under the
+transparency still hold a color (here, white), and a plain Lanczos resize
+bleeds it into every edge as a fringe.
+
 ### A REAR VIEW of a creature — generate it as a PHOTO, then restyle shape-locked
 
 Settled 2026-09-07 after roughly forty renders on one spirit beast. Every
