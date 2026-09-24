@@ -139,6 +139,20 @@ def main(docx_path, project, patterns=None):
         print("combat_calls: no (Combat sequence) markers in the document.")
         return 0
 
+    # ⚠ A marker that is the LAST paragraph of the document is a fight the
+    # author has not written yet -- a placeholder at the end of a draft, with
+    # no spec under it and nothing after it. Failing on it would stop the
+    # whole verification sequence for as long as he is still writing, which
+    # is when it is needed most. So it is reported, visibly, and not counted.
+    # The exemption ends by itself: the moment a spec or any prose is written
+    # below the marker, it is no longer last and is enforced as before.
+    last = max((i for i, t in enumerate(paras) if t), default=-1)
+    pending = [i for i in marks if i == last]
+    marks = [i for i in marks if i != last]
+    for i in pending:
+        print("PENDING    docx para %d: the document ends on %r -- a fight not "
+              "written yet, so not checked" % (i, paras[i][:40]))
+
     want, homeless = {}, []
     for i in marks:
         hit = _home(index, paras, prose, i)
