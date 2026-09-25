@@ -466,6 +466,29 @@ from wishful reading), and one sample never separates a setting from a seed —
 the rage render held its serpent on 2 of 2 seeds while every calm variant
 lost it, which is what finally isolated the cause.
 
+### A CREATURE THE MODEL DOES NOT KNOW — one animal word, then traits
+
+Settled 2026-09-26 on a folklore beast, after six attempts. FLUX has no
+concept for most folklore creatures, so whatever it is given, it draws the
+strongest thing it DOES know:
+
+| prompt | came back as |
+|---|---|
+| the textbook composite, five animals' parts listed | a bear — the first animal named won |
+| the creature's name alone | a girl: the name meant nothing, and the concept tool's person-shaped suffix filled the gap |
+| "lion-dog like a" guardian statue | a dog |
+| "hulking monster" | a horned wolf |
+| restyling a reference painting | a copy of the painting, rejected: the creature must be the project's own |
+
+**What worked: plain `generate()` with `clean_backdrop=False`, ONE animal
+word for the body plan ("lion-like"), then the creature's defining TRAITS**
+(scales, fur, mane color, fangs). One animal gives the silhouette something
+to stand on; a list of animals is a vote, and one animal wins it.
+
+⚠ **Never the character-concept tool for a creature.** It appends a
+person-shaped suffix (the same `clean_backdrop` trap as the effects above),
+and with an unfamiliar noun in front of it, a person is what comes back.
+
 ## The multi-character panel workflow
 
 Run this in order for any panel with two or more characters. Every step exists
@@ -729,6 +752,15 @@ and describe only what the state does not imply.
   test is whether the model must invent what lies UNDERNEATH: raising a
   character's arms into open air worked, while spreading her knees beneath a
   skirt did not.
+- **A MASKED Kontext edit KEEPS what is already inside its box.** Measured
+  2026-09-26 on one figure, five passes: repairing feet, the old toes
+  survived under newly drawn shoes, then the shoes came out as modern
+  loafers with faded edges; a band painted over the eyes and restyled came
+  back as a flat censor bar. The mask limits WHERE the model works, not
+  WHAT it starts from, so it builds on the pixels underneath. ERASE the
+  region to plain backdrop first, or do not mask. An UNMASKED pass is the
+  opposite failure: the same eye band became a turban wrapped over the
+  whole head.
 - **`edit_image()` inherits its FRAMING from the reference**, and no wording
   overrides it. Asking for a close-up off a full-length reference returns
   full-length. The fix is to crop the reference to the framing you want,
