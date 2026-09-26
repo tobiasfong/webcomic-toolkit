@@ -761,6 +761,14 @@ and describe only what the state does not imply.
   region to plain backdrop first, or do not mask. An UNMASKED pass is the
   opposite failure: the same eye band became a turban wrapped over the
   whole head.
+- **Recoloring ONE PART of a creature: do it in code, not in Kontext.**
+  Measured 2026-09-26 on a beast whose snake tail shared the body's brown:
+  "make the snake black" three ways gave no change, the WHOLE body black,
+  then the whole body brown again. Kontext cannot hold the boundary between
+  two parts the same color. A region recolor in code is exact: box the part,
+  select its hue, map luminance to the new color so the shading survives,
+  and leave everything else (eyes, fangs) untouched. One small downscaled
+  look to find the box is the only cost.
 - **`edit_image()` inherits its FRAMING from the reference**, and no wording
   overrides it. Asking for a close-up off a full-length reference returns
   full-length. The fix is to crop the reference to the framing you want,
