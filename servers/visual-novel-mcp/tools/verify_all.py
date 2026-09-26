@@ -8,7 +8,7 @@ pyflakes and the server's own modules.
 
 WHY ONE COMMAND
 ---------------
-The sequence is nine steps, and every one of them exists because it caught a
+The sequence is seventeen steps, and every one of them exists because it caught a
 real bug that none of the others could see. Run by hand they get skipped,
 run out of order, or -- the case that produced this file -- filtered wrong:
 a lint check that grepped for `game/x.rpy:42` reported a clean sheet while
@@ -28,17 +28,18 @@ THE STEPS
   3  speaker    no dialogue reached a scene as narration with its label in it
   4  font       the installed CJK subset covers every CJK character in the scripts
   5  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
-  6  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
-  7  slots      slot_audit: no two sprites in one slot, across scene boundaries
-  8  spec       spec_check: the author's numbers against the engine's
-  9  combat     every combat spec is reachable and anchored
- 10  static     images, names, registry, defines and docs all resolve
- 11  overlap    sprites that cover each other, reported not failed
- 12  sound      every impact plate has a sound in the three lines before it, and is declared
- 13  story      check_story: no dangling jumps, unresolved images, missing audio
- 14  nvl        no NVL page taller than the screen, measured with the real font
- 15  pyflakes   the server's tools and the project's
- 16  skill      sync_skill --check, when this repository has it
+  6  screens    screen_smoke: every menu screen opened in a real run, no crash
+  7  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
+  8  slots      slot_audit: no two sprites in one slot, across scene boundaries
+  9  spec       spec_check: the author's numbers against the engine's
+ 10  combat     every combat spec is reachable and anchored
+ 11  static     images, names, registry, defines and docs all resolve
+ 12  overlap    sprites that cover each other, reported not failed
+ 13  sound      every impact plate has a sound in the three lines before it, and is declared
+ 14  story      check_story: no dangling jumps, unresolved images, missing audio
+ 15  nvl        no NVL page taller than the screen, measured with the real font
+ 16  pyflakes   the server's tools and the project's
+ 17  skill      sync_skill --check, when this repository has it
 
 ⚠ This list is written by hand and went stale once: three steps were added
 to STEPS without being added here, and the numbering ran 3, 4, 4. If you add
@@ -136,6 +137,20 @@ def step_lint(project, docx):
     if findings:
         raise Fail("\n".join(findings))
     return "compiles, no findings"
+
+
+def step_screens(project, docx):
+    """Open every menu screen in a real run of the game (screen_smoke.py).
+
+    Lint compiles screens but never resolves the names inside them, so an
+    action naming a function that does not exist passes lint and crashes the
+    game on display. That kept Preferences crashing for six days with every
+    other step green (2026-09-20 to 26)."""
+    code, out = run([PY, os.path.join(HERE, "screen_smoke.py"), project])
+    if code:
+        raise Fail(out)
+    m = re.search(r"screen_smoke: (\d+) screen", out)
+    return "%s menu screens open without a crash" % (m.group(1) if m else "all")
 
 
 def step_sprites(project, docx):
@@ -338,7 +353,7 @@ def step_skill(project, docx):
 
 STEPS = [
     ("emit", step_emit), ("diff", step_diff), ("speaker", step_speaker),
-    ("font", step_font), ("lint", step_lint),
+    ("font", step_font), ("lint", step_lint), ("screens", step_screens),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
     ("combat", step_combat), ("static", step_static), ("overlap", step_overlap),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
