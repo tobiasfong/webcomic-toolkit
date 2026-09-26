@@ -231,8 +231,22 @@ def step_sound(project, docx):
             used.add(m.group(1).strip())
     combat = os.path.join(project, "game", "combat.rpy")
     if os.path.exists(combat):
-        used.update(re.findall(r'"(fx [a-z0-9 ]+)"',
-                               io.open(combat, encoding="utf-8").read()))
+        src = io.open(combat, encoding="utf-8").read()
+        used.update(re.findall(r'"(fx [a-z0-9 ]+)"', src))
+        # ⚠ AND EVERY PLATE A FIGHT THROWS HAS A SOUND. The check above reads
+        # SCENE files only, and a fight's sound comes from the PLATE_SFX
+        # table instead -- so two attacks ran silent for weeks with this step
+        # green (found 2026-09-26: a boss's area breath and a guardian's
+        # palm). A move's `plate="fx ..."` must be a key of that table.
+        table = re.search(r"define PLATE_SFX = \{(.*?)\n\}", src, re.S)
+        if table:
+            keyed = set(re.findall(r'"(fx [a-z0-9 ]+)"\s*:', table.group(1)))
+            thrown = set(re.findall(r'plate="(fx [a-z0-9 ]+)"', src))
+            silent = sorted(thrown - keyed)
+            if silent:
+                raise Fail("fight plates with no sound in PLATE_SFX -- the "
+                           "attack flashes in silence:\n  "
+                           + "\n  ".join(silent))
     declared = set()
     for f in glob.glob(os.path.join(project, "game", "*.rpy")):
         for m in re.finditer(r"^image (fx [a-z0-9 ]+?)\s*[=:]",

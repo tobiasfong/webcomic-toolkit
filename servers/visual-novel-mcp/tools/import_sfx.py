@@ -77,6 +77,13 @@ MAPPING = [
     # reasonably wonder. If it is ever re-sourced from Freesound directly,
     # check it there.
     ("sfx_bite",            "monster-bite",                       "impact"),
+    # --- added 2026-09-26 for a fire-breathing enemy's breath attack. It was
+    # downloaded with the first batch and never slotted. sfx_blast_boom is
+    # the OTHER fire file ("fire-spell-impact"), which kept its generic name.
+    ("sfx_flame",           "elemental-spell-impact-flame",       "impact"),
+    # The water attacks and the water barrier -- the author sourced it from
+    # Pixabay for them, 2026-09-26.
+    ("sfx_water",           "elemental-spell-impact-water",       "impact"),
 ]
 
 # Slots with no good match in the batch keep their synthesized versions.

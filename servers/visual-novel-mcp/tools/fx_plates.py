@@ -940,6 +940,151 @@ THUNDER = (208, 156, 255)
 # readable against black.
 VOID_RIM = AZURE
 
+
+def _bezier(pts, n=240):
+    """Points along a cubic Bezier through four control points (fractions)."""
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = pts
+    out = []
+    for i in range(n):
+        t = i / (n - 1.0)
+        a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3
+        out.append(((a * x0 + b * x1 + c * x2 + d * x3) * W,
+                    (a * y0 + b * y1 + c * y2 + d * y3) * H))
+    return out
+
+
+def whip(hue, fill=236, echoes=3):
+    """A lash: one long S-curve, thick where it leaves the body and tapering
+    to a thread, with a crack of light at the tip and fainter copies behind
+    it for the motion. For a tail used as a whip -- a TAIL STRIKE.
+
+    Added 2026-09-26 for a beast whose tail attacks had borrowed a sword's
+    gray slash; the author: "something like a whip." Drawn, like the claw
+    and the slashes: a lash is a stroke, and a stroke is geometry.
+    """
+    from PIL import ImageChops
+    ctrl = [(0.08, 0.86), (0.30, 0.10), (0.62, 0.98), (0.90, 0.20)]
+    line = _bezier(ctrl)
+    n = len(line)
+    widths = [max(1.5, 26.0 * (1 - i / (n - 1.0)) ** 1.35) for i in range(n)]
+    mask = ribbon(line, widths, fill=fill)
+    # motion echoes: the same lash a moment earlier, fainter and offset back
+    for k in range(1, echoes + 1):
+        dx, dy = -0.028 * k * W, 0.022 * k * H
+        ech = [(x + dx, y + dy) for x, y in line]
+        mask = ImageChops.lighter(mask, ribbon(ech, [w * 0.55 for w in widths],
+                                               fill=int(fill * (0.42 - 0.1 * k))))
+    # NO STAR AT THE TIP. A burst of rays there was the first version's
+    # "crack", and the author cut it on sight (2026-09-26): "Get rid of the
+    # star." The lash and its echoes carry the motion on their own.
+    return light(mask, hue)
+
+
+def whip_crack(hue, fill=236, dim=0.34, seed=61):
+    """The SECOND frame of a lash: the whip has landed, and a star of light
+    bursts where its tip struck. Played straight after whip() through
+    PLATE_THEN in the game, so the pair reads as swing, then impact -- the
+    author's staging, 2026-09-26: "it whips across the screen, then stars
+    appear to signify impact."
+
+    The lash stays in frame, dimmed, so the eye knows where the burst came
+    from; a star alone on black would read as a different attack.
+    """
+    ctrl = [(0.08, 0.86), (0.30, 0.10), (0.62, 0.98), (0.90, 0.20)]
+    line = _bezier(ctrl)
+    n = len(line)
+    widths = [max(1.5, 26.0 * (1 - i / (n - 1.0)) ** 1.35) for i in range(n)]
+    mask = ribbon(line, widths, fill=int(fill * dim))
+    rnd = random.Random(seed)
+    tx, ty = line[-1]
+    d = ImageDraw.Draw(mask)
+    for i in range(14):
+        a = i / 14.0 * math.tau + rnd.uniform(-0.15, 0.15)
+        r = rnd.uniform(0.07, 0.15) * W
+        d.line([(tx, ty), (tx + math.cos(a) * r, ty + math.sin(a) * r)],
+               fill=fill, width=rnd.choice((3, 4, 5)))
+    d.ellipse([tx - 12, ty - 12, tx + 12, ty + 12], fill=fill)
+    return light(mask, hue)
+
+
+def coil(hue, fill=236, loops=3, seed=67):
+    """The lash wound into a tightening spiral: CONSTRICT. The same stroke
+    and taper as whip(), so the two read as one weapon doing two things."""
+    cx, cy = 0.5 * W, 0.47 * H
+    n = 420
+    line, widths = [], []
+    for i in range(n):
+        t = i / (n - 1.0)
+        ang = t * loops * math.tau
+        rad = (0.42 - 0.30 * t) * H
+        line.append((cx + math.cos(ang) * rad * 1.35, cy + math.sin(ang) * rad))
+        widths.append(max(1.5, 24.0 * (1 - t) ** 1.1 + 3))
+    mask = ribbon(line, widths, fill=fill)
+    # pressure lines squeezing inward toward the center
+    rnd = random.Random(seed)
+    d = ImageDraw.Draw(mask)
+    for i in range(14):
+        a = i / 14.0 * math.tau + rnd.uniform(-0.1, 0.1)
+        r0, r1 = 0.50 * H, 0.60 * H
+        d.line([(cx + math.cos(a) * r1 * 1.35, cy + math.sin(a) * r1),
+                (cx + math.cos(a) * r0 * 1.35, cy + math.sin(a) * r0)],
+               fill=int(fill * 0.6), width=4)
+    return light(mask, hue)
+
+
+def coil_crack(hue, fill=236, loops=3, dim=0.34, seed=71):
+    """The SECOND frame of Constrict: the coil has closed, and light rays
+    burst from its center where the squeeze lands. The coil stays in frame,
+    dimmed, for the same reason as whip_crack()'s lash. The author,
+    2026-09-26: the whip coil gets "the light ray effects to appear
+    afterward to signify impact", as the lash does.
+    """
+    cx, cy = 0.5 * W, 0.47 * H
+    n = 420
+    line, widths = [], []
+    for i in range(n):
+        t = i / (n - 1.0)
+        ang = t * loops * math.tau
+        rad = (0.42 - 0.30 * t) * H
+        line.append((cx + math.cos(ang) * rad * 1.35, cy + math.sin(ang) * rad))
+        widths.append(max(1.5, 24.0 * (1 - t) ** 1.1 + 3))
+    mask = ribbon(line, widths, fill=int(fill * dim))
+    rnd = random.Random(seed)
+    d = ImageDraw.Draw(mask)
+    for i in range(16):
+        a = i / 16.0 * math.tau + rnd.uniform(-0.12, 0.12)
+        r = rnd.uniform(0.16, 0.30) * H
+        d.line([(cx, cy), (cx + math.cos(a) * r * 1.35, cy + math.sin(a) * r)],
+               fill=fill, width=rnd.choice((3, 4, 5)))
+    d.ellipse([cx - 16, cy - 16, cx + 16, cy + 16], fill=fill)
+    return light(mask, hue)
+
+
+def shell_dome(hue, fill=210, cell=0.085):
+    """A protective dome of DIAMOND LATTICE, the tortoise's own shell pattern
+    raised over the party: SHELL SHIELD. A pattern and a rim, so drawn, like
+    the magic circle."""
+    cx, cy = 0.5 * W, 0.86 * H
+    rx, ry = 0.44 * W, 0.74 * H
+    dome = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(dome).ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
+    lattice = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(lattice)
+    step = cell * W
+    k = -int(W / step) * 2
+    while k * step < W * 2:
+        x = k * step
+        d.line([(x, 0), (x + H * 0.9, H)], fill=int(fill * 0.7), width=3)
+        d.line([(x, H), (x + H * 0.9, 0)], fill=int(fill * 0.7), width=3)
+        k += 1
+    from PIL import ImageChops
+    lattice = ImageChops.multiply(lattice, dome)
+    rim = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(rim).ellipse([cx - rx, cy - ry, cx + rx, cy + ry],
+                                outline=fill, width=7)
+    return light(ImageChops.lighter(lattice, rim), hue)
+
+
 plates = {
     # An overwhelming qi surge -- converging hard, with a hot rift down one
     # side the way the reference frame splits cool from hot.
@@ -1086,9 +1231,25 @@ plates = {
     # technique, and it should sit with the rest of a caster's kit rather
     # than with the ambient frost.
     "icicle_rain": icicle_rain(AZURE),
+    # --- 2026-09-26: tail attacks and the tortoise's shield ---
+    "whip_lash": whip(BEAST),
+    # ...and the frame after it: the crack where the tip lands.
+    "whip_crack": whip_crack(BEAST),
+    "whip_coil": coil(BEAST),
+    # ...and its impact frame: rays from the center as the coil closes.
+    "coil_crack": coil_crack(BEAST),
+    # "shell_dome" was drawn here first and SUPERSEDED the same day by the
+    # author's reference -- a translucent glowing dome, which is light and
+    # volume, so it is generated (gen_move_fx.py). shell_dome() stays as a
+    # record of the drawn attempt; it is no longer written.
 }
 
+# ONLY=a,b writes just those plates. Added 2026-09-26 so a new plate can be
+# drawn without rewriting every existing one in the same run.
+_only = set(filter(None, os.environ.get("ONLY", "").split(",")))
 for name, img in plates.items():
+    if _only and name not in _only:
+        continue
     p = os.path.join(OUT, name + ".png")
     img.save(p)
     print(f"{name:14} {os.path.getsize(p) / 1024:7.0f} KB  {p}")
