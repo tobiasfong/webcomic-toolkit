@@ -744,7 +744,13 @@ speaker-to-sprite map, which sprite gaps are deliberate — is
 `vn/<project>/HANDOVER.md`. THIS section is the procedure, and it is here
 because this file is the one every session loads regardless of model.
 
-### The verification sequence — all of it, in order, on every change
+### The verification sequence — all of it, in order, after a major change
+
+Not after every change (the author, 2026-09-26). Emitting new content from
+the script, changing a line, updating expressions, inserting new CGs, a
+layout number or a staging line: rebuild and let him play it. Run it
+after a major rebuild -- engine or emitter code changes, or before a
+build meant to ship. When it does run, run all of it.
 
 Each step caught a real bug in one week. None substitutes for another.
 

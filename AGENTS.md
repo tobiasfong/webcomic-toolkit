@@ -1756,14 +1756,24 @@ Its private supplement, which needs names, is `vn/<project>/HANDOVER.md`.
 
 Four things a session must carry without looking anything up:
 
-1. **Run the whole verification sequence as ONE command** on every change,
-   never the steps by hand:
+1. **Run the whole verification sequence as ONE command** after a MAJOR
+   change -- never the steps by hand:
 
    ```bash
    servers/visual-novel-mcp/.venv/Scripts/python.exe servers/visual-novel-mcp/tools/verify_all.py vn/<project> "<master.docx>"
    ```
 
    A green run is the only green worth reporting.
+
+   ⚠ NOT after every small change -- the author's rule (2026-09-26): "we
+   shouldn't be doing this verification check every time we rebuild the
+   game or update something. We run it after a major rebuild or
+   something." It takes about 80 s and opens the game five times. His
+   list of what does NOT need it: emitting new content from his script,
+   changing a line, updating expressions, inserting new CGs -- and by the
+   same measure a layout number, a sound slot or a staging line. Rebuild
+   and let him play it. Run it after a major rebuild: engine or emitter
+   code changes, or before a build meant to ship.
 2. **Every scene file is GENERATED from the author's document.** Never
    hand-edit one; the next re-emit wipes it. Staging lives in the emitter.
 3. **Distrust any checker that shares a definition with what it checks.**
