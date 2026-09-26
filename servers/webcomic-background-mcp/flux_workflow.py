@@ -380,6 +380,37 @@ def build_graph(
     return g
 
 
+def _fit_location(path: str, width: int, height: int) -> str:
+    """The location image at exactly width x height; returns a path to upload.
+
+    ⚠ img2img takes its size from the INIT IMAGE, not from width/height. The
+    location's canonical image went straight into VAEEncode, so a request for
+    1024x768 came back at the canonical plate's own size, while
+    ModelSamplingFlux was told 1024x768 -- the two disagreed silently (found
+    2026-09-26). So the image is fitted here: scaled to COVER the requested
+    frame and center-cropped, never stretched, into a temp file the caller
+    deletes after upload. The same size returns the original path, so a
+    call that passes the canonical size changes nothing.
+    """
+    img = cv2.imread(path, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ComfyUIError(f"could not read location image: {path}")
+    h, w = img.shape[:2]
+    if (w, h) == (width, height):
+        return path
+    k = max(width / w, height / h)
+    sw, sh = max(width, round(w * k)), max(height, round(h * k))
+    interp = cv2.INTER_AREA if k < 1 else cv2.INTER_LANCZOS4
+    img = cv2.resize(img, (sw, sh), interpolation=interp)
+    x0, y0 = (sw - width) // 2, (sh - height) // 2
+    img = img[y0:y0 + height, x0:x0 + width]
+    import tempfile
+    out = os.path.join(tempfile.gettempdir(),
+                       f"location_fit_{uuid.uuid4().hex[:8]}.png")
+    cv2.imwrite(out, img)
+    return out
+
+
 def generate(
     prompt: str,
     out_dir: str,
@@ -424,7 +455,14 @@ def generate(
         controlnet_end_percent = d_end
 
     sketch_name = _upload_image(sketch_path) if sketch_path else None
-    init_name = _upload_image(location_ref_path) if location_ref_path else None
+    init_name = None
+    if location_ref_path:
+        fitted = _fit_location(location_ref_path, width, height)
+        try:
+            init_name = _upload_image(fitted)
+        finally:
+            if fitted != location_ref_path:
+                os.remove(fitted)
 
     graph = build_graph(
         prompt=prompt, negative=negative, width=width, height=height,

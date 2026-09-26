@@ -9,6 +9,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [2.1.1] — 2026-09-26
+
+### Fixed
+- **`location` mode now honors `width`/`height`.** img2img takes its size from
+  the init image, and the location's canonical plate went straight into the
+  encoder, so a request for 1024x768 came back at the plate's own size (while
+  the sampler was told 1024x768 — the two silently disagreed). The plate is
+  now scaled to cover the requested frame and center-cropped, never
+  stretched. With no size given, a location render keeps the plate's own
+  size, as before; without a location the default stays 768x512.
+
 ## [2.1.0] — 2026-08-10
 
 **Default weights moved from `Q3_K_S` to `Q6_K`. The Q3 files were deleted, so
@@ -245,7 +256,7 @@ was geometry, and every geometry problem this server has ever solved was
 solved the same way: build it in 3D, render it headless, let SD paint.
 Lessons baked in: flat cutout props collapse edge-on (keep the camera ≥ ~25°
 off their plane — enforced by yaw jitter + a documented camera floor);
-per-mesh gray separation is what keeps neighbouring props Canny-separable; and
+per-mesh gray separation is what keeps neighboring props Canny-separable; and
 a straight T-bar reads as a handlebar where a curved drop-bar hook kept being
 painted as a second saddle.
 

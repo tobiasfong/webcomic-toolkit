@@ -53,8 +53,8 @@ def generate_background(
     sketch_path: str | None = None,
     match_canvas_to: str | None = None,
     model: str = DEFAULT_MODEL,
-    width: int = 768,
-    height: int = 512,
+    width: int | None = None,
+    height: int | None = None,
     seed: int | None = None,
     controlnet_strength: float = 1.0,
     extra_negative: str | None = None,
@@ -107,7 +107,10 @@ def generate_background(
             tools/make_sketch.py) to force a 40K structure instead of a generic one.
         model: Kept for forward compatibility; "flux_manwha" is the only
             pipeline. SD1.5 was removed in v2.0.0.
-        width / height: Output size in px.
+        width / height: Output size in px. Default 768x512; with `location`,
+            the default is the location image's own size, and a size given
+            explicitly is honored -- the location is scaled to cover it and
+            center-cropped, never stretched.
         seed: Fixed seed for reproducibility; omit for a random one.
         controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
         extra_negative: Extra terms appended to the default negative prompt.
@@ -163,6 +166,14 @@ def generate_background(
                     f"Registered: {known}. "
                     f"Generate it as a new place, then register the keeper.")
         location_ref_path = loc["canonical_path"]
+        if width is None or height is None:
+            from PIL import Image
+            with Image.open(location_ref_path) as im:
+                lw, lh = im.size
+            width = width or lw
+            height = height or lh
+    width = width or 768
+    height = height or 512
 
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
