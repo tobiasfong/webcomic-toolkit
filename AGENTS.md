@@ -1363,6 +1363,16 @@ Laptop (6.4 GB VRAM), distilled-1.1, 8 steps. No OOM, no special flags. Driver:
   Start-Process -FilePath "C:/AI/ComfyUI_windows_portable/python_embeded/python.exe" -ArgumentList "-s","ComfyUI/main.py","--windows-standalone-build" -WorkingDirectory "C:/AI/ComfyUI_windows_portable" -WindowStyle Hidden
   ```
 
+  ⚠ **IF IT DIES ON THE FIRST JOB, ADD `--disable-pinned-memory`.** Measured
+  2026-10-09 after two weeks of uptime with sleep and resume: ComfyUI started
+  fine, then died twice the moment a job loaded the text encoder -- "Windows
+  fatal exception: access violation" in `model_patcher._load_list`, right
+  after "Enabled pinned memory 13048". The client only sees a refused
+  connection. Nothing had changed (same ComfyUI, same packages), and the same
+  command with `--disable-pinned-memory` rendered first time. Capture the
+  output with `-RedirectStandardOutput`/`-RedirectStandardError` when it
+  misbehaves -- without that, the crash leaves no trace at all.
+
   The .bat's only command is `.\python_embeded\python.exe -s ComfyUI\main.py
   --windows-standalone-build` -- RELATIVE paths. Launched from anywhere but its
   own folder it finds no interpreter, prints its own "did ComfyUI not start?"
