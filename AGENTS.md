@@ -966,6 +966,17 @@ and describe only what the state does not imply.
   Describing a character as tall encodes it twice and the second copy costs
   you the frame.
 
+  ⚠ **"Well-muscled" undresses a figure.** Settled 2026-10-09 on a
+  swordsman in a two-layer robe. The prompt named both layers -- "a long
+  open outer robe ... over a crossed inner robe" -- and two renders came
+  back bare-chested under the open robe, reading as a bandit rather than a
+  noble heir. The build clause is the likeliest reason, by the same
+  description-beats-clause rule as "tall": the model shows muscle by showing
+  skin, and an inner robe is only a clause. With every build word deleted
+  and the robe closed, it came back fully dressed first time. Leave build
+  out of any clothed character's description unless the build IS the
+  design; keep it for a character whose bulk is the point.
+
 - **⚠ NEVER answer "the model will not turn this character" with "draw it
   yourself."** This server is for everyone, not just artists — anyone who can
   draw a back view on demand does not need a character generator. That answer is
