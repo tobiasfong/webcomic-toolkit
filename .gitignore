@@ -17,3 +17,6 @@ _private_backups/
 # visual novel game trees and story state — scripts carry character and world
 # names, which must never reach the public repo
 vn/
+
+# Per-machine Claude Code permissions (absolute paths)
+.claude/settings.local.json
