@@ -8,7 +8,7 @@ pyflakes and the server's own modules.
 
 WHY ONE COMMAND
 ---------------
-The sequence is eighteen steps, and every one of them exists because it caught a
+The sequence is nineteen steps, and every one of them exists because it caught a
 real bug that none of the others could see. Run by hand they get skipped,
 run out of order, or -- the case that produced this file -- filtered wrong:
 a lint check that grepped for `game/x.rpy:42` reported a clean sheet while
@@ -30,17 +30,18 @@ THE STEPS
   5  lint       Ren'Py lint; FAILS if errors.txt comes back, or on any finding
   6  screens    screen_smoke: every menu screen opened in a real run, no crash
   7  fight      fight_smoke: the first fight started in a real run, past its checkpoint save
-  8  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
-  9  slots      slot_audit: no two sprites in one slot, across scene boundaries
- 10  spec       spec_check: the author's numbers against the engine's
- 11  combat     every combat spec is reachable and anchored
- 12  static     images, names, registry, defines and docs all resolve
- 13  overlap    sprites that cover each other, reported not failed
- 14  sound      every impact plate has a sound in the three lines before it, and is declared
- 15  story      check_story: no dangling jumps, unresolved images, missing audio
- 16  nvl        no NVL page taller than the screen, measured with the real font
- 17  pyflakes   the server's tools and the project's
- 18  skill      sync_skill --check, when this repository has it
+  8  saves      save_compat: nothing a save holds was renamed, removed or left without a fallback
+  9  sprites    sprite_audit: no speaker without a sprite, beyond the documented gaps
+ 10  slots      slot_audit: no two sprites in one slot, across scene boundaries
+ 11  spec       spec_check: the author's numbers against the engine's
+ 12  combat     every combat spec is reachable and anchored
+ 13  static     images, names, registry, defines and docs all resolve
+ 14  overlap    sprites that cover each other, reported not failed
+ 15  sound      every impact plate has a sound in the three lines before it, and is declared
+ 16  story      check_story: no dangling jumps, unresolved images, missing audio
+ 17  nvl        no NVL page taller than the screen, measured with the real font
+ 18  pyflakes   the server's tools and the project's
+ 19  skill      sync_skill --check, when this repository has it
 
 ⚠ This list is written by hand and went stale once: three steps were added
 to STEPS without being added here, and the numbering ran 3, 4, 4. If you add
@@ -165,6 +166,19 @@ def step_fight(project, docx):
     if code:
         raise Fail(out)
     return out.strip().replace("fight_smoke: ", "")
+
+
+def step_saves(project, docx):
+    """Old saves stay loadable (save_compat.py), then record today's state.
+
+    A cleanup reused an old saved variable's name for a function, and every
+    save made before it crashed the next fight (2026-10-11) -- with every
+    other step green, because none of them loads a save. Recording only
+    after a PASS keeps the manifest to states that were verified."""
+    code, out = run([PY, os.path.join(HERE, "save_compat.py"), project, "--record"])
+    if code:
+        raise Fail(out)
+    return out.strip().replace("save_compat: ", "")
 
 
 def step_sprites(project, docx):
@@ -367,7 +381,7 @@ def step_skill(project, docx):
 
 STEPS = [
     ("emit", step_emit), ("diff", step_diff), ("speaker", step_speaker),
-    ("font", step_font), ("lint", step_lint), ("screens", step_screens), ("fight", step_fight),
+    ("font", step_font), ("lint", step_lint), ("screens", step_screens), ("fight", step_fight), ("saves", step_saves),
     ("sprites", step_sprites), ("slots", step_slots), ("spec", step_spec),
     ("combat", step_combat), ("static", step_static), ("overlap", step_overlap),
     ("sound", step_sound), ("story", step_story), ("nvl", step_nvl),
