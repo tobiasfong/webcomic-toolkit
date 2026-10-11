@@ -24,6 +24,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -33,16 +34,26 @@ mimetypes.add_type("application/octet-stream", ".data")
 
 
 def find_build(root):
-    """Newest *-web directory under any *-dists folder inside `root`."""
-    candidates = []
+    """The *-web-live directory build_web.py publishes to, under any *-dists
+    folder inside `root`; failing that, the newest *-web directory. The live
+    folder is preferred because it is STABLE across rebuilds -- the launcher's
+    own folder vanishes for a minute every build (see build_web.publish_live).
+    """
+    candidates, live = [], []
     for entry in os.listdir(root):
         dist = os.path.join(root, entry)
         if not (os.path.isdir(dist) and entry.endswith("-dists")):
             continue
         for sub in os.listdir(dist):
             web = os.path.join(dist, sub)
-            if sub.endswith("-web") and os.path.isfile(os.path.join(web, "index.html")):
+            if not os.path.isfile(os.path.join(web, "index.html")):
+                continue
+            if sub.endswith("-web-live"):
+                live.append((os.path.getmtime(web), web))
+            elif sub.endswith("-web"):
                 candidates.append((os.path.getmtime(web), web))
+    if live:
+        return max(live)[1]
     if not candidates:
         sys.exit(
             "No web build found under %s\n"
@@ -104,6 +115,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # A publish renames the served folder twice (build_web.publish_live);
+        # a file asked for in that gap would 404 and the engine treats that
+        # as fatal. Wait it out: a few checks over half a second.
+        path = self.translate_path(self.path)
+        for _ in range(5):
+            if os.path.exists(path):
+                break
+            time.sleep(0.1)
         rng = self.headers.get("Range")
         if not rng:
             return super().do_GET()

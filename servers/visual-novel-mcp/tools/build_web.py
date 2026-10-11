@@ -38,6 +38,7 @@ injector or the server by hand straight after the launcher.
 """
 import argparse
 import glob
+import shutil
 import io
 import os
 import re
@@ -360,6 +361,42 @@ def wait_for_build(root, started, settle=10, limit=1500):
              " an error it printed above." % (root, limit))
 
 
+def publish_live(page):
+    """Move the finished build into a STABLE folder the server serves.
+
+    The launcher deletes `<name>-web/` and rewrites it over about a minute,
+    and a web build does not pack its images: the page downloads each sprite
+    from the server the first time a scene shows it. A rebuild while the
+    author was playing therefore pulled a sprite out from under his run --
+    "Download error: File not found" at the next new figure (2026-10-11).
+
+    So the launcher's folder is RENAMED to `<name>-web-live/` once it has
+    settled: live -> live.old, new -> live, old removed. Two renames, a few
+    milliseconds, and serve_web.py waits out a missing file for that long.
+    The launcher recreates its own folder from scratch on the next build
+    while the live one keeps serving. Returns the live page.
+    """
+    src = os.path.dirname(page)
+    live = src + "-live"
+    old = live + ".old"
+    if os.path.isdir(old):
+        shutil.rmtree(old)
+    for attempt in range(20):
+        try:
+            if os.path.isdir(live):
+                os.rename(live, old)
+            os.rename(src, live)
+            break
+        except OSError:
+            # the server may hold a file open inside `live` for a moment
+            time.sleep(0.25)
+    else:
+        sys.exit("Could not publish the build: %s is busy." % live)
+    if os.path.isdir(old):
+        shutil.rmtree(old, ignore_errors=True)
+    return os.path.join(live, "index.html")
+
+
 def add_rotate_card(root):
     """Hold the frame to a centred 16:9 box, and turn it on an upright phone.
 
@@ -391,7 +428,7 @@ def add_rotate_card(root):
     pages carrying it.
     """
     done = 0
-    for page in glob.glob(os.path.join(root, "*-dists", "*-web", "index.html")):
+    for page in glob.glob(os.path.join(root, "*-dists", "*-web*", "index.html")):
         html = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK in html:
             a = html.index(ROTATE_MARK)
@@ -460,10 +497,11 @@ def main():
     # The launcher writes `<name>-<version>-dists/` beside the project, not
     # inside it, so the server is pointed at the parent.
     root = os.path.dirname(project)
-    wait_for_build(root, started)
-    print("\nBuilt. Distribution is under %s" % root)
+    page = wait_for_build(root, started)
     if not add_rotate_card(root):
         sys.exit("No page found under %s to carry the phone block." % root)
+    live = publish_live(page)
+    print("\nBuilt. Published to %s" % os.path.dirname(live))
 
     if a.serve is None:
         print("Serve it with:")
