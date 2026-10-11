@@ -91,14 +91,22 @@ def engine(project):
     # Moves the roster refers to by NAME rather than spelling out: the lists
     # (ASSASSIN_MOVES = [...]) and the single constants (GRASP = dict(...)),
     # because `moves=[CLAW, BITE]` is as common here as an inline literal.
+    # Single constants FIRST, because a list may name one (`EVADE,` inside
+    # ASSASSIN_MOVES) and that name must already resolve when the list is
+    # read -- a move the list only mentions by name would otherwise vanish
+    # from every enemy that carries the list.
     shared = {}
-    for m in re.finditer(r"^    ([A-Z_]+_MOVES) = \[", src, re.M):
-        shared[m.group(1)] = _moves_from(
-            src[m.start():src.index("\n    ]\n", m.start())])
     for m in re.finditer(r"^    ([A-Z][A-Z_]*) = (dict\([^)]*\))", src, re.M):
         got = _moves_from(m.group(2))
         if got:
             shared[m.group(1)] = got
+    for m in re.finditer(r"^    ([A-Z_]+_MOVES) = \[", src, re.M):
+        text = src[m.start():src.index("\n    ]\n", m.start())]
+        got = _moves_from(text)
+        for ident in re.findall(r"\b([A-Z][A-Z_]{2,})\b", text):
+            if ident in shared and ident != m.group(1):
+                got.update(shared[ident])
+        shared[m.group(1)] = got
 
     # ⚠ ONE NAME, SEVERAL STATLINES. Enemies SCALE: the same assassins are
     # 10 HP early and 20 HP at the Act 1 boss, and a move keeps its name while
