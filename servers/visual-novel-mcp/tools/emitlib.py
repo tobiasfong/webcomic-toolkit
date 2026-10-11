@@ -98,6 +98,67 @@ def strip_note(t):
     return re.sub(r"\s*\([^)]*\)\s*([.!?\u2026]?)\s*$", r"\1", t).strip()
 
 
+def row(tag, i, n, behind=None):
+    """The `show` line that seats one figure in slot i of an n-slot row.
+
+    Two emitters each defined this locally, identically; `behind` names a
+    figure to be drawn beneath it.
+    """
+    return ("    show %s at row(%d, %d)" % (tag, i, n)
+            + (" behind %s" % behind if behind else ""))
+
+
+def load_project(project_dir=None):
+    """Paths and the parsed script for ONE emitter, in one call.
+
+        P = emitlib.load_project()
+        paras, prose = P.paras, P.prose      # P.out is the scenes folder
+
+    WHY: 32 emitters each opened with the same twenty lines -- an absolute
+    sys.path insert, three absolute path constants, the load_patterns
+    assignment, the docx read and the prose mask -- so moving the repo, or
+    teaching one of them a new step, meant editing all 32 and hoping none
+    drifted. The absolute paths were also the one thing tying every emitter
+    to a single machine.
+
+    `project_dir` is vn/<project>; by default it is derived from the CALLING
+    emitter's __file__, since emitters live in <project>/tools/. The docx is
+    `<project>/project.json` key "docx" (absolute, or relative to the repo
+    root) when present, else the one *.docx in servers/visual-novel-mcp/.
+
+    ⚠ This also ASSIGNS the speaker/spec/annotation patterns into
+    script_diff, exactly as the emitters did by hand: `say()` strips
+    annotations through script_diff.ANNOTATION, so it must run before any
+    line is emitted. Call it once, at the top of main().
+    """
+    import glob, inspect, json, types
+    if project_dir is None:
+        caller = inspect.stack()[1].frame.f_globals.get("__file__")
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(caller)))
+    root = os.path.dirname(os.path.dirname(project_dir))
+    docx_path = None
+    cfg = os.path.join(project_dir, "project.json")
+    if os.path.isfile(cfg):
+        with open(cfg, encoding="utf-8") as f:
+            docx_path = json.load(f).get("docx")
+        if docx_path:
+            docx_path = os.path.join(root, docx_path)   # absolute stays absolute
+    if not docx_path:
+        found = [p for p in glob.glob(os.path.join(root, "servers", "visual-novel-mcp", "*.docx"))
+                 if not os.path.basename(p).startswith("~$")]
+        if len(found) != 1:
+            raise SystemExit("load_project: expected exactly one script .docx in "
+                             "servers/visual-novel-mcp/, found %d" % len(found))
+        docx_path = found[0]
+    patterns = os.path.join(project_dir, "game", "patterns.json")
+    (script_diff.SPEAKER, script_diff.SPEC_START, script_diff.SPEC_LINE,
+     script_diff.ANNOTATION) = script_diff.load_patterns(patterns)
+    paras = [vnrich.rich(p) for p in docx.Document(docx_path).paragraphs]
+    return types.SimpleNamespace(
+        docx=docx_path, out=os.path.join(project_dir, "game", "scenes"),
+        patterns=patterns, paras=paras, prose=script_diff.prose_mask(paras))
+
+
 def load_expressions(project_dir=None):
     """The face changes, keyed by the opening of the paragraph they precede.
 
