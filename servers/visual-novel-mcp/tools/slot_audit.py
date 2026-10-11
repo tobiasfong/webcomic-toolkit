@@ -52,6 +52,26 @@ def audit(project):
     stage = {}                      # tag -> (slot, where it was placed)
     problems = []
     read = 0
+    def flush(pending):
+        """Compare the figures placed in this batch against the stage as it
+        stands now. ⚠ A BATCH OF SHOWS IS ONE MOMENT: the emitters re-place a
+        whole row before one `with move`, and the engine shows all of it at
+        once, so a figure passing through an occupied slot on the way is never
+        visible there. Judged line by line, that reported a collision that no
+        player can see (c02l, 2026-10-11)."""
+        for tag, here in pending.items():
+            slot = stage[tag][0]
+            for other, (oslot, owhere) in stage.items():
+                if other != tag and oslot == slot and other not in pending:
+                    problems.append(
+                        ("COLLISION", here, "%s over %s at %s" % (tag, other, slot),
+                         "%s placed at %s" % (other, owhere)))
+            for other in pending:
+                if other < tag and stage[other][0] == slot:
+                    problems.append(
+                        ("COLLISION", here, "%s and %s both placed at %s" % (tag, other, slot),
+                         "in the same batch"))
+
     for path in order:
         # ⚠ scene_order RETURNS FULL PATHS. Joining them onto scenes_dir again
         # produced a doubled path that existed nowhere, every file was skipped,
@@ -64,21 +84,31 @@ def audit(project):
         name = os.path.basename(path)
         with open(path, encoding="utf-8") as f:
             lines = f.read().splitlines()
+        pending = {}
         for i, ln in enumerate(lines, 1):
+            if not ln.strip():
+                continue
             if SCENE.match(ln):
+                flush(pending); pending = {}
                 stage.clear()
                 continue
             m = HIDE.match(ln)
             if m:
                 stage.pop(m.group(1), None)
+                pending.pop(m.group(1), None)
                 continue
             m = SHOW.match(ln)
             if not m:
+                flush(pending); pending = {}
                 continue
             tag = m.group(1).split()[0]
             if tag in NOT_CAST:
                 continue
             slot = (m.group(2) or "").strip()
+            ## `at P behind X` is still slot P: the z-order clause is not part
+            ## of the position, and leaving it in made `row(3, 5) behind a`
+            ## and `row(3, 5)` two different slots that never collided.
+            slot = re.sub(r"\s+behind\s+[a-z_0-9]+$", "", slot)
             here = "%s:%d" % (name, i)
             if not slot:
                 # A bare `show` keeps the tag's current position if it already
@@ -86,12 +116,9 @@ def audit(project):
                 if tag not in stage:
                     problems.append(("UNPLACED ", here, tag, ""))
                 continue
-            for other, (oslot, owhere) in stage.items():
-                if other != tag and oslot == slot:
-                    problems.append(
-                        ("COLLISION", here, "%s over %s at %s" % (tag, other, slot),
-                         "%s placed at %s" % (other, owhere)))
             stage[tag] = (slot, here)
+            pending[tag] = here
+        flush(pending)
     return order, problems, read
 
 

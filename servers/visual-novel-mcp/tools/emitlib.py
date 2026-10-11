@@ -131,7 +131,8 @@ def load_expressions(project_dir=None):
     path = os.path.join(project_dir, "expressions.json")
     if not os.path.isfile(path):
         return {}
-    data = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
     ## ⚠ KEYED BY LINE AND TAG, AND EVERY MATCH IS EMITTED. Keyed by line
     ## alone, two characters changing on the same paragraph collided and one
     ## silently replaced the other -- the author lost a scowl he had

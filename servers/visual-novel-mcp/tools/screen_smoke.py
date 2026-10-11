@@ -108,7 +108,14 @@ def run(project):
                 os.remove(tb)
             out = _run_test(project, "smoke_" + s)
             if out is None:
-                results.append((s, "hung", "no result in 120 s"))
+                ## ⚠ ONE RETRY. A launch that never reports inside the limit has
+                ## happened once in three otherwise green runs on one day
+                ## (2026-10-11), with the same screen passing on its own
+                ## seconds later -- a slow start, not a broken screen. Two
+                ## silences in a row are a real hang.
+                out = _run_test(project, "smoke_" + s)
+            if out is None:
+                results.append((s, "hung", "no result in 120 s, twice"))
                 continue
             err = ""
             if os.path.exists(tb):
