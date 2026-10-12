@@ -1,0 +1,9 @@
+{
+  "title": "Story map demo",
+  "meters": {"ayla_affection": "Ayla", "mira_affection": "Mira"},
+  "meter_max": 50,
+  "acts": [["ch1_", "Chapter 1"], ["ch2_", "Chapter 2"]],
+  "fight_prefix": "battle_",
+  "hp_variable": "player_max_hp",
+  "combat": "story_map_combat.py"
+}

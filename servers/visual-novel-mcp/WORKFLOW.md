@@ -453,6 +453,7 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `decay_overlay.py` | Draw an ADDITIVE decay layer for a background plate: mold, rust, stains, |
 | `draw_ctc.py` | Draw the click-to-continue mark: a right-pointing triangle centered on a line-tall canvas |
 | `emitlib.py` | The helpers every scene emitter needs, defined ONCE |
+| `fight_smoke.py` | Start the game's first fight in a real run, past its checkpoint save |
 | `fx_plates.py` | Draw the fight-scene impact plates: convergence bursts, slash beams, and |
 | `import_sfx.py` | Import downloaded sound effects into the game, matched to the beats |
 | `install_renpy.py` | Download and install the Ren'Py SDK, so the harness does the setup |
@@ -465,6 +466,7 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `paginate_nvl.py` | Place NVL page breaks by measured height -- Fate-style pagination, at emit time |
 | `promo_video.py` | Render a promo video from a title screen: the cover, its ambience, a track |
 | `renpy_sdk.py` | Locate the Ren'Py SDK that install_renpy.py put on this machine |
+| `save_compat.py` | Old saves stay loadable: no saved name reused, no class gone, no attribute without a fallback |
 | `script_diff.py` | Diff an author's docx master against the converted Ren'Py scenes |
 | `serve_web.py` | Serve a Ren'Py web build locally, and keep serving until Ctrl-C |
 | `sfx_plates.py` | Synthesize the battle sound effects, the way fx_plates.py draws the visuals |
@@ -473,6 +475,7 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `sprite_audit.py` | Report speakers who talk with no sprite on screen |
 | `sprite_overlap.py` | Report sprites that stand on top of each other, and say who is buried |
 | `static_audit.py` | Cheap static checks over a project that nothing else in the sequence runs |
+| `story_map.py` | Draw a living story map: affection ranges, every choice and what it does, fights, a gear calculator |
 | `subset_font.py` | Subset a CJK font down to the glyphs a game actually displays |
 | `sync_cards.py` | Generate a choice screen's option data from the author's docx |
 | `verify_all.py` | The whole verification sequence, in one command, stopping at the first failure |
@@ -490,6 +493,31 @@ PNGs.
 inline notes from prose, and that vocabulary IS story content — so it lives in
 a `patterns.json` beside the game tree, not here. Without one the tool falls
 back to generic defaults and will report spec blocks as unconverted story.
+
+### The story map: a page drawn from the scripts
+
+`story_map.py <project>` writes `story_map.html` beside the game: a chart of
+every affection meter's lowest-to-highest range after each choice, a timeline
+of every `menu:` choice and what each option does (meter changes, flags,
+fights, where it leads), and -- if the project supplies one -- a combat
+section: every fight in story order, with the player's max HP at that point,
+extra tables, and a calculator where the player's skills and gear are picked
+from dropdowns and the finished numbers appear. Redraw it on every change; it
+is a view of the game, never a document to edit.
+
+Parts 1 and 2 need no setup: labels and choices come from the scripts, and
+meters are found from `default *_affection`. An optional `story_map.json`
+names the meters, groups labels into acts, and points at the combat data.
+Combat data is a function the project writes, `combat_data(project_dir)`,
+returning plain lists -- and it should compute them WITH THE GAME'S OWN
+COMBAT CODE, so the page and the game cannot disagree. The tool's docstring
+has the full format; `examples/story_map_demo/` is a small made-up game with
+its config, its combat data and the page they produce.
+
+What it cannot see, it says on the page: choices built from custom screens
+(`call screen`) are not `menu:` choices, so changes inside their branches
+are counted for every player. Ranges assume each choice is independent of the
+last.
 
 ## Verifying
 

@@ -105,3 +105,16 @@ python tools/build_web.py <project-dir> --serve --open
 ⚠ The version is pinned deliberately. The engine traps in WORKFLOW.md were
 measured against 8.5.3 and `renpy lint` catches none of them, so `--version`
 moves ground that this repository has notes about.
+
+## A map of your story
+
+```
+python tools/story_map.py <project-dir>
+```
+
+draws `story_map.html` from your scripts: each affection meter's range after
+every choice, every `menu:` choice and what it does, and -- if you supply the
+numbers -- your fights and a calculator for the player's gear and skills. It
+works on any Ren'Py project with no setup; `examples/story_map_demo/` shows the
+optional config and combat data, and the page they make. See WORKFLOW.md,
+"The story map".
