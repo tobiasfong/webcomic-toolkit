@@ -8,9 +8,141 @@ Each server carries its own short `AGENTS.md` pointing at its manual.
 Read this before generating or editing any character art. These rules exist
 because each one was broken in practice and cost real time.
 
+## FLUX 3 Klein — the rendering model since 2026-10-17
+
+Adopted after a side-by-side against FLUX.1 on the cases FLUX.1 had failed.
+The author's verdict: "better in all aspects". Character art is being
+regenerated on it from scratch, and FLUX.1 is retired once the background
+server has switched too. Code: `servers/character-panel-mcp/klein_workflow.py`;
+every rendering tool in that server defaults to it.
+
+### Setup
+
+- **A separate ComfyUI**, v0.41, at `C:/AI/ComfyUI_flux3`, port **8189**,
+  started on first use by `klein_workflow.ensure_running()`. The main ComfyUI
+  (v0.25.1, port 8188) is deliberately NOT upgraded: it runs LTX, the music
+  model and the matting model through add-ons never tested on v0.41, and
+  upgrading it would risk all three to gain nothing Klein needs. Matting still
+  runs there, so both are up during character work.
+- **Files**, from BFL's own `flux-3-image-klein-comfy` repo:
+  `flux3_image_klein_sd_int8_convrot` (the `_sd_` files are the step-distilled
+  model), `qwen3vl_4b_int8_convrot`, `flux2-vae`. **INT8, not FP8**: an Ampere
+  card has INT8 tensor cores and no native FP8; NVFP4 needs Blackwell. The repo
+  is gated, and **each BFL repo needs its own license click** — accepting the
+  main Klein repo does not cover the ComfyUI one.
+- **The 9B prompt upsampler in that repo is left OFF on purpose.** It rewrites
+  the prompt before generation, and every prompting rule in this file assumes
+  the prompt the model sees is the one that was written.
+- **Speed**, measured on the 6 GB card: 18 s text-to-image, 38–78 s with
+  references, 86 s for a 2560x1024 four-view sheet. FLUX.1 took ~225 s to
+  generate and ~8 min for a Kontext edit.
+- **License**: FLUX Kommunity License v1.0 — commercial OUTPUT generation for a
+  user under US$5M gross annualized revenue, outputs not owned by the licensor.
+  Staying qualified needs content filtering OR human review of outputs (the
+  author reviews every render) and AI disclosure where the law requires it.
+  Outputs must not be used to train models for commercial use, so a style LoRA
+  would train on approved art, never on Klein renders.
+
+### What it changes, measured
+
+| | FLUX.1 | Klein |
+|---|---|---|
+| two characters in one render | attribute bleed; solo renders plus a hand composite | **held on 3 of 3 seeds**, both re-posed, no bleed |
+| placing an effect | not steerable — a seal landed to one side twice | **98%** of the effect's glow inside its layout box |
+| turnaround sheet | profiles collapse toward front; strangers appear | four true views in one render, each in its own box, **0.0%** of figure pixels outside the boxes |
+| overhead floor | a hard-edged spotlight pool (center/edge 2.31, 1.64) | **1.06**, with no fix applied |
+| a hand resting on a cheek | 0 of 8 renders | worked, **1 of 1** — one sample, not yet a rate |
+| a full CG | figure, matte, plate and composite by hand | **one render**, room and light included |
+
+That last row changes the workflow more than any other: the solo-figure,
+matte, plate and composite procedure below is now the EXCEPTION, for scenes
+where something genuinely cannot be generated together.
+
+### What it does not fix, and the traps it adds
+
+1. **FLUX.1 LoRAs cannot load.** 0 of the manhwa LoRA's 494 layers exist in
+   Klein — same brand, different internal design (28 single blocks to FLUX.1's
+   38, fused attention). Its native style was accepted instead.
+2. **When the asked-for pose matches the reference's pose, Klein COPIES the
+   reference** — flaws included: a figure's bad hands came straight through
+   from her reference. Identity survives a pose change; it is a same-pose
+   request that turns into a copy.
+3. **A layout box sets SIZE as well as place.** A hand asked to fill a 220x166
+   box came back 220x166 and swollen. Size boxes to the thing.
+4. **A box does not decide which side of a hand the thumb grows on.** Handedness
+   is still not steerable, same as FLUX.1.
+5. **Even a boxed edit redraws the whole frame** — 18.5 of mean change outside
+   the box. `edit_region()` makes it local by pasting back only the region:
+   **0.000** outside. Feather the paste onto the version being edited, never
+   onto an original that still holds the old content, or the old fingertips
+   show through the new ones as ghosts.
+6. **Erasing to a flat color before redrawing cuts both ways.** On a pale floor
+   it produced a clean new hand. On a dark textured floor the flat patch was
+   read as the new hand's SILHOUETTE and filled as a paper cutout.
+7. **Hands are still the weak point, and rerolling beats patching.** Six
+   region repairs produced one clean hand; three fresh seeds of the full
+   render produced one with both hands right. Reroll first.
+8. **Color words are taken literally.** "Cheeks flushed deep red with fever"
+   came back looking like heavy makeup. The author's own sentence — "sick with
+   a fever, sleeping, perspiring and breathing heavily" — gave a believable
+   fever. Describe the state, not the paint.
+9. **The learned matte leaves a pale fringe** — opaque slivers of backdrop
+   between hair strands and along the outline. Un-premultiplying against the
+   backdrop made it WORSE (it trusts the matte's alpha, and the alpha is what
+   is wrong). `klein_workflow.clean_matte()` flood-fills the backdrop from the
+   frame edge, which stops dead at Klein's black outline: the outermost 2 px
+   fell from a brightness of 51 to 19, the ink itself.
+
+### Expressions on Klein — the base body with only the face changed
+
+Settled the same day, after four attempts. `generate_expression` in the
+character server does all of this.
+
+- **The body must not move between expressions**, or the sprite visibly jumps
+  when its face swaps mid-conversation. So every expression is the BASE body
+  with only its face replaced, and the alpha kept: measured 0 pixels changed
+  outside the face.
+- **Redrawing the face in place came back cartoonish** — at ~80 px wide in a
+  full-body render the model draws simplified features, the same resolution
+  failure as the childish face. Redrawing it at 4x fixed the look, but the new
+  mouth came back level on a tilted head.
+- **What won, on the author's idea: render the expression as a whole new
+  picture, then take only its face.** Drawn in context, the face follows the
+  head's tilt by itself. Two ways to make that picture, and NEITHER won both
+  expressions, so the tool makes one of each and the author picks:
+  - **from scratch** — the character's reference, the base's exact prompt and
+    seed, plus the expression. The body came back almost identical (mean change
+    0.5–0.9 of 255) — far closer than an edit, because the seed and prompt are
+    the same — but a small expression can fail to take: the smile came back
+    neutral. The picked anger came from here.
+  - **copied** — the base picture itself as the reference, asked to repeat it
+    with the new expression. The expression always showed; the body moved more
+    (a mean of about 3). The picked smile came from here.
+- **Ask for SMALL expressions.** "Cheeks raised" and "mouth dropped open" came
+  back "way too cartoonish"; a closed-mouth smile with the corners lifted only
+  slightly did not.
+- **The game wires expressions by name** (`smile`, `anger`, `laugh`). Make
+  exactly the ones it already has; a new name means rewiring every sprite.
+- Keep expression words OUT of a base body's pose ("a calm neutral
+  expression"), or the from-scratch candidate is asked for two at once.
+
+### FLUX.1 rules in this file that do NOT hold on Klein
+
+- "Every mechanism binds one reference to one generation" — FLUX.1 only.
+- The multi-character workflow's solo-figure step — on Klein, try both
+  characters' references in one render first.
+- "Profiles come from sheets; back views from single views" — one boxed
+  Klein sheet gives both.
+- Tiling an overhead floor to kill the spotlight — not needed.
+
+Everything else stands until it is re-tested on Klein: the negation rules,
+naming the state rather than the parts, "tall fills the canvas", the token
+economy. Re-test before deleting any of it.
+
 ## Model quantization — settled 2026-08-10
 
 **Everything runs Q6_K. Both FLUX models are on disk and both are configured.**
+(FLUX.1 only. Klein runs INT8 on its own ComfyUI — see the section above.)
 
 | | model | why |
 |---|---|---|
@@ -183,6 +315,10 @@ renders under `output/` are disposable.
   from **one** source image. This is what the locked panels used.
 - `workflow.generate()` (SD1.5) — has `ref_path`/`identity_mode`, but SD1.5 has
   the anatomy ceiling.
+
+⚠ **On FLUX 3 Klein this is no longer true** — its multi-reference held two
+identities through a pose change with no bleed on 3 of 3 seeds. What follows
+is FLUX.1's behavior.
 
 Every mechanism binds **one reference to one generation**. There is no way to
 lock two different characters' identities in a single image. Attempting it gives
@@ -1841,5 +1977,24 @@ Four things a session must carry without looking anything up:
   wait forever when that marker never prints, giving no error and no output —
   one sat idle for twenty minutes before anyone noticed. Prefer launching
   directly and letting ComfyUI's own serial queue order the work.
+- **Machine lessons from setting up Klein, 2026-10-17.** Each cost a retry:
+  - **`pkill` does not exist in this Git Bash**, and with its error sent to
+    nowhere every "kill" silently did nothing — two downloads then wrote into
+    one file and corrupted it. Stop a process with PowerShell's `Stop-Process`,
+    then list processes again to confirm it is gone.
+  - **Verify a download by its exact byte count and `7z t`**, never by "big
+    enough": the corrupted archive was LARGER than the release.
+  - **Hugging Face downloads go through `hf_xet`**, a separate downloader with
+    its own TLS stack, so the fix for the inspecting proxy (`truststore`'s
+    `inject_into_ssl()`, which makes Python trust what Windows trusts) never
+    reaches it and it stalls at 0 bytes. Set `HF_HUB_DISABLE_XET=1`.
+  - **`/tmp` is a different folder to bash and to Python here.** Pass files
+    between them through a real path.
+  - **A shell `while read` loop drops a final line with no newline after it**
+    — one file survived a cleanup that way. End lists with a newline.
+  - **Backslashes inside a shell heredoc can arrive halved.** A `\\n` written
+    into Python code that way landed in the file as a real line break and broke
+    an f-string. Write any script containing backslashes as a file through the
+    editor, not as a heredoc.
 - Use the repo venv: `servers/character-panel-mcp/.venv/Scripts/python.exe`.
 - ~15 min per ControlNet generation, ~8 min per Kontext edit on a 6 GB card.

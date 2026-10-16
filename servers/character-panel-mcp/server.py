@@ -69,6 +69,61 @@ from mcp.server.fastmcp import FastMCP
 import characters
 import comfy
 import flux_workflow
+import klein_workflow
+
+# FLUX 3 Klein is the default for every rendering tool since 2026-10-17; it runs on
+# its own ComfyUI (klein_workflow). model="flux_manwha" still reaches the FLUX.1 path
+# until the background server has switched too and FLUX.1 is retired.
+KLEIN = "klein"
+
+
+def _klein_pose_text(entry, pose, prompt, words=None):
+    """The pose prompt, in one place: generate_expression's from-scratch candidate
+    must repeat its base's prompt word for word, plus only the expression."""
+    extra = (prompt.strip().rstrip(".") + ". ") if prompt and prompt.strip() else ""
+    face = (", with " + words.rstrip(". ")) if words else ""
+    return ("The character from image 1, " + pose.strip().rstrip(".") + ", full body from head to "
+            "feet, on a plain flat pale gray backdrop, clear empty space above the head and below "
+            "the feet. " + extra + "The character from image 1: "
+            + entry["description"].rstrip(". ") + face + ". They keep the face, hair and costume "
+            "of their reference image. Lit from the upper left.")
+
+
+def _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte,
+                pose_ref_path=None):
+    """generate_character_pose on Klein: identity from the PRIMARY REFERENCE.
+
+    FLUX.1's pose path had no image identity input at all and drifted; Klein's
+    multi-reference holds identity through a pose change, so the character's own
+    reference is passed every time. The description still goes in, resolved from
+    the bible -- never retyped.
+    """
+    try:
+        entry = characters.get_character(character, project)
+        if entry is None:
+            raise characters.CharacterError(f"'{character}' is not registered in '{project}'.")
+        ref = characters.primary_ref_path(character, project)
+    except characters.CharacterError as e:
+        return f"Could not generate pose: {e}"
+    if (width, height) == (640, 896):
+        width, height = 832, 1216
+    text = _klein_pose_text(entry, pose, prompt)
+    try:
+        raw = klein_workflow.generate(text, out_dir, width, height, seed=seed, refs=[ref], stem="pose")
+    except klein_workflow.KleinError as e:
+        return f"Generation failed: {e}"
+    note = "FLUX 3 Klein, identity from the primary reference"
+    if pose_ref_path:
+        note += " (pose_ref_path IGNORED: no ControlNet on Klein -- describe the pose in words)"
+    if not matte:
+        return f"Pose generated (not matted): {raw}\n{note} -- curate before use."
+    try:
+        matted = klein_workflow.clean_matte(raw, comfy.matte(raw))
+    except Exception as e:
+        return (f"Pose generated but MATTING FAILED -- this image is RGB, not RGBA, and is NOT "
+                f"ready for compose_panel: {type(e).__name__}: {e}\n  raw render: {raw}")
+    return (f"Pose generated: {matted}\n  raw render (with backdrop): {raw}\n{note} -- "
+            f"curate before compose_panel. Feed this to compose_panel as character_layer_path.")
 from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
 from tools.compose_sheet import compose_sheet as _compose_sheet
@@ -243,14 +298,17 @@ def generate_character_concept(
     n: int = 4,
     label: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
+    model: str = KLEIN,
     width: int = 640,
     height: int = 896,
     seed: int | None = None,
     lora: str | None = None,
     lora_strength: float | None = None,
 ) -> str:
-    """Generate a batch of character-concept candidates for a character who
+    """**Defaults to FLUX 3 Klein** (model="klein"); "flux_manwha" is the FLUX.1
+    path, kept only until FLUX.1 is retired.
+
+    Generate a batch of character-concept candidates for a character who
     doesn't exist in the bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md
     §8b.6): a writer with a story but no reference art. Pure txt2img, n distinct
     seeds, the same clean backdrop as every other tier (matting-ready).
@@ -300,19 +358,30 @@ def generate_character_concept(
     try:
         if (width, height) == (640, 896):
             width, height = 832, 1216
-        paths = flux_workflow.generate_concepts(
-            prompt=full_prompt,
-            out_dir=out_dir,
-            n=n,
-            negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
-            width=width,
-            height=height,
-            seed=seed,
-            model=model,
-            lora=lora,
-            lora_strength=lora_strength,
-        )
-    except comfy.ComfyUIError as e:
+        if model == KLEIN:
+            # No negative prompt and no LoRA on Klein: cfg is 1, and FLUX.1 LoRAs
+            # cannot load (0 of manwha_style's 494 layers exist in Klein).
+            text = ("A single full-body figure of " + full_prompt.rstrip(". ") + ", standing "
+                    "facing the viewer, on a plain flat pale gray backdrop, clear empty space "
+                    "above the head and below the feet. Lit from the upper left.")
+            paths = [klein_workflow.generate(text, out_dir, width, height,
+                                             seed=(seed + i) if seed is not None else None,
+                                             stem="concept")
+                     for i in range(n)]
+        else:
+            paths = flux_workflow.generate_concepts(
+                prompt=full_prompt,
+                out_dir=out_dir,
+                n=n,
+                negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
+                width=width,
+                height=height,
+                seed=seed,
+                model=model,
+                lora=lora,
+                lora_strength=lora_strength,
+            )
+    except (comfy.ComfyUIError, klein_workflow.KleinError) as e:
         return f"Generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     lines = "\n".join(f"  {i + 1}. {p}" for i, p in enumerate(paths))
     return (f"{len(paths)} concept candidate(s) generated:\n{lines}\n"
@@ -406,7 +475,7 @@ def generate_character_pose(
     prompt: str = "",
     negative: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
+    model: str = KLEIN,
     width: int = 640,
     height: int = 896,
     seed: int | None = None,
@@ -420,6 +489,12 @@ def generate_character_pose(
     matte: bool = True,
 ) -> str:
     """Render a registered character alone, in a new pose, on a clean backdrop.
+
+    **Defaults to FLUX 3 Klein**, which takes the character's PRIMARY REFERENCE
+    and holds identity through the pose change -- so everything below about this
+    path having no identity input describes model="flux_manwha" (FLUX.1) only.
+    On Klein, pose_ref_path / ControlNet / LoRA options are ignored; describe
+    the pose in words.
 
     **This path has NO image identity input.** Identity comes from the
     character's bible description as prompt text, so it WILL drift — the SD
@@ -478,6 +553,9 @@ def generate_character_pose(
         The filesystem path to the matted (or raw) pose PNG.
     """
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "poses")
+    if model == KLEIN:
+        return _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte,
+                           pose_ref_path)
     try:
         raw_path, tier_note = _render_pose(
             character, pose, prompt, negative, project, model, width, height, seed,
@@ -777,8 +855,16 @@ def generate_turnaround_sheet(
     width: int = flux_workflow.FLUX_TURNAROUND_WIDTH,
     height: int = flux_workflow.FLUX_TURNAROUND_HEIGHT,
     extra_prompt: str = "",
+    model: str = KLEIN,
 ) -> str:
-    """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): generate a multi-pose
+    """**Defaults to FLUX 3 Klein**: front, three-quarter, profile and back in ONE
+    render, each view held in its own layout box, and every panel cut out
+    EXACTLY by its box (no gap search). Measured 2026-10-17: four true views
+    including a genuine profile, no strangers, 0.0% of figure pixels outside
+    the boxes. Everything below describes model="flux_manwha" (FLUX.1 Kontext +
+    the turnaround LoRA), kept only until FLUX.1 is retired.
+
+    FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): generate a multi-pose
     turnaround sheet from a registered character's primary reference image, via
     FLUX Kontext dev + a dedicated turnaround-sheet LoRA. Recommended staged
     workflow for getting a new character into the bible with FLUX, designed to
@@ -836,6 +922,19 @@ def generate_turnaround_sheet(
         return f"Could not generate turnaround sheet: {e}"
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
                            "_concepts", "turnaround")
+    if model == KLEIN:
+        entry = characters.get_character(character, project)
+        try:
+            sheet_path, panels = klein_workflow.turnaround_sheet(
+                ref_path, entry["description"], out_dir, width=width, height=height,
+                seed=seed, extra_prompt=extra_prompt)
+        except klein_workflow.KleinError as e:
+            return f"Turnaround sheet generation failed: {e}"
+        lines = "\n".join(f"  {k}: {v}" for k, v in panels.items())
+        return (f"Turnaround sheet generated (FLUX 3 Klein): {sheet_path}\n"
+                f"Panels, cut exactly by their layout boxes:\n{lines}\n"
+                f"Check each view is the angle it claims and that the costume agrees "
+                f"across all four. extra_prompt carries anything a view keeps losing.")
     try:
         sheet_path = flux_workflow.generate_turnaround_sheet(
             image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height,
@@ -864,8 +963,20 @@ def edit_character_image(
     matte_tol: float | None = None,
     mask_box: tuple[int, int, int, int] | None = None,
     mask_feather: int = 32,
+    model: str = KLEIN,
 ) -> str:
-    """FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
+    """**Defaults to FLUX 3 Klein.** Without mask_box, the image is a REFERENCE
+    and the instruction describes the result -- Klein holds identity through a
+    pose change, so this is also how a character is re-posed from their art.
+    With mask_box, only that region is redrawn and pasted back; the change
+    outside it is exactly zero (the local model otherwise redraws the whole
+    frame). mask_box also sets the SIZE of what is drawn: an oversized box gave
+    an oversized hand. When a hand stays wrong, reroll the whole render rather
+    than patching -- six patches gave one clean hand in testing.
+    Everything below describes model="flux_manwha" (Kontext), kept only until
+    FLUX.1 is retired.
+
+    FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
     image with a plain-English instruction, via FLUX Kontext dev as a pure
     image editor (no LoRA).
 
@@ -928,12 +1039,23 @@ def edit_character_image(
     """
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_edits")
     try:
-        edited_path = flux_workflow.edit_image(
-            image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
-            canvas_width=canvas_width, canvas_height=canvas_height,
-            mask_box=tuple(mask_box) if mask_box else None,
-            mask_feather=mask_feather)
-    except comfy.ComfyUIError as e:
+        if model == KLEIN:
+            if mask_box:
+                edited_path = klein_workflow.edit_region(
+                    image_path, instruction, out_dir, tuple(mask_box), seed=seed)
+            else:
+                w0, h0 = klein_workflow.size_of(image_path)
+                edited_path = klein_workflow.generate(
+                    instruction, out_dir, canvas_width or w0, canvas_height or h0, seed=seed,
+                    refs=[image_path], megapixels=klein_workflow.megapixels_of(image_path),
+                    stem="edit")
+        else:
+            edited_path = flux_workflow.edit_image(
+                image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
+                canvas_width=canvas_width, canvas_height=canvas_height,
+                mask_box=tuple(mask_box) if mask_box else None,
+                mask_feather=mask_feather)
+    except (comfy.ComfyUIError, klein_workflow.KleinError) as e:
         return f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
     matte_note = ""
     if matte:
@@ -963,6 +1085,148 @@ def edit_character_image(
             f"asked and still leave the rest of the figure inconsistent with "
             f"it.")
 
+
+@mcp.tool()
+def generate_scene(
+    characters_in_scene: list[str],
+    scene: str,
+    project: str = characters.DEFAULT_PROJECT,
+    width: int = 1536,
+    height: int = 864,
+    seed: int | None = None,
+) -> str:
+    """FLUX 3 Klein: several registered characters in ONE render, each from their
+    own primary reference -- a CG with its room and light in a single pass.
+
+    Measured 2026-10-17: two characters re-posed together, each still themselves,
+    with no attribute bleed, on 3 of 3 seeds. On FLUX.1 this needed a solo render
+    per figure, a matte each, a plate and a composite by hand.
+
+    scene: what happens, in plain words, referring to the characters as "the
+        character from image 1", "image 2"... in the order given. Describe what
+        their bodies DO. Two cautions from testing:
+          - ask for poses the references do NOT already show; when the pose
+            matches a reference, Klein copies that reference, flaws included.
+          - describe states, not paint: "flushed deep red" came back as makeup,
+            "sick with a fever, sleeping, perspiring" came back as a fever.
+        Descriptions are appended from the bible automatically -- never retype them.
+    characters_in_scene: character ids, in image order.
+    width / height: 1536x864 is exact 16:9 and goes to 1920x1080 at a flat 1.25x.
+
+    Hands are still the weak point: when one is wrong, REROLL the seed rather
+    than patching -- three seeds beat six repairs in testing. To fix one region
+    of a render you like, edit_character_image(mask_box=...) changes nothing
+    outside the box.
+    """
+    refs, parts = [], []
+    try:
+        for i, cid in enumerate(characters_in_scene, 1):
+            entry = characters.get_character(cid, project)
+            if entry is None:
+                return f"'{cid}' is not registered in '{project}'."
+            refs.append(characters.primary_ref_path(cid, project))
+            parts.append(f"The character from image {i}: " + entry["description"].rstrip(". ") + ".")
+    except characters.CharacterError as e:
+        return f"Could not build the scene: {e}"
+    text = (scene.rstrip().rstrip(".") + ". " + " ".join(parts) + " Each keeps the face, hair and "
+            "costume of their own reference image.")
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_scenes")
+    try:
+        p = klein_workflow.generate(text, out_dir, width, height, seed=seed, refs=refs, stem="scene")
+    except klein_workflow.KleinError as e:
+        return f"Scene generation failed: {e}"
+    order = ", ".join(f"image {i} = {c}" for i, c in enumerate(characters_in_scene, 1))
+    return (f"Scene rendered (FLUX 3 Klein, {order}): {p}\n"
+            f"Check every hand at full size before keeping it; reroll the seed if one is wrong.")
+
+
+@mcp.tool()
+def generate_expression(
+    character: str,
+    expression: str,
+    pose: str,
+    seed: int,
+    project: str = characters.DEFAULT_PROJECT,
+    prompt: str = "",
+    face_box: list[int] | None = None,
+) -> str:
+    """FLUX 3 Klein: two candidates for one expression of a base body, to choose between.
+
+    The base body must already exist from generate_character_pose(character, pose,
+    prompt, seed=seed) -- pass the SAME pose, prompt and seed. Keep expression words
+    out of the base's pose ("a calm neutral expression"), or the from-scratch
+    candidate is asked for two expressions at once.
+
+    Two candidates, because neither method won every expression in testing
+    (2026-10-17): the anger the author picked was rendered from scratch, the smile
+    he picked was copied from the base picture.
+      * from scratch -- a new render from the character's reference, the base's
+        exact prompt and seed, plus the expression. The body comes back almost
+        identical (mean change 0.5-0.9 of 255), but a small expression can fail
+        to take: the smile came back neutral.
+      * copied -- the base picture itself as the reference, asked to repeat it
+        with the new expression. The expression always showed, and followed the
+        head's tilt on its own; the body moved more (a mean of about 3).
+    Both then have ONLY their face pasted onto the base body, so outside the face
+    every pixel and the alpha are the base's -- the sprite cannot jump when its
+    face swaps mid-conversation.
+
+    expression: "smile", "anger" or "laugh" -- the names the game already uses,
+        with deliberately small wordings (bigger ones came back cartoonish).
+        Anything else is used as plain words, but the game wires expressions BY
+        NAME: do not invent new ones without the author.
+    face_box: [x0, y0, x1, y1] of the face; omit for an automatic guess, which
+        drifts when hair covers one side. Only this region is taken from the
+        candidates.
+    """
+    words = klein_workflow.EXPRESSIONS.get(expression, expression)
+    name = expression if expression in klein_workflow.EXPRESSIONS else "custom"
+    try:
+        entry = characters.get_character(character, project)
+        if entry is None:
+            raise characters.CharacterError(f"'{character}' is not registered in '{project}'.")
+        ref = characters.primary_ref_path(character, project)
+    except characters.CharacterError as e:
+        return f"Could not make the expression: {e}"
+    poses = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "poses")
+    base_raw = os.path.join(poses, f"pose_{seed}.png")
+    base_rgba = os.path.join(poses, f"pose_{seed}_matted.png")
+    if not (os.path.isfile(base_raw) and os.path.isfile(base_rgba)):
+        return (f"No base body for seed {seed} in {poses}. Make it first with "
+                f"generate_character_pose(character='{character}', pose=..., seed={seed}).")
+    w, h = klein_workflow.size_of(base_raw)
+    try:
+        box = tuple(face_box) if face_box else klein_workflow.find_face_box(base_rgba)
+    except klein_workflow.KleinError as e:
+        return f"Could not make the expression: {e}"
+    out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "expressions")
+    tmp_dir = os.path.join(out_dir, "_candidates")
+    fresh_text = _klein_pose_text(entry, pose, prompt, words=words)
+    copied_text = ("The character from image 1 exactly as shown: the same pose, the same framing, "
+                   "the same costume and the same backdrop, now with " + words.rstrip(". ") + ".")
+    report = []
+    try:
+        for label, text, refs, mp in (
+                ("from_scratch", fresh_text, [ref], 1.0),
+                ("copied", copied_text, [base_raw], w * h / (1024 * 1024))):
+            raw = klein_workflow.generate(text, tmp_dir, w, h, seed=seed, refs=refs, megapixels=mp,
+                                          stem=f"{name}_{label}")
+            out = os.path.join(out_dir, f"pose_{seed}_{name}_{label}.png")
+            stem_, n = os.path.splitext(out)[0], 1
+            while os.path.exists(out):
+                out, n = f"{stem_}_{n}.png", n + 1
+            r = klein_workflow.paste_face(base_rgba, raw, out, box)
+            os.remove(raw)
+            report.append(f"  {label:12s} {r['path']}  (outside the face changed: "
+                          f"{r['changed_outside_face']} px, alpha identical: {r['alpha_identical']})")
+    except klein_workflow.KleinError as e:
+        return f"Expression failed: {e}"
+    finally:
+        if os.path.isdir(tmp_dir) and not os.listdir(tmp_dir):
+            os.rmdir(tmp_dir)
+    return (f"Two '{name}' candidates for {character} (base seed {seed}, face box {box}"
+            f"{', automatic guess' if not face_box else ''}):\n" + "\n".join(report) +
+            "\nPick one per expression; it is the base body with only the face changed.")
 
 @mcp.tool()
 def compose_reference_sheet(
@@ -1291,13 +1555,17 @@ def check_status() -> str:
     """Check whether the ComfyUI backend is reachable and ready (only needed for
     generate_character_pose — the bible and compose_panel work without it)."""
     import requests
-    try:
-        r = requests.get(f"{comfy.COMFY_URL}/system_stats", timeout=10)
-        if r.status_code == 200:
-            return f"ComfyUI is up at {comfy.COMFY_URL}."
-        return f"ComfyUI responded with HTTP {r.status_code}."
-    except Exception as e:
-        return f"ComfyUI not reachable at {comfy.COMFY_URL}: {e}"
+    lines = []
+    for label, url in (("Klein (rendering)", klein_workflow.KLEIN_URL),
+                       ("main (matting, FLUX.1)", comfy.COMFY_URL)):
+        try:
+            r = requests.get(f"{url}/system_stats", timeout=10)
+            lines.append(f"{label}: up at {url}" if r.status_code == 200
+                         else f"{label}: HTTP {r.status_code} at {url}")
+        except Exception as e:
+            lines.append(f"{label}: not reachable at {url} ({type(e).__name__}) -- "
+                         f"it auto-starts on the first job that needs it")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

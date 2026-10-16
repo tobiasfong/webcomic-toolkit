@@ -17,3 +17,6 @@ onnxruntime>=1.16.0
 # rembg/onnxruntime already, but is used directly here too.
 OpenEXR>=3.3.0
 numpy>=2.0.0
+# klein_workflow.clean_matte: flood-fills the backdrop from the frame edge to strip
+# the pale fringe a learned matte leaves along a Klein figure's black outline.
+scipy>=1.11
