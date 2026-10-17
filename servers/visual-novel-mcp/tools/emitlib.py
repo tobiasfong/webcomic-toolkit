@@ -124,7 +124,9 @@ def load_project(project_dir=None):
     `project_dir` is vn/<project>; by default it is derived from the CALLING
     emitter's __file__, since emitters live in <project>/tools/. The docx is
     `<project>/project.json` key "docx" (absolute, or relative to the repo
-    root) when present, else the one *.docx in servers/visual-novel-mcp/.
+    root) when present, else the one *.docx BESIDE the project folder (in
+    vn/, gitignored with the game), else -- where it lived before
+    2026-10-18 -- the one *.docx in servers/visual-novel-mcp/.
 
     ⚠ This also ASSIGNS the speaker/spec/annotation patterns into
     script_diff, exactly as the emitters did by hand: `say()` strips
@@ -144,12 +146,19 @@ def load_project(project_dir=None):
         if docx_path:
             docx_path = os.path.join(root, docx_path)   # absolute stays absolute
     if not docx_path:
-        found = [p for p in glob.glob(os.path.join(root, "servers", "visual-novel-mcp", "*.docx"))
-                 if not os.path.basename(p).startswith("~$")]
-        if len(found) != 1:
-            raise SystemExit("load_project: expected exactly one script .docx in "
-                             "servers/visual-novel-mcp/, found %d" % len(found))
-        docx_path = found[0]
+        for where in (os.path.dirname(project_dir),
+                      os.path.join(root, "servers", "visual-novel-mcp")):
+            # "~$" files are Word's lock files while the document is open
+            found = [p for p in glob.glob(os.path.join(where, "*.docx"))
+                     if not os.path.basename(p).startswith("~$")]
+            if len(found) > 1:
+                raise SystemExit("load_project: more than one script .docx in %s" % where)
+            if found:
+                docx_path = found[0]
+                break
+        else:
+            raise SystemExit("load_project: no script .docx beside %s or in "
+                             "servers/visual-novel-mcp/" % project_dir)
     patterns = os.path.join(project_dir, "game", "patterns.json")
     (script_diff.SPEAKER, script_diff.SPEC_START, script_diff.SPEC_LINE,
      script_diff.ANNOTATION) = script_diff.load_patterns(patterns)
