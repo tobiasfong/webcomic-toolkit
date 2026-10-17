@@ -235,6 +235,11 @@ just closing the window often isn't enough).
   line density.
 - **`grade.py`** — color-grade a finished plate for mood (`--preset grimdark`,
   `night`, `dusk`…). The same thing `grade_plate` does from the MCP side.
+- **`letter_plaque.py`** — set real hanzi onto a blank board or scroll. The model
+  writes pseudo-characters, so ask for a plain board and letter it here: traditional
+  forms, right to left as Ming horizontal inscriptions read (`--ltr` for modern
+  order), `--vertical` for a hanging scroll, `--fill` to repaint a board that came
+  back with marks on it. Uses SimSun, so it needs a font with traditional glyphs.
 
 To remove a stray figure or a fake sign, use `edit_background` with a `mask_box`
 and phrase it as what to leave behind ("remove the person completely, leave only
