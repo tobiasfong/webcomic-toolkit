@@ -18,7 +18,9 @@ numpy>=1.24.0
 #   * ComfyUI — the GPU path. Auto-launched; see WEBCOMIC_ANIME_COMFY_DIR.
 #   * ComfyUI-GGUF (city96) — REQUIRED for LTX. Core's LTXAVTextEncoderLoader
 #     cannot load a .gguf text encoder; see README "Models".
-#   * LTX-2.3 and FLUX.1 Kontext model files — see README "Models".
+#   * LTX-2.3 model files — see README "Models".
+#   * A second ComfyUI (v0.41+) with the FLUX 3 Klein files, for edit_frame —
+#     see README "Klein, for edit_frame". Auto-launched like the first.
 #   * An ffmpeg binary — ONLY for assemble_video, which pipes PNG frames into
 #     it. Everything else works without it. Point the server at one with
 #     WEBCOMIC_ANIME_FFMPEG if it is not on PATH.

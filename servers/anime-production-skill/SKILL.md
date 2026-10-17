@@ -384,44 +384,48 @@ Everything below follows from that one line:
 
 ### What LTX can't do, and what does it instead
 
-- **Blinks / mouth shapes** → `kontext_edit.py` generates the keyframe, then
-  composite ONLY the eye or mouth patch back over the original. Kontext
-  regenerates the whole frame and will quietly restyle hair or color, so never
-  ship its output wholesale. It is also **binary** — it cannot do a half-lid, so
-  blend the open and closed composites for mid positions.
-- ⚠ **KONTEXT REPAIRS HANDS AT Q6_K — AND DID NOT AT Q3_K_S. RUN Q6.** This was
-  the single biggest quality lever found in the whole project. Same six damaged
-  frames, three seeds each, identical prompt and region:
-
-  | | usable takes | frames rescued |
-  |---|---|---|
-  | `Q3_K_S` (~3.3 bits/weight) | 0 of 18 | **0 of 6** |
-  | `Q6_K` (~6.3 bits/weight) | 5 of 9 | **every frame attempted** |
-
-  Same ~233 s per edit, 5127 MiB of 6144 peak VRAM. **VRAM was never the reason
-  to quantize low** — ComfyUI streams weights from system RAM and this 6 GB card
-  runs a 14.2 GB LTX model routinely. `Q3_K_S` has been deleted.
-
-  Expect to discard takes anyway — about a third of Q6 output is unusable, fused
-  fingers included. Run three seeds; only one has to land, and the grade that
-  matters is COST: "draw one line" and "redraw the hand" are different jobs.
-
-  ⚠ Bit depth bites for REPAIR, not for generation. The same Q3→Q6 swap on
-  ordinary panel generation produced **identical output** — no quality change,
-  no character drift. Repair reconstructs destroyed structure from corrupted
-  pixels, which sits at the edge of what the model can do; free generation has
-  headroom. So do not promise Q6 will improve generated art. It will not.
-
-  Retired with this: the old rule that Kontext "repairs a GRIP, not an open
-  hand". It was built on two successes, contradicted at Q3, and says nothing
-  about Q6 — the open-hand case is untested now, not known-hopeless.
-- ⚠ **MASKED INPAINTING WAS NEVER TRIED.** Every Kontext attempt used
-  INSTRUCTION-EDIT mode: hand it the whole frame and hope. For "this region is
-  destroyed", inpainting is the right technique — mask the hand, generate into
-  the hole with the surrounding arm as context, leave every other pixel
-  untouched by construction rather than by compositing afterwards.
-  `SetLatentNoiseMask`, `VAEEncodeForInpaint`, `DifferentialDiffusion` and
-  `InpaintModelConditioning` ship with ComfyUI; no download needed.
+- **Blinks / mouth shapes** → `klein_edit.py` (FLUX 3 Klein) generates the
+  keyframe, then composite ONLY the eye or mouth patch back over the original.
+  Klein redraws the WHOLE frame even for a boxed edit — 18.5 of mean change
+  outside the box, measured — so never ship its full frame. With `--box` the
+  script pastes back only the box; for a blink, run it without one and take
+  just the eye interiors with `pipeline.framing.composite_patch(ellipses=...)`.
+  Whether Klein can draw a half-lid is untested; blending the open and closed
+  composites always gives the mid positions.
+- ⚠ **NO MACHINE REPAIR OF AN LTX HAND HAS EVER SHIPPED. Plan to draw them.**
+  Every repaired hand in the test scene's final cut was finished by the
+  artist's hand: one over a Kontext base, the rest drawn outright.
+  - **Klein**, 2026-10-17, on a sword hand LTX had blurred to a smudge
+    (1920x1088, `--box` around the hand, three seeds): **0 usable** by the
+    artist's eye. The closest had a bad thumb; one splayed its fingers; two
+    redesigned the hilt. Klein's crisp inking also **stands out against soft
+    LTX frames**, which flickers across a 12 fps sequence. (Confound: that
+    instruction asked for "crisp black outlines". Leave line words out.)
+    ~97 s a seed on the 6 GB card, and exactly zero change outside the box.
+  - **FLUX.1 Kontext**, retired 2026-10-17, did no better. At Q6_K its best
+    takes were "usable as a base" — the artist still drew on every one. At
+    Q3_K_S, one take in 18 was good enough to draw over.
+  - So a repair pass is worth running only as a BASE for the artist, and only
+    while there are other frames to work on in the meantime. Never count a
+    take that still needs drawing as a repair.
+  - ⚠ **A box sets SIZE as well as place** — a hand asked to fill a 220x166
+    box came back 220x166 and swollen. Fit the box to the hand.
+- ⚠ **Klein lives on its OWN ComfyUI (v0.41, port 8189), LTX on the main one
+  (port 8188). NEVER RUN BOTH AT ONCE.** With two ComfyUIs neither queue sees
+  the other's job, so nothing stops both models landing on a small card
+  together. One edit submitted during an LTX batch once thrashed until it hung
+  and cost five hours. `klein_edit.py` and the server both refuse to start
+  while the other side is busy.
+- **Before concluding a model "can't do" something, check its bit depth.**
+  The lesson FLUX.1 left behind: the same Q3_K_S → Q6_K swap changed Kontext's
+  raw repairs visibly and ordinary generation not at all. Quantization error
+  shows where the task is hard. And **VRAM was never the reason to quantize
+  low** — ComfyUI streams weights from system RAM, and this 6 GB card runs a
+  14.2 GB LTX model routinely.
+- ⚠ **MASKED INPAINTING HAS STILL NEVER BEEN TRIED** — every edit so far,
+  Kontext and Klein alike, handed the model the whole frame. For "this region
+  is destroyed", inpainting is the textbook technique: mask the hand and
+  generate into the hole with the surrounding arm as context.
 - **Anything that must APPEAR** (growing ice, shooting stars, speed lines) →
   draw it. Deterministic, retimeable onto musical beats, and it can't smear a
   face. `impact_preview.py` previews the speed-line/flash/shake kit.
@@ -449,8 +453,8 @@ Available two ways, same code either way:
 - **`assets/tools/pipeline/`** — the same modules as an importable package
   (`motion`, `effects`, `framing`, `assemble`, `subs`), for driving it directly
   without the server. They use relative imports, so keep the folder intact and
-  import it as a package. The GPU-driving half (LTX, Kontext) is not duplicated
-  here — use `assets/tools/ltx_run.py` and `kontext_edit.py`, or the server.
+  import it as a package. The GPU-driving half (LTX, Klein) is not duplicated
+  here — use `assets/tools/ltx_run.py` and `klein_edit.py`, or the server.
 
 ### Shape of a run
 

@@ -168,7 +168,7 @@ class Flutter:
 
     HOW THE PIECES ARE SEPARATED: the decoration may be painted on an OPAQUE
     field rather than on transparency, in which case connected-component
-    labelling on alpha returns the whole margin as one blob. Color separates
+    labeling on alpha returns the whole margin as one blob. Color separates
     them instead. `rules` is a list of (name, test) where test takes (r,g,b) —
     the defaults handle green foliage and pink blossom on a white field with
     warm rules excluded.
@@ -364,9 +364,11 @@ def register(base: Image.Image, patch: Image.Image,
              span: int = 26) -> tuple[Image.Image, dict]:
     """Align a generated patch to the base using the parts that did NOT change.
 
-    ⚠ WHY THIS IS NEEDED. `FluxKontextImageScale` snaps the input to one of the
-    model's own supported resolutions, and that resolution does not preserve the
-    source aspect ratio — measured drift of 0.024 to 0.095 on real panels.
+    ⚠ WHY THIS IS NEEDED. FLUX.1 Kontext, the edit model before Klein, snapped
+    its input to one of its own supported resolutions, which did not preserve
+    the source aspect ratio — measured drift of 0.024 to 0.095 on real panels.
+    Klein edits from edit_frame come back at the source's exact size and skip
+    this; it remains for any patch that arrives at a different size.
     Resizing the result straight back to the base size therefore stretches it by
     a few percent in one axis, and a few percent is enormous on a face: the
     redrawn glasses come back visibly larger than the pair underneath, so the
@@ -374,7 +376,7 @@ def register(base: Image.Image, patch: Image.Image,
 
     The fix is registration, not a better resize. Everything OUTSIDE the edited
     region is supposed to be identical, so scale and offset can be recovered by
-    minimising the residual there. Scored on a downsampled grayscale copy — this
+    minimizing the residual there. Scored on a downsampled grayscale copy — this
     only needs to land within a pixel, and full resolution would be far slower
     for no gain.
     """
@@ -449,22 +451,23 @@ def composite_patch(base_path: str, patch_path: str, dst: str,
                     ellipses: list | None = None) -> dict:
     """Paste ONLY `box` from a generated image back over the original art.
 
-    This is the other half of the Kontext path, and skipping it is the mistake
-    that ruins a shot. Kontext regenerates the WHOLE frame, so it quietly
-    restyles linework and shifts color in places nobody asked about. Only the
-    region that was supposed to change may come back.
+    This is the other half of the edit_frame path, and skipping it is the
+    mistake that ruins a shot. The edit model regenerates the WHOLE frame —
+    Kontext did, and Klein does too — so it quietly restyles linework and shifts
+    color in places nobody asked about. Only the region that was supposed to
+    change may come back.
 
     `blend` < 1 mixes the patch with the original underneath — how a half-lid is
-    made, since Kontext is binary and cannot draw one. 0.5 of a closed-eye patch
-    over open eyes gives the mid position.
+    made. Kontext was binary and could not draw one; Klein is untested. 0.5 of a
+    closed-eye patch over open eyes gives the mid position.
     """
     base = Image.open(base_path).convert("RGB")
     patch = Image.open(patch_path).convert("RGB")
     align = {"aligned": False}
     if patch.size != base.size:
-        # NEVER a plain resize — Kontext's output does not share the source
-        # aspect ratio, and stretching it makes the redrawn feature a few
-        # percent too big, which reads as a sticker pasted on the face.
+        # NEVER a plain resize — a patch at another size may not share the
+        # source aspect ratio (Kontext's never did), and stretching it makes the
+        # redrawn feature a few percent too big, which reads as a sticker.
         patch, align = register(base, patch, tuple(box))
 
     from PIL import ImageDraw
@@ -472,8 +475,8 @@ def composite_patch(base_path: str, patch_path: str, dst: str,
     ink = int(255 * max(0.0, min(1.0, blend)))
     d = ImageDraw.Draw(mask)
     if ellipses:
-        # TAKE AS LITTLE AS POSSIBLE. Kontext regenerates the whole frame and
-        # will redraw structure it was not asked about — on a bespectacled
+        # TAKE AS LITTLE AS POSSIBLE. The edit model regenerates the whole frame
+        # and will redraw structure it was not asked about — on a bespectacled
         # character it returned the glasses noticeably larger, and a rectangular
         # box dragged those in, so the blink read as a sticker. Patching only the
         # eye INTERIORS drops new eyelids inside the original frames and leaves

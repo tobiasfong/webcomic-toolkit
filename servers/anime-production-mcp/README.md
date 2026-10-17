@@ -256,16 +256,20 @@ count for *selected* takes, not for all takes.
   beats another twenty seeds.
 - **ComfyUI runs prompts serially.** The seed hunt is a sequential loop by
   design; stacking jobs just burns timeouts in the queue.
-- ⚠ **Never interleave LTX and Kontext on a small card.** One Kontext call
-  submitted while an LTX batch was running made a 22B video model and FLUX fight
-  over 6 GB; it thrashed until the job hung and cost **five hours** and two
-  finished takes. All of one model, then all of the other. Check the queue is
-  empty before switching.
-- **Kontext repairs a GRIP, not an open hand.** Given a hand closed on a book
-  edge or a sword hilt it fixed the fingers, 2 for 2. Given an open hand that had
-  blurred away it failed 0 for 7 — three seeds, two phrasings, and a tight-crop
-  pass. There is no contour left for it to follow, so it is being asked to
-  invent, which is the same failure as the table above.
+- ⚠ **Never run LTX and Klein at once on a small card.** One edit submitted
+  while an LTX batch was running made a 22B video model and FLUX fight over
+  6 GB; it thrashed until the job hung and cost **five hours** and two finished
+  takes. They now live on two ComfyUIs, so neither queue can order them —
+  `animate_shot` and `edit_frame` each refuse to start while the other side has
+  a job in.
+- ⚠ **No machine repair of an LTX hand has ever shipped. Plan to draw them.**
+  Every repaired hand in the test scene's final cut was finished by the
+  artist's hand: one over a Kontext base, the rest drawn outright.
+  Klein, given a sword hand LTX had blurred to a smudge, gave 0 usable takes in
+  three seeds (the closest had a bad thumb), and its crisp inking stood out
+  against the soft LTX frames around it. FLUX.1 Kontext before it did no
+  better: its best takes were bases the artist still drew on. Run a repair only
+  as a base, while there is other work to do in the meantime.
 
 ## Install
 
@@ -283,7 +287,7 @@ claude mcp add anime-production -- /abs/path/.venv/Scripts/python.exe /abs/path/
 
 ## Models
 
-Everything runs through ComfyUI. **LTX and Kontext both load GGUF weights, which
+LTX runs through the main ComfyUI. **It loads GGUF weights, which
 core ComfyUI cannot do** — install [city96's
 ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) into `custom_nodes` first.
 `check_status` reports whether it is present.
@@ -294,8 +298,6 @@ ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) into `custom_nodes` first.
 | `ltx-2.3-22b-distilled_embeddings_connectors.safetensors` | `models/text_encoders/` |
 | `ltx-2.3-22b-distilled_video_vae.safetensors` | `models/vae/` |
 | `gemma-3-12b-it-Q3_K_M.gguf` | `models/text_encoders/` |
-| `flux1-kontext-dev-Q6_K.gguf` | `models/unet/` |
-| `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors`, `ae.safetensors` | `models/text_encoders/`, `models/vae/` |
 
 ⚠ **The text encoder goes in `models/text_encoders/`, never
 `models/checkpoints/`.** Core's `LTXAVTextEncoderLoader` reads `checkpoints/`,
@@ -303,6 +305,25 @@ and `.gguf` is not in ComfyUI's supported extensions, so it can never list one.
 Connector and VAE must match the checkpoint's variant *and* generation, or you
 get silent garbage instead of an error. ComfyUI caches folder listings at
 startup — restart it after adding files.
+
+### Klein, for `edit_frame`
+
+`edit_frame` runs FLUX 3 Image Klein on a **separate** ComfyUI (v0.41+, port
+8189, `C:\AI\ComfyUI_flux3`), the same install the character and background
+servers use, started on first use. The main ComfyUI is deliberately not
+upgraded: LTX and the music model run there through add-ons never tested on
+v0.41. Files, from BFL's gated `black-forest-labs/flux-3-image-klein-comfy`
+repo (each BFL repo needs its own license click):
+
+| file | folder |
+|---|---|
+| `flux3_image_klein_sd_int8_convrot.safetensors` | `models/diffusion_models/` |
+| `qwen3vl_4b_int8_convrot.safetensors` | `models/text_encoders/` |
+| `flux2-vae.safetensors` | `models/vae/` |
+
+INT8, not FP8: an Ampere card has INT8 tensor cores and no native FP8.
+`check_status` reports whether Klein is up and which of these are missing.
+FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 
 ## Environment
 
@@ -314,12 +335,15 @@ startup — restart it after adding files.
 | `WEBCOMIC_ANIME_TIMEOUT` | `1800` |
 | `WEBCOMIC_ANIME_OUTPUT` | `./output` |
 | `WEBCOMIC_ANIME_FFMPEG` | first on `PATH` — only `assemble_video` needs it |
+| `WEBCOMIC_ANIME_KLEIN_URL` | `http://127.0.0.1:8189` |
+| `WEBCOMIC_ANIME_KLEIN_DIR` | `C:\AI\ComfyUI_flux3` |
+| `WEBCOMIC_ANIME_KLEIN_AUTOLAUNCH` | `1` |
 
 ## Tools
 
 **Generate** — `animate_shot` (the seed hunt: N takes, retimed, scored, recorded)
-· `edit_frame` (Kontext keyframe) · `composite_patch` (bring back the region
-only)
+· `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
+the region only)
 
 **Judge** — `measure_motion` · `retime_clip` · `contact_sheet`
 

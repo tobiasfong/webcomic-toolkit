@@ -59,7 +59,7 @@ from PIL import Image
 from mcp.server.fastmcp import FastMCP
 
 import comfy
-import kontext_workflow as kw
+import klein
 import ltx_workflow as lw
 import shots as sh
 from tools import artifacts
@@ -76,6 +76,20 @@ def _fetch_one(outs: dict, dest: str) -> str:
         for ref in refs:
             return comfy.fetch(ref, dest)
     raise comfy.ComfyUIError("ComfyUI returned outputs but no files.")
+
+
+def _refuse_if_busy(url: str, what: str) -> None:
+    """Never put LTX and Klein on the 6 GB card at once.
+
+    They live on two ComfyUIs, so neither queue can see the other's job. One
+    edit submitted during an LTX batch once thrashed until the job hung and cost
+    five hours and two finished takes.
+    """
+    n = klein.busy(url)
+    if n:
+        raise RuntimeError(
+            f"{what} is running on {url} ({n} job(s) in its queue). LTX and Klein "
+            f"cannot share the 6 GB card — wait for it to finish, then retry.")
 
 
 # --------------------------------------------------------------------------- #
@@ -136,6 +150,7 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
                 ["size supplied by caller — NOT checked against the artwork's "
                  "aspect; a mismatch is a silent stretch"]}
     lw.validate(width, height, length, variant)
+    _refuse_if_busy(klein.KLEIN_URL, "a Klein edit")
 
     uploaded = comfy.upload_image(image_path)
     results = []
@@ -171,44 +186,48 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
 
 @mcp.tool()
 def edit_frame(image_path: str, edit: str, out_dir: str,
-               seeds: list[int] | None = None, steps: int = 20,
-               guidance: float = 2.5) -> dict:
-    """Generate a KEYFRAME with FLUX.1 Kontext — for what LTX cannot animate.
+               seeds: list[int] | None = None, box: list[int] | None = None,
+               steps: int = 16) -> dict:
+    """Generate a KEYFRAME or repair a frame with FLUX 3 Klein — for what LTX
+    cannot animate, and for the hands it breaks.
 
     A blink is ~0.2% of frame pixels and about four latent pixels wide after the
     VAE's 8x compression; there is nothing there for a video model to move. So
     eye and mouth positions come from generated keyframes played back by a frame
     player, not from video generation.
 
-    ⚠ NEVER SHIP THE OUTPUT WHOLESALE. Kontext regenerates the WHOLE frame and
-    will quietly restyle linework or shift color. Follow every call with
-    `composite_patch` to bring back ONLY the region that was meant to change.
+    Runs on Klein's own ComfyUI (port 8189), started on first use. Refuses while
+    an LTX job is running: the two cannot share the 6 GB card.
 
-    ⚠ Kontext is BINARY — it cannot draw a half-lid. Make mid positions by
-    compositing with `blend` between 0 and 1.
+    box: [l, t, r, b] of the region to change. Klein is told where to draw AND
+        how big — a box sets size as well as place, so fit it to the thing.
+        Only the box comes back (`path`); outside it the frame is unchanged.
 
-    ⚠ HANDS: it repairs a GRIP, not an open hand. Fingers around a book edge or
-    a sword hilt have structure to infer from and repaired first time; an open
-    hand in shadow at ~40px of skin failed seven times across three seeds, two
-    phrasings and a tight-crop pass. Draw those by hand instead.
+    ⚠ NEVER SHIP THE FULL FRAME (`full`). Klein redraws the WHOLE frame even for
+    a boxed edit — 18.5 of mean change outside the box, measured. Without a
+    box, follow with `composite_patch` to bring back only the region that was
+    meant to change; for a blink, its `ellipses` take just the eye interiors.
+
+    ⚠ HANDS ARE STILL THE WEAK POINT. On character art, six region repairs gave
+    one clean hand. Run three seeds and expect to discard most. Klein has not yet
+    been measured on LTX frames — the old Kontext numbers do not carry over.
+
+    Whether Klein can draw a half-lid is untested. Mid positions can always be
+    made by compositing with `blend` between 0 and 1.
 
     Sweep a few seeds and keep the least-drifted, not the most obedient.
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
     seeds = seeds or [1, 2, 3]
-    uploaded = comfy.upload_image(image_path)
-    stem = os.path.splitext(os.path.basename(image_path))[0]
-    out = []
-    for seed in seeds:
-        outs = comfy.submit_and_wait(
-            kw.build(uploaded, edit, seed=seed, steps=steps, guidance=guidance,
-                     prefix=f"anime/{stem}"))
-        dest = os.path.join(out_dir, f"{stem}_edit_s{seed}.png")
-        out.append({"seed": seed, "path": _fetch_one(outs, dest)})
+    _refuse_if_busy(comfy.COMFY_URL, "An LTX job")
+    out = [klein.edit(image_path, edit, out_dir, seed, box=box, steps=steps)
+           for seed in seeds]
     return {"source": image_path, "edit": edit, "results": out,
-            "recipe": kw.recipe(image_path, edit, steps=steps, guidance=guidance),
-            "next": "composite_patch each result over the ORIGINAL, region only."}
+            "recipe": klein.recipe(image_path, edit, box=box, steps=steps),
+            "next": ("LOOK at each `path` against the original. Only the box came back."
+                     if box else
+                     "composite_patch each `full` result over the ORIGINAL, region only.")}
 
 
 @mcp.tool()
@@ -533,9 +552,12 @@ def check_status() -> dict:
 
     Reports ComfyUI reachability, VRAM, whether city96's ComfyUI-GGUF custom node
     is installed (LTX cannot run without it), which model files each variant is
-    missing, and whether an ffmpeg for encoding was found.
+    missing, whether an ffmpeg for encoding was found, and the same for the
+    separate Klein ComfyUI that edit_frame uses.
     """
     status: dict = {"comfy_url": comfy.COMFY_URL, "comfy_running": comfy.comfy_is_up()}
+    status["klein"] = {"url": klein.KLEIN_URL, "running": klein.is_up(),
+                       "dir": klein.KLEIN_DIR, "missing": klein.missing_files()}
     try:
         status["ffmpeg"] = asm.find_ffmpeg()
     except FileNotFoundError as e:
@@ -560,8 +582,8 @@ def check_status() -> dict:
         status["comfyui_gguf_installed"] = True
     except comfy.ComfyUIError:
         status["comfyui_gguf_installed"] = False
-        status["hint"] = ("city96's ComfyUI-GGUF custom node is NOT installed. Both LTX "
-                          "and Kontext load GGUF weights through it; core ComfyUI cannot. "
+        status["hint"] = ("city96's ComfyUI-GGUF custom node is NOT installed. LTX "
+                          "loads its GGUF weights through it; core ComfyUI cannot. "
                           "Install it into custom_nodes and restart.")
         return status
 
@@ -575,7 +597,6 @@ def check_status() -> dict:
             missing.append(lw.GEMMA)
         variants[vname] = {"ready": not missing, "missing": missing}
     status["ltx_variants"] = variants
-    status["kontext_ready"] = kw.UNET in gguf_unets and kw.VAE in vae
 
     if any(not v["ready"] for v in variants.values()):
         status["hint"] = ("Missing model files. NOTE: ComfyUI caches folder listings at "

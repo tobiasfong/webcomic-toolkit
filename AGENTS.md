@@ -15,10 +15,10 @@ The author's verdict: "better in all aspects". Character art is being
 regenerated on it from scratch. **Both image servers are Klein only**: the
 character server since its v2.0.0 (`servers/character-panel-mcp/klein_workflow.py`)
 and the background server since its v3.0.0 (`servers/webcomic-background-mcp/klein.py`).
-Their CHANGELOGs record what replaced each FLUX.1 part. FLUX.1's model files
-stay installed only until its last two users move: the anime-production
-keyframe edit (Kontext) and the visual novel's camera-angle tool (Kontext plus
-a camera LoRA).
+Their CHANGELOGs record what replaced each FLUX.1 part. The anime-production
+server's `edit_frame` moved too, in its v2.0.0. FLUX.1's model files stay
+installed only until its last user moves: the visual novel's camera-angle tool
+(Kontext plus a camera LoRA).
 
 ### Setup
 
@@ -161,7 +161,7 @@ rule for any quantized model here:
 
 | task | Q3_K_S -> Q6_K |
 |---|---|
-| Kontext REPAIR of a damaged hand | 0 of 6 frames usable -> **3 of 3 usable** |
+| Kontext REPAIR of a damaged hand | fused blobs -> visibly better, but still only bases the artist drew on |
 | Panel GENERATION, same seed and prompt | **identical — no visible difference, no character drift** |
 
 **Quantization error surfaces when the task is HARD.** Repair reconstructs

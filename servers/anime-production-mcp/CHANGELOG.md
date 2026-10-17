@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.0.0 — 2026-10-17
+
+**`edit_frame` runs FLUX 3 Image Klein; FLUX.1 Kontext is retired.** The
+character and background servers had already moved to Klein, and this server
+was the last thing loading FLUX.1. Moving it is what lets FLUX.1 be uninstalled.
+
+**Breaking:** `edit_frame` loses `guidance` (Klein is step-distilled at cfg 1
+and has no such dial) and gains `box`. `steps` now defaults to 16.
+`check_status` drops `kontext_ready` and reports a `klein` block instead.
+
+- **`klein.py` replaces `kontext_workflow.py`.** Klein runs on its own ComfyUI
+  (v0.41, port 8189), shared with the other two servers and started on first
+  use. The main ComfyUI stays on v0.25.1 for LTX.
+- **`box`** tells Klein where to draw and how big, then pastes back only that
+  region. Klein redraws the whole frame even for a boxed edit, so this is what
+  keeps the rest of the frame untouched: measured change outside the box, 0.
+  The full redrawn frame is still returned (`full`) for `composite_patch`.
+- **Edits come back at the source's exact size**, so `composite_patch` no longer
+  has to register a resized patch. Kontext's snapping to its own resolutions
+  was why `register()` existed; it stays for any patch that arrives at another
+  size.
+- **`animate_shot` and `edit_frame` refuse to start while the other ComfyUI has
+  a job.** With LTX and the edit model on one ComfyUI, its serial queue at least
+  ordered them; across two, nothing does. A Kontext call during an LTX batch
+  once hung for five hours.
+- The skill's standalone `kontext_edit.py` is replaced by `klein_edit.py`, same
+  behavior as the tool. Its seed-1 output on the test frame was pixel-identical
+  to the server's.
+
+**Measured on one damaged test frame** (a sword hand LTX had blurred,
+1920x1088, boxed, three seeds): ~97 s a seed against Kontext Q6_K's ~233 s.
+**0 usable by the artist's eye** — the closest had a bad thumb — and Klein's
+crisp inking stood out against the soft LTX frames. (The instruction asked for
+"crisp black outlines"; that wording is a confound.)
+
+**Corrected: no machine repair of an LTX hand has ever shipped.** Earlier
+docs here said Kontext Q6_K "repairs hands" and rescued every damaged frame it
+was given. Its best takes were bases the artist still drew on, and every
+repaired hand in the test scene's final video was finished by the artist's
+hand, before the Q6 model was even downloaded — one over a Q3 Kontext base, the
+rest drawn outright. Klein replaced Kontext because nothing working was
+lost, not because it repairs hands better.
+
 ## 1.2.0 — 2026-08-09
 
 **Breaking default change: `animate_shot` now renders at 1920x1088**, up from

@@ -7,12 +7,13 @@ rule. Duplicated rather than imported because each server folder must stay
 independently installable (README convention, ARCHITECTURE.md §2.5).
 
 What differs from the music server: outputs come back from /history as an
-`images` list (LTX's SaveAnimatedWEBP and Kontext's SaveImage both report under
-that key, animated or not), and this server needs to PUSH an illustration into
+`images` list (LTX's SaveAnimatedWEBP reports under that key even though it
+is animated), and this server needs to PUSH an illustration into
 ComfyUI's input folder before it can be referenced by LoadImage.
 
-Everything here is model-agnostic. Graph construction lives in ltx_workflow.py
-and kontext_workflow.py; nothing in this module knows what LTX or Kontext is.
+Everything here is model-agnostic. Graph construction lives in ltx_workflow.py;
+nothing in this module knows what LTX is. Klein edits go to a separate ComfyUI
+through klein.py, which carries its own plumbing.
 """
 
 from __future__ import annotations
@@ -31,8 +32,8 @@ COMFY_LAUNCH = os.environ.get("WEBCOMIC_ANIME_COMFY_LAUNCH", "run_nvidia_gpu.bat
 AUTOLAUNCH = os.environ.get("WEBCOMIC_ANIME_AUTOLAUNCH", "1").lower() not in ("0", "false", "no", "")
 LAUNCH_TIMEOUT = int(os.environ.get("WEBCOMIC_ANIME_LAUNCH_TIMEOUT", "180"))
 
-# A 17-frame distilled LTX take is ~65 s on a 6 GB card, but `dev` at len 25 and
-# a Kontext seed sweep both run far longer, and the first call of a session also
+# A 17-frame distilled LTX take is ~65 s on a 6 GB card, but `dev` at len 25
+# runs far longer, and the first call of a session also
 # pays model load. 1800 s is the same headroom the music server allows.
 DEFAULT_TIMEOUT = int(os.environ.get("WEBCOMIC_ANIME_TIMEOUT", "1800"))
 
