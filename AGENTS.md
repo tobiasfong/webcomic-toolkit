@@ -16,9 +16,12 @@ regenerated on it from scratch. **Both image servers are Klein only**: the
 character server since its v2.0.0 (`servers/character-panel-mcp/klein_workflow.py`)
 and the background server since its v3.0.0 (`servers/webcomic-background-mcp/klein.py`).
 Their CHANGELOGs record what replaced each FLUX.1 part. The anime-production
-server's `edit_frame` moved too, in its v2.0.0. FLUX.1's model files stay
-installed only until its last user moves: the visual novel's camera-angle tool
-(Kontext plus a camera LoRA).
+server's `edit_frame` moved too, in its v2.0.0. **FLUX.1 is uninstalled**
+(2026-10-17): its last user, a camera-angle script (Kontext plus a camera
+LoRA) in the game's own tools, could no longer run once the servers dropped
+FLUX.1, and was deleted with the other scripts in the same state. Its model
+files — both Q6_K GGUFs, the ControlNet, T5 and CLIP-L, the LoRAs and the VAE,
+32.4 GB — are gone. Nothing in this repo loads them.
 
 ### Setup
 
