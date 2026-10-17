@@ -1,88 +1,95 @@
 """
-setup_models.py — download the models this server needs into a ComfyUI install.
+setup_models.py — download the FLUX 3 Klein files this server needs.
 
 Usage:
-    python setup_models.py --comfy "C:/AI/ComfyUI_windows_portable/ComfyUI"
+    set HF_TOKEN=hf_...           (PowerShell: $env:HF_TOKEN = "hf_...")
+    python setup_models.py --comfy "C:/AI/ComfyUI_flux3/ComfyUI"
 
-**FLUX is required.** As of v2.0.0 this server has no Stable Diffusion path —
-the SD1.5 pipeline was removed so that plates match the FLUX-generated figures
-from the sibling character-panel server. There is no lower-quality fallback;
-without these models the server cannot render.
+**Klein is required.** As of v3.0.0 this server renders only with FLUX 3 Image
+Klein; FLUX.1-dev, its manhwa LoRA, ControlNet and Kontext were removed. There
+is no fallback model.
 
-Downloads (skips anything already present):
-  - FLUX.1-dev unet (GGUF) -> models/unet        the renderer
-  - FLUX Kontext dev (GGUF)-> models/unet        image editing (edit_background)
-  - T5-XXL + CLIP-L        -> models/clip        FLUX's dual text encoders
-  - FLUX VAE               -> models/vae
-  - ControlNet Union Pro 2 -> models/controlnet  composition / sketch control
-  - manwha_style LoRA      -> models/loras       the manhwa aesthetic
+Before running this:
 
-Disk/VRAM: these are the Q6_K quantisations (~9.85 GB each). They do NOT need
-to fit in VRAM — ComfyUI streams unet weights from system RAM, so VRAM was
-never the constraint, and the old "Q3_K_S so FLUX fits a 6 GB card" reasoning
-was wrong (see CLAUDE.md, quantization). Q6 buys nothing for plain generation;
-it was adopted because bit depth measurably matters for Kontext editing.
-You need ONE of the dev unets to generate; Kontext is only needed for
-edit_background.
+1. **A ComfyUI of v0.41.0 or later** (or the 0.41.1 backport). Klein's nodes do
+   not exist in older builds. A separate portable install is the safe choice if
+   your existing ComfyUI carries add-ons you rely on: this project keeps Klein
+   at C:/AI/ComfyUI_flux3 on port 8189, and the server starts it on first use
+   (WEBCOMIC_BG_KLEIN_DIR / WEBCOMIC_BG_KLEIN_URL to change either).
+2. **Accept the license on Hugging Face.** The repo is gated: open
+   https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy, accept,
+   then create a read token at https://huggingface.co/settings/tokens. Each BFL
+   repo needs its own click -- accepting the main Klein repo does not cover
+   this one.
 
-Requires a ComfyUI-GGUF custom node install (city96/ComfyUI-GGUF) — the stock
-loader cannot read .gguf.
+Downloads (skips anything already present), ~11 GB in all:
+  - flux3_image_klein_sd_int8_convrot   -> models/diffusion_models   the renderer
+  - qwen3vl_4b_int8_convrot             -> models/text_encoders      text encoder
+  - flux2-vae                           -> models/vae
 
-No API token needed for Civitai; Hugging Face links are public.
+INT8 is the build for RTX 30/40-series (Ampere and Ada have INT8 tensor cores;
+FP8 needs Ada or later to run natively, NVFP4 needs Blackwell). It runs on a
+6 GB laptop card; the repo also has FP8 and NVFP4 builds if your card suits
+them -- point WEBCOMIC_BG_KLEIN_MODEL / WEBCOMIC_BG_KLEIN_TE at them.
+
+License: FLUX Kommunity License v1.0. Commercial use of OUTPUTS is permitted
+for users under US$5M gross annual revenue; above that, BFL's self-hosted
+license or API applies. Read it on the repo page before relying on it.
 """
 import argparse
 import os
 import urllib.request
 
-# (subfolder, dest_filename, url) — dest_filename must match the entries in
-# flux_workflow.py's FLUX_MODELS registry, so downloads land under the names
-# the tool expects.
+REPO = "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main"
+
+# (models subfolder, path in the repo, saved-as name). The saved-as names are
+# what klein.py and the character-panel server load. The diffusion model is
+# saved under the name ComfyUI's docs give it; BFL's repo now calls the same
+# file flux3-image-klein-int8-convrot (byte-identical, 5,827,874,779 bytes).
+# It is the step-DISTILLED model -- not the -base- file beside it, which is for
+# fine-tuning and needs many more steps.
 MODELS = [
-    ("unet", "flux1-dev-Q6_K.gguf",
-     "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q6_K.gguf"),
-    ("unet", "flux1-kontext-dev-Q6_K.gguf",                      # for edit_background
-     "https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF/resolve/main/flux1-kontext-dev-Q6_K.gguf"),
-    ("clip", "t5xxl_fp8_e4m3fn.safetensors",
-     "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"),
-    ("clip", "clip_l.safetensors",
-     "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"),
-    ("vae", "ae.safetensors",
-     "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors"),
-    ("controlnet", "flux_controlnet_union_pro2.safetensors",
-     "https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0/resolve/main/diffusion_pytorch_model.safetensors"),
-    ("loras", "manwha_style.safetensors",
-     "https://civitai.com/api/download/models/793264"),
+    ("diffusion_models", "diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+     "flux3_image_klein_sd_int8_convrot.safetensors"),
+    ("text_encoders", "text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+     "qwen3vl_4b_int8_convrot.safetensors"),
+    ("vae", "vae/flux2-vae.safetensors", "flux2-vae.safetensors"),
 ]
 
 
-def _download(url, dest):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+def _download(url, dest, token):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req) as r, open(dest, "wb") as f:
         while True:
             chunk = r.read(1 << 20)
             if not chunk:
                 break
             f.write(chunk)
-    # sanity: catch an HTML login/error page saved under a model filename
+    # Catch an HTML login/error page saved under a model filename: a real
+    # .safetensors starts with an 8-byte header length followed by JSON.
     with open(dest, "rb") as f:
-        if dest.endswith(".gguf"):
-            if f.read(4) != b"GGUF":
-                raise RuntimeError("downloaded file is not a valid GGUF (login page?)")
-        else:
-            f.seek(8)
-            if f.read(1) != b"{":
-                raise RuntimeError("downloaded file is not a valid safetensors (login page?)")
+        f.seek(8)
+        if f.read(1) != b"{":
+            raise RuntimeError("not a valid safetensors file -- license not accepted, or bad token?")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--comfy", required=True, help="path to the ComfyUI folder (contains models/)")
+    ap.add_argument("--comfy", required=True,
+                    help="the Klein install's ComfyUI folder (the one containing models/)")
     a = ap.parse_args()
     models_root = os.path.join(a.comfy, "models")
     if not os.path.isdir(models_root):
         raise SystemExit(f"no models/ under {a.comfy}")
+    token = os.environ.get("HF_TOKEN")
+    if not token:
+        print("HF_TOKEN is not set -- the repo is gated, so downloads will fail. "
+              "See the instructions at the top of this file.")
 
-    for sub, name, url in MODELS:
+    for sub, repo_path, name in MODELS:
         folder = os.path.join(models_root, sub)
         os.makedirs(folder, exist_ok=True)
         dest = os.path.join(folder, name)
@@ -91,8 +98,8 @@ def main():
             continue
         print(f"downloading {sub}/{name} ...", flush=True)
         try:
-            _download(url, dest)
-            print(f"  done: {os.path.getsize(dest) // (1<<20)} MB")
+            _download(f"{REPO}/{repo_path}", dest, token)
+            print(f"  done: {os.path.getsize(dest) // (1 << 20)} MB")
         except Exception as e:
             if os.path.exists(dest):
                 os.remove(dest)

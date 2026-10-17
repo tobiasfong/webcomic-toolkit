@@ -1,16 +1,18 @@
 """
 Webcomic Background Generator — MCP Server
 ==========================================
-A local Model Context Protocol server that generates stylized background
-art for comic panels in any aesthetic the user references, wrapping a local
-ComfyUI + FLUX.1-dev pipeline (GGUF unet + ControlNet + Kontext editing).
+A local Model Context Protocol server that generates manhwa-style background
+plates for comic panels, wrapping FLUX 3 Image Klein on a local ComfyUI.
 
-FLUX ONLY as of v2.0.0 — the SD1.5 pipeline was removed. See CHANGELOG for
-why: the sibling character-panel server generates figures with FLUX, and
-SD1.5 plates under FLUX characters read as a composite.
+KLEIN ONLY as of v3.0.0. FLUX.1-dev, and with it the manhwa LoRA, ControlNet
+and Kontext, was removed as SD1.5 was in v2.0.0 and for the same reason: the
+sibling character-panel server renders figures with Klein, and a plate from a
+different model under them reads as a composite. klein.py records what
+replaced each FLUX.1 part and the measurements behind it.
 
-Requires a running ComfyUI instance (default http://127.0.0.1:8188).
-Runs locally over stdio; the GPU work happens on this machine.
+Requires the Klein ComfyUI (v0.41+, default http://127.0.0.1:8189), which the
+server starts on first use. Runs locally over stdio; the GPU work happens on
+this machine.
 """
 
 import os
@@ -18,8 +20,7 @@ import sys
 # Make imports work regardless of the working directory Claude Desktop launches us from
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
-import comfy
-import flux_workflow
+import klein
 import world
 import citygen
 import props
@@ -29,22 +30,11 @@ mcp = FastMCP("webcomic-background-generator")
 # Where finished backgrounds are written
 OUTPUT_DIR = os.environ.get("WEBCOMIC_BG_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
 
-# FLUX.1-dev is the only pipeline. The SD1.5 "manhwa recipe" (ManhwaUltimate
-# LoRA + "fantasy-style" trigger + painterly/cinematic suffix) was removed with
-# the SD1.5 path: the LoRA cannot load on FLUX at all, and that suffix's
-# mood/lighting wording is exactly what dragged FLUX toward semi-realism.
-# FLUX's own terse suffix lives in flux_workflow.FLUX_PROMPT_SUFFIX.
-DEFAULT_MODEL = os.environ.get("WEBCOMIC_BG_MODEL", "flux_manwha")
 
-
-def _recipe(prompt: str, extra_negative: str | None) -> str:
-    """Build the negative prompt. FLUX barely honours negatives at cfg=1.0 —
-    steer with the POSITIVE prompt instead, and keep mood/lighting words out
-    of it entirely (see flux_workflow.py's recipe notes)."""
-    negative = flux_workflow.FLUX_NEGATIVE
-    if extra_negative:
-        negative = f"{negative}, {extra_negative}"
-    return negative
+def _fail(e: Exception) -> str:
+    return (f"Generation failed: {e}\n"
+            f"Is the Klein ComfyUI installed at {klein.KLEIN_DIR} (port {klein.KLEIN_PORT})? "
+            f"See setup_models.py.")
 
 
 @mcp.tool()
@@ -52,87 +42,58 @@ def generate_background(
     prompt: str,
     sketch_path: str | None = None,
     match_canvas_to: str | None = None,
-    model: str = DEFAULT_MODEL,
     width: int | None = None,
     height: int | None = None,
     seed: int | None = None,
-    controlnet_strength: float = 1.0,
-    extra_negative: str | None = None,
     location: str | None = None,
-    location_denoise: float = 0.65,
     project: str = world.DEFAULT_PROJECT,
-    lora: str | None = None,
-    lora_strength: float | None = None,
-    hires: bool = False,
 ) -> str:
-    """Generate a manhwa/anime-style background plate for a comic panel.
+    """Generate a manhwa-style background plate for a comic panel (FLUX 3 Klein).
 
-    The aesthetic comes from the model itself (no IP-Adapter / style ref). Drive
-    palette and content through the prompt; drive composition with an optional
-    sketch.
+    PROMPTING -- rules measured on FLUX.1 and kept for Klein (the far-distance
+    one has already recurred on Klein):
+      • Name what the place IS, as a list of physical objects. No mood,
+        lighting or "cinematic" wording; darken afterwards with grade_plate.
+      • No negatives. There is no negative-prompt parameter, on purpose: the
+        model draws what a prompt names, including what it is told to avoid.
+      • Name whatever fills the far distance (forest, hills, a rampart), or the
+        model fills it from photographs -- the modern-skyline failure.
+      • Open with the period and place ("Ming dynasty ... in Anhui").
+    The house style sentence is appended automatically.
 
-    Projects: `project` namespaces the World Builder canon and the output folder so
-    you can work on several comics from one server without their locations colliding
-    (e.g. "comic_a" vs "comic_b"). References (sketch library) are shared, not
-    namespaced. Defaults to WEBCOMIC_BG_PROJECT or "default".
+    Projects: `project` namespaces the World Builder canon and the output folder,
+    so several comics share one server without their locations colliding.
 
-    World Builder: pass `location` (an id registered via register_location in the
-    SAME project) to generate a NEW panel of an ALREADY-established place. The
-    location's canonical image seeds the render (img2img) so it stays recognisably
-    the same scene from a new angle / time of day. Omit `location` for a brand-new
-    place (then register the keeper afterwards).
-
-    `location_denoise` tuning (validated against test panels):
-      • 0.40–0.48 — subtle variation / relight; hugs the canon tightly
-      • 0.52–0.58 — new lighting or time of day, structure well preserved
-      • 0.65 (default) — new angle with richer variation; still on-location
-      • ≥0.70 — drifts off the location AND the checkpoint's character bias
-        returns (a stray figure appears); not recommended
-    Figure suppression is automatically reinforced whenever a location is used.
+    World Builder: pass `location` (an id registered via register_location in
+    the SAME project) to draw an ALREADY-established place. Its canonical plate
+    is given to the model as a reference, so it stays recognizably the same
+    place. Unlike the old img2img path this is not tied to the canon's framing:
+    ask for a new angle, another part of the room, or another time of day in
+    the prompt and it follows. Omit `location` for a brand-new place, then
+    register the keeper.
 
     Args:
-        prompt: Description of the scene (e.g. "hive city corridor at night, deep
-            blue moonlight"). Avoid describing characters — this makes empty
-            backgrounds to draw over. Put palette/mood in the prompt.
+        prompt: The scene as physical objects (see rules above). Do not describe
+            characters -- these are empty plates to composite figures onto.
+        sketch_path: Optional composition sketch, white lines on black (a 3D
+            render from citygen/props, or tools/make_sketch.py on a photo or
+            drawing). It fixes the camera and where every object sits; the
+            model draws the scene inside it.
         match_canvas_to: Path to a drawn character PNG. Sizes the plate to that
-            image's canvas so the two line up 1:1 when you composite — the
-            practical half of the old `character_path` mode, without the SD1.5
-            inpaint. The character is NOT used to condition the render (FLUX has
-            no equivalent path); it only sets the output dimensions, and the
-            response reports the numbers to hand to `compose_panel`. Long side is
-            capped for VRAM; dimensions are rounded to a multiple of 16.
-        sketch_path: Optional rough perspective sketch (white lines on black) —
-            ControlNet forces the output to match this composition/angle. Use an
-            edge map of a reference (e.g. a Warhammer 40K hive photo via
-            tools/make_sketch.py) to force a 40K structure instead of a generic one.
-        model: Kept for forward compatibility; "flux_manwha" is the only
-            pipeline. SD1.5 was removed in v2.0.0.
-        width / height: Output size in px. Default 768x512; with `location`,
-            the default is the location image's own size, and a size given
-            explicitly is honored -- the location is scaled to cover it and
-            center-cropped, never stretched.
+            image's canvas so the two line up 1:1 when composited, and reports
+            the numbers to hand to compose_panel. The character does not
+            condition the render; it only sets the size.
+        width / height: Output size in px, rounded to a multiple of 16. Default
+            1024x768; with `location`, the location image's own size. Wide
+            interiors read bigger on a wide canvas (1152x704) -- aspect ratio
+            conveys scale better than adjectives.
         seed: Fixed seed for reproducibility; omit for a random one.
-        controlnet_strength: How strictly to follow the sketch, 0.0–1.0.
-        extra_negative: Extra terms appended to the default negative prompt.
-        project: Which comic's canon/output to use (e.g. "comic_a", "comic_b").
-        lora: Style LoRA filename in models/loras. Known options: "ManhwaUltimate
-            .safetensors" (trigger "fantasy-style" — gothic/western manhwa, the
-            default aesthetic) or "NijiV5Style.safetensors" (trigger "midjourney"
-            — strong East-Asian architectural bias, pagodas/lanterns; good for
-            illustration-style settings, but it will override a gothic/western ControlNet
-            sketch's composition, so don't use it for Starry Knight/hive scenes).
-            Remember to include the trigger word in your prompt. Omit for the
-            server default (WEBCOMIC_BG_LORA env); pass "" to force the LoRA off.
-        lora_strength: LoRA strength (default 0.8 / WEBCOMIC_BG_LORA_STRENGTH).
-        hires: After the base render, upscale 1.5x and re-detail with a light
-            img2img pass — recommended for dense architectural panels that come
-            out soft at native SD resolution.
+        location: Registered location id to keep consistent with.
+        project: Which comic's canon/output to use.
 
     Returns:
         The filesystem path to the generated PNG.
     """
-    negative = _recipe(prompt, extra_negative)
-
     canvas_note = ""
     if match_canvas_to:
         if not os.path.exists(match_canvas_to):
@@ -140,13 +101,10 @@ def generate_background(
         from PIL import Image
         with Image.open(match_canvas_to) as im:
             cw, ch = im.size
-        # 1600, not 1024. The old value was labeled a "6 GB VRAM ceiling",
-        # but VRAM is not the constraint on this card -- ComfyUI streams weights
-        # from system RAM, and plates render at 1600x896 routinely. The cap was
-        # silently downscaling a matched canvas (1600x896 -> 1024x560), so a
-        # plate composited behind full-size figures came back small and soft.
-        # Kept as a cap rather than removed: FLUX starts duplicating elements
-        # past roughly 2 MP, and 1600x896 is 1.43 MP.
+        # Capped at 1600 on the long side. VRAM is not what limits this card --
+        # ComfyUI streams weights from system RAM -- but very large canvases
+        # invite duplicated elements, and 1600x896 is a size plates have
+        # rendered at cleanly.
         MAX_SIDE = 1600
         k = min(1.0, MAX_SIDE / max(cw, ch))
         width = max(256, int(cw * k) // 16 * 16)
@@ -157,7 +115,12 @@ def generate_background(
                        f"feet_x={width // 2}, feet_y={height} "
                        f"(character-panel-mcp's compose_panel)\n")
 
-    location_ref_path = None
+    refs, lead = [], ""
+    if sketch_path:
+        if not os.path.exists(sketch_path):
+            return f"sketch_path not found: {sketch_path}"
+        refs.append(sketch_path)
+        lead = klein.SKETCH_LEAD
     if location:
         loc = world.get_location(location, project=project)
         if loc is None:
@@ -165,37 +128,32 @@ def generate_background(
             return (f"Unknown location '{location}' in project '{project}'. "
                     f"Registered: {known}. "
                     f"Generate it as a new place, then register the keeper.")
-        location_ref_path = loc["canonical_path"]
+        ref = loc["canonical_path"]
+        refs.append(ref)
+        name = loc.get("name") or location
+        if sketch_path:
+            # The sketch is image 1, so the location is image 2.
+            lead += (f"Image 2 shows {name}, an established place in this story; "
+                     f"draw it as that same place, with its architecture, materials "
+                     f"and colors. ")
+        else:
+            lead = klein.location_lead(name)
         if width is None or height is None:
             from PIL import Image
-            with Image.open(location_ref_path) as im:
+            with Image.open(ref) as im:
                 lw, lh = im.size
             width = width or lw
             height = height or lh
-    width = width or 768
-    height = height or 512
+    width = width or 1024
+    height = height or 768
 
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
-        out_path = flux_workflow.generate(
-            prompt=prompt,
-            out_dir=out_dir,
-            negative=negative,
-            width=width,
-            height=height,
-            seed=seed,
-            sketch_path=sketch_path,
-            sketch_is_synthetic=False,   # user-supplied sketch may be hand-drawn
-            location_ref_path=location_ref_path,
-            location_denoise=location_denoise,
-            lora=lora,
-            lora_strength=lora_strength,
-            hires=hires,
-        )
-        return f"Background generated: {out_path}\n" + canvas_note
-    except comfy.ComfyUIError as e:
-        return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {comfy.COMFY_URL}?")
+        out_path = klein.generate(lead + prompt, out_dir, width, height,
+                                  seed=seed, refs=refs)
+    except klein.KleinError as e:
+        return _fail(e)
+    return f"Background generated: {out_path}\n" + canvas_note
 
 
 @mcp.tool()
@@ -203,14 +161,9 @@ def generate_city_scene(
     prompt: str,
     camera: str = "vista",
     city_seed: int = 40001,
-    model: str = DEFAULT_MODEL,
-    width: int = 896,
-    height: int = 488,
+    width: int = 1344,
+    height: int = 732,
     seed: int | None = None,
-    hires: bool = True,
-    lora: str | None = None,
-
-    extra_negative: str | None = None,
     project: str = world.DEFAULT_PROJECT,
     use_plan: bool = False,
     focus: str | None = None,
@@ -221,47 +174,36 @@ def generate_city_scene(
     ("Metropolis mode").
 
     Builds a 3D gothic city, renders it headless to a composition sketch, and
-    paints it with the validated manhwa recipe (webtoon prompt language, manhwa
-    LoRA, soft ControlNet, hi-res finishing pass). Two sources of geometry:
+    has Klein draw the city the sketch lays out -- geometry from math, the look
+    from the model. Two sources of geometry:
 
     • One-shot (`use_plan=False`, default): a self-contained city from
       `city_seed`. Same seed = same city, forever.
-    • Persistent (`use_plan=True`): the project's GROWABLE city — the plan in
-      world/<project>/city_plan.json built with add_city_district. Start with a
-      neighborhood, keep appending districts as the story expands; every earlier
-      district re-renders identically. Aim the camera with `focus` (a district
-      id). This is the World Builder's structural canon: the 2D locations you
-      register are snapshots of it.
-
-    Best for wide vista/establishing shots — street-level close-ups tend to
-    regress to a hard cel look (use a photo-reference sketch for those).
+    • Persistent (`use_plan=True`): the project's GROWABLE city -- the plan in
+      world/<project>/city_plan.json built with add_city_district. Every
+      earlier district re-renders identically; aim the camera with `focus`.
 
     Args:
-        prompt: Scene mood + palette (e.g. "grimdark hive city at dusk, toxic
-            amber smog, furnace-orange windows"). Derive color language from
-            your reference images for the strongest palettes. The webtoon
-            recipe wording is appended automatically.
+        prompt: The city as physical objects -- towers, buttresses, rooftops --
+            AND what stands around it: say where the ground is and what the sky
+            is. The sketch's black areas are filled from the prompt; a prompt
+            naming only buildings gave a city floating in a gray void.
         camera: "vista" (elevated 3/4, default), "high" (aerial establishing),
-            "canyon" (looking up between buildings), or "street" (see caveat).
+            "canyon" (looking up between buildings), or "street".
         city_seed: One-shot mode only: which city. Record it when you register
             the result as a World Builder location.
-        model / width / height / seed: As generate_background.
-        hires: Finish with the 1.5x upscale + re-detail pass (default True —
-            these dense panels need it).
-        lora: FLUX style LoRA; defaults to manwha_style. Pass "" to disable.
-        extra_negative: Extra negative terms.
+        width / height / seed: Output size and seed. The sketch is rendered at
+            exactly this size, so an anchor mask lines up with the plate.
         project: Which comic's plan/output to use.
         use_plan: Render the project's persistent city plan instead of a
             one-shot seeded city.
         focus: Plan mode: district id to aim the camera at (default: whole-city
             centroid).
-        anchor_x / anchor_z: Optional character placement anchor — the world
-            position where a character will stand. Also writes an occlusion-aware
+        anchor_x / anchor_z: Optional character placement anchor -- the world
+            position where a character will stand. Writes an occlusion-aware
             mask (white = where the character goes) and reports the on-screen
-            pixel height and feet line, so the artist draws the character at
-            exactly the right scale and perspective. The mask matches the hires
-            output resolution. A human is ~4.6 world units tall; streets are
-            ~26 units wide.
+            pixel height and feet line. A human is ~4.6 world units tall;
+            streets are ~26 units wide.
 
     Returns:
         The filesystem path to the generated PNG (plus the sketch path, for reuse).
@@ -281,18 +223,16 @@ def generate_city_scene(
                          f"{', focus: ' + focus if focus else ''}\n")
         else:
             meshes = citygen.build_city(city_seed)
-        # 3D city -> composition sketch, rendered at 1.5x the gen size
-        sw, sh = int(width * 1.5), int(height * 1.5)
         sketch_path, _ = citygen.city_sketch(
             os.path.join(out_dir, "city_sketches"),
             city_seed=city_seed, camera=cam,
-            width=sw, height=sh, meshes=meshes, tag=tag,
+            width=width, height=height, meshes=meshes, tag=tag,
         )
         anchor_note = ""
         if anchor_x is not None and anchor_z is not None:
             import cv2
             mask, info = citygen.render_anchor(meshes, cam, anchor_x, anchor_z,
-                                               width=sw, height=sh)
+                                               width=width, height=height)
             mask_path = sketch_path.replace("_sketch.png", "_anchor.png")
             cv2.imwrite(mask_path, mask)
             if info is None:
@@ -302,34 +242,22 @@ def generate_city_scene(
                 anchor_note = (f"  anchor mask: {mask_path}\n"
                                f"  character at ({anchor_x}, {anchor_z}): {vis}, "
                                f"~{info['height_px']:.0f}px tall, feet at "
-                               f"y={info['feet_y_px']:.0f}px (at hires scale)\n")
+                               f"y={info['feet_y_px']:.0f}px\n")
     except (ValueError, world.WorldError) as e:
         return f"City render failed: {e}"
 
-    negative = _recipe(prompt, extra_negative)
-
     try:
-        out_path = flux_workflow.generate(
-            prompt=prompt,
-            out_dir=out_dir,
-            negative=negative,
-            width=width,
-            height=height,
-            seed=seed,
-            sketch_path=sketch_path,
-            lora=lora,
-            hires=hires,
-        )
-        src = "plan" if use_plan else f"city_seed {city_seed}"
-        return (f"City panel generated: {out_path}\n"
-                f"  source: {src}  camera: {camera}\n"
-                + plan_note + anchor_note +
-                f"  sketch (reusable): {sketch_path}\n"
-                f"Re-render the SAME city from another angle by keeping the source "
-                f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")
-    except comfy.ComfyUIError as e:
-        return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {comfy.COMFY_URL}?")
+        out_path = klein.generate(klein.SKETCH_LEAD + prompt, out_dir, width, height,
+                                  seed=seed, refs=[sketch_path], stem="city")
+    except klein.KleinError as e:
+        return _fail(e)
+    src = "plan" if use_plan else f"city_seed {city_seed}"
+    return (f"City panel generated: {out_path}\n"
+            f"  source: {src}  camera: {camera}\n"
+            + plan_note + anchor_note +
+            f"  sketch (reusable): {sketch_path}\n"
+            f"Re-render the SAME city from another angle by keeping the source "
+            f"({'the plan' if use_plan else 'city_seed'}) and changing camera/focus.")
 
 
 @mcp.tool()
@@ -340,28 +268,24 @@ def generate_prop_scene(
     setting: str = "shelter",
     camera_angle: float = 30.0,
     camera_elev: float = 10.0,
-    model: str = DEFAULT_MODEL,
-    width: int = 896,
-    height: int = 672,
+    width: int = 1344,
+    height: int = 1008,
     seed: int | None = None,
-    hires: bool = True,
-    lora: str | None = None,
-    controlnet_strength: float = 0.75,
-    extra_negative: str | None = None,
     project: str = world.DEFAULT_PROJECT,
 ) -> str:
-    """Generate a panel of repeated 3D OBJECTS (props) in a scene — the
+    """Generate a panel of repeated 3D OBJECTS (props) in a scene -- the
     citygen treatment extended from buildings to objects.
 
-    Diffusion models fuse/crop/mutate rows of repeated objects when asked to
-    invent their structure (a bike rack, market stalls, carts). This tool
-    builds real 3D prop meshes, places them in the scene with true occlusion,
-    auto-frames a camera so nothing clips, renders a projection-correct sketch
-    headlessly, and lets the checkpoint paint it — geometry from math, beauty
-    from the model.
+    Rows of repeated objects (a bike rack, market stalls, carts) fuse, crop or
+    mutate when a model invents their structure. This tool builds real 3D prop
+    meshes, places them with true occlusion, auto-frames a camera so nothing
+    clips, renders a projection-correct sketch, and has Klein draw the scene
+    inside it. On the bike-row sketch every bicycle and the bollard landed
+    exactly where the sketch put them.
 
     Args:
-        prompt: Scene mood/setting/palette (webtoon recipe wording appended).
+        prompt: The setting around the props as physical objects (the ground,
+            what stands behind them, the sky) -- the sketch only fixes the props.
         objects: Explicit placement: [{"type": "bicycle", "x": 0, "z": 0,
             "yaw": 0, "scale": 1}, ...]. World scale: 1 unit ≈ 0.37 m (a human
             is 4.6 units; a bike wheel is 0.92). Available types: "bicycle".
@@ -373,10 +297,7 @@ def generate_prop_scene(
         camera_angle: Yaw around the props, degrees. Keep ≥ ~25 — props are
             flat cutouts and collapse to a sliver seen edge-on.
         camera_elev: Camera elevation, degrees.
-        model / width / height / seed / hires / lora / extra_negative /
-            project: As generate_city_scene. controlnet_strength default 0.75:
-            props need a firmer hold on the sketch than city vistas (0.6), but
-            0.85+ still causes the cel-outline look.
+        width / height / seed / project: As generate_city_scene.
 
     Returns:
         Path to the generated PNG (plus the reusable sketch path).
@@ -384,37 +305,24 @@ def generate_prop_scene(
     out_dir = os.path.join(OUTPUT_DIR, world._slug(project))
     try:
         obs = objects if objects else props.bike_row(n=n_bikes)
-        sw, sh = int(width * 1.5), int(height * 1.5)
         sketch_path, _ = props.prop_sketch(
             os.path.join(out_dir, "prop_sketches"), obs,
-            setting=setting, width=sw, height=sh,
+            setting=setting, width=width, height=height,
             angle_deg=camera_angle, elev_deg=camera_elev,
             tag=f"props_{len(obs)}",
         )
     except ValueError as e:
         return f"Prop render failed: {e}"
 
-    negative = _recipe(prompt, extra_negative)
-
     try:
-        out_path = flux_workflow.generate(
-            prompt=prompt,
-            out_dir=out_dir,
-            negative=negative,
-            width=width,
-            height=height,
-            seed=seed,
-            sketch_path=sketch_path,
-            lora=lora,
-            hires=hires,
-        )
-        return (f"Prop scene generated: {out_path}\n"
-                f"  objects: {len(obs)}  setting: {setting}  "
-                f"camera: {camera_angle}°/{camera_elev}°\n"
-                f"  sketch (reusable): {sketch_path}")
-    except comfy.ComfyUIError as e:
-        return (f"Generation failed: {e}\n"
-                f"Is ComfyUI running at {comfy.COMFY_URL}?")
+        out_path = klein.generate(klein.SKETCH_LEAD + prompt, out_dir, width, height,
+                                  seed=seed, refs=[sketch_path], stem="props")
+    except klein.KleinError as e:
+        return _fail(e)
+    return (f"Prop scene generated: {out_path}\n"
+            f"  objects: {len(obs)}  setting: {setting}  "
+            f"camera: {camera_angle}°/{camera_elev}°\n"
+            f"  sketch (reusable): {sketch_path}")
 
 
 @mcp.tool()
@@ -560,15 +468,20 @@ def list_projects() -> str:
 
 @mcp.tool()
 def check_status() -> str:
-    """Check whether the ComfyUI backend is reachable and ready."""
-    import requests
-    try:
-        r = requests.get(f"{comfy.COMFY_URL}/system_stats", timeout=10)
-        if r.status_code == 200:
-            return f"ComfyUI is up at {comfy.COMFY_URL}."
-        return f"ComfyUI responded with HTTP {r.status_code}."
-    except Exception as e:
-        return f"ComfyUI not reachable at {comfy.COMFY_URL}: {e}"
+    """Check whether the Klein ComfyUI is up, and whether its model files are installed."""
+    if klein.is_up():
+        return f"Klein ComfyUI is up at {klein.KLEIN_URL}."
+    if not os.path.isdir(klein.KLEIN_DIR):
+        return (f"Klein ComfyUI is not installed at {klein.KLEIN_DIR}. "
+                f"See setup_models.py.")
+    models = os.path.join(klein.KLEIN_DIR, "ComfyUI", "models")
+    want = {"diffusion_models": klein.MODEL, "text_encoders": klein.TEXT_ENCODER, "vae": klein.VAE}
+    missing = [f"{d}/{f}" for d, f in want.items() if not os.path.isfile(os.path.join(models, d, f))]
+    if missing:
+        return (f"Klein ComfyUI is not running, and these model files are missing: "
+                f"{', '.join(missing)}. See setup_models.py.")
+    return (f"Klein ComfyUI is not running at {klein.KLEIN_URL}, but it is installed "
+            f"with all three model files; the first render starts it.")
 
 
 @mcp.tool()
@@ -585,8 +498,9 @@ def grade_plate(
     """Color-grade a finished plate for mood, without touching the original.
 
     Use this INSTEAD of asking for mood in a prompt. Mood words ("grimdark",
-    "dim lighting", "deep shadow", "muted palette") drag FLUX off the manhwa
-    aesthetic into semi-realistic murk — measured, v1.9.0. Generate a clean,
+    "dim lighting", "deep shadow", "muted palette") dragged FLUX.1 off the
+    manhwa aesthetic into semi-realistic murk (measured, v1.9.0), and the
+    rule carries over to Klein, which takes color words literally. Generate a clean,
     bright, correctly-styled plate, then darken it here: deterministic, instant,
     CPU-only, and reversible because the master is never modified.
 
@@ -654,7 +568,7 @@ def extract_palette(image_path: str, n: int = 5) -> str:
             f"  words: {', '.join(words)}\n"
             f"  prompt fragment: \"{', '.join(words)}\"\n"
             f"NOTE: Add color words only — do NOT add mood/lighting wording "
-            f"(\"grimdark\", \"deep shadow\"); that pushes FLUX toward "
+            f"(\"grimdark\", \"deep shadow\"); that pushes the model toward "
             f"semi-realism. Darken with grade_plate afterwards instead.")
 
 
@@ -667,30 +581,30 @@ def edit_background(
     mask_box: list[int] | None = None,
     restyle: bool = False,
 ) -> str:
-    """Edit an existing plate with a plain-English instruction (FLUX Kontext).
+    """Edit an existing plate with a plain-English instruction (FLUX 3 Klein).
 
     Start from a plate you already approved and change one thing, instead of
-    re-rolling a fresh generation and hoping the seed cooperates. Good for
-    local changes: "add a hanging lantern on the left pillar", "make the stone
-    wetter", "put rust on the ironwork".
+    re-rolling. Good for local changes: "remove the person on the bridge", "make
+    the sign board a plain dark lacquered panel", "put rust on the ironwork".
 
-    WARNING - two real limits, both learned the hard way on the sibling server:
-      • Large structural change does NOT work as one edit. "Turn it around"
-        plus "keep everything else the same" are contradictory and produce a
-        chimera. Re-generate for big changes.
-      • Without `mask_box` this re-renders the WHOLE canvas — no wording in the
-        instruction protects anything. If part of the plate must survive
-        untouched, fence it off with a mask instead of asking in the prompt.
+    With `mask_box`, ONLY that rectangle changes -- Klein redraws the frame and
+    just the box is composited back, so every pixel outside it is untouched.
+    Without one, the whole redrawn frame is returned: fine for global changes,
+    but nothing in the instruction protects the rest of the plate.
+
+    Phrase removals as what to leave behind ("remove the sign completely, leave
+    only bare stone masonry"), and keep large structural changes ("turn the
+    causeway into a stair up the slope") for a fresh generation instead.
 
     Args:
         image_path: The plate to edit.
         instruction: Plain English, describing the change.
         project: Which comic's output folder to write to.
         seed: Fixed seed for reproducibility.
-        mask_box: [x0, y0, x1, y1] in the source's pixels — only this rectangle
-            is edited. Strongly recommended when composition must be preserved.
-        restyle: Load the manhwa style LoRA for a restyle pass rather than a
-            structural edit.
+        mask_box: [x0, y0, x1, y1] in the source's pixels -- what to change, and
+            how big the new thing should be (a box sets size as well as place).
+        restyle: Redraw the plate in the house style -- for pulling an off-style
+            plate (photoreal, painterly) back to the inked look.
 
     Returns:
         Path to the edited copy (the source is never modified).
@@ -702,16 +616,12 @@ def edit_background(
     if box and len(box) != 4:
         return "mask_box must be exactly [x0, y0, x1, y1]."
     try:
-        out = flux_workflow.edit_image(
-            image_path=image_path, instruction=instruction, out_dir=out_dir,
-            seed=seed, mask_box=box,
-            lora=flux_workflow.FLUX_LORA if restyle else None,
-        )
-    except comfy.ComfyUIError as e:
-        return (f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?")
+        out = klein.edit(image_path, instruction, out_dir, box=box, seed=seed, restyle=restyle)
+    except klein.KleinError as e:
+        return _fail(e)
     return (f"Edited: {out}\n"
             f"  instruction: {instruction}\n"
-            f"  {'masked region only' if box else 'WHOLE canvas re-rendered (no mask_box)'}\n"
+            f"  {'masked region only, nothing outside it changed' if box else 'WHOLE frame redrawn (no mask_box)'}\n"
             f"  source untouched: {image_path}")
 
 

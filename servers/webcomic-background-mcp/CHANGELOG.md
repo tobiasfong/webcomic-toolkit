@@ -9,6 +9,65 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > are tagged `webcomic-background-mcp@vX.Y.Z` there. v1.0.0–v1.6.0 were released from
 > the standalone (now archived) repo.
 
+## [3.0.0] — 2026-10-17
+
+**FLUX 3 Image Klein replaces FLUX.1-dev. FLUX.1 has been removed, with its
+manhwa LoRA, ControlNet and Kontext. An install with only the FLUX.1 stack will
+no longer render: install Klein (README, Steps 1–2).**
+
+The sibling character-panel server moved to Klein first, after a side-by-side
+whose verdict was "better in all aspects". This release follows for the reason
+SD1.5 went in v2.0.0: a plate from one model under figures from another reads
+as a composite.
+
+### Changed
+- **Renders run on Klein**, on its own ComfyUI (v0.41+, port 8189) — the same
+  install the character server uses, started on first use. New module
+  `klein.py`; `flux_workflow.py` and `comfy.py` are deleted.
+- **Style comes from a positive style sentence**, not a LoRA: FLUX.1 LoRAs cannot
+  load in Klein (none of `manwha_style`'s 494 layers exist there). On the murim
+  bible's own prompts it held crisp inked cel shading both at eye level and on
+  the Mount Hua summit vista — the camera that used to pull FLUX.1 photoreal.
+- **Composition sketches are a reference image, not ControlNet.** On the 3D
+  bike-row sketch every bicycle and the bollard landed where the sketch drew
+  them, as real bicycles. Two wording traps were measured and fixed in the
+  lead sentence: "render it as a finished scene" came back photoreal, and a
+  sketch's black areas were drawn as an empty gray void until the lead said
+  they are ground, walls and sky.
+- **`location` is a reference, not img2img.** A registered place keeps its look
+  from a NEW camera: the round library tower, asked for "seen from up on the
+  gallery", kept its curved shelving, round tables and coffered dome. FLUX.1's
+  img2img could only nudge the canon's own framing.
+- **`edit_background` changes only its box.** Klein redraws the whole frame, so
+  only the `mask_box` region is composited back. Measured on the port: the
+  largest change outside the box and its feather was **0**. Kontext never
+  managed that — a mask ending in open sky always left a visible seam.
+- **About 15x faster.** ~15 s per plate on a 6 GB RTX 3060 Laptop, 30–110 s with
+  a sketch or location, against ~225 s for FLUX.1, whose 1152x704 interiors
+  outran the MCP call timeout.
+- **City and prop scenes render at full size directly** (defaults 1344x732 and
+  1344x1008). The sketch is drawn at the output size, so an `anchor_x`/`anchor_z`
+  mask now lines up with the plate itself rather than a hires intermediate.
+- Default `generate_background` size is now 1024x768 (was 768x512).
+- `setup_models.py` downloads the Klein files from BFL's gated repo (`HF_TOKEN`
+  required) and saves them under the names both servers load.
+- License: outputs now fall under the **FLUX Kommunity License v1.0** —
+  commercial use of outputs for users under US$5M gross annual revenue.
+
+### Removed
+- Parameters `model`, `extra_negative`, `controlnet_strength`, `lora`,
+  `lora_strength`, `hires` and `location_denoise`. Negatives in particular are
+  gone on purpose: they never worked at cfg 1.0, and the one roll that listed
+  "skyscraper, skyline" produced the clearest modern skyline of the murim bible.
+- The ComfyUI-GGUF and comfyui_controlnet_aux requirements. Klein needs no
+  custom nodes.
+- FLUX.1 env vars (`WEBCOMIC_BG_MODEL`, `WEBCOMIC_BG_FLUX_*`, `COMFY_URL`,
+  `WEBCOMIC_BG_COMFY_*`). See the README for the `WEBCOMIC_BG_KLEIN_*` set.
+
+### Not touched
+- The FLUX.1 model files stay on disk. The anime-production tools still use
+  `flux1-kontext-dev-Q6_K.gguf`, so do not delete them on this server's behalf.
+
 ## [2.1.1] — 2026-09-26
 
 ### Fixed

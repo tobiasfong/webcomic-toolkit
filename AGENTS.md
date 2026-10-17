@@ -12,9 +12,12 @@ because each one was broken in practice and cost real time.
 
 Adopted after a side-by-side against FLUX.1 on the cases FLUX.1 had failed.
 The author's verdict: "better in all aspects". Character art is being
-regenerated on it from scratch, and FLUX.1 is retired once the background
-server has switched too. Code: `servers/character-panel-mcp/klein_workflow.py`;
-every rendering tool in that server defaults to it.
+regenerated on it from scratch. Code: `servers/character-panel-mcp/klein_workflow.py`;
+every rendering tool in that server defaults to it. **The background server
+switched too in v3.0.0** (`servers/webcomic-background-mcp/klein.py`) and has
+no FLUX.1 path left; its CHANGELOG records what replaced ControlNet, img2img
+locations and Kontext. The FLUX.1 model FILES stay installed: the
+anime-production tools still load `flux1-kontext-dev-Q6_K.gguf`.
 
 ### Setup
 
