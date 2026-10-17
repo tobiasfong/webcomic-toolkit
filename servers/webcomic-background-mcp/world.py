@@ -29,8 +29,9 @@ A location entry:
     "added":       "2026-06-25T..."
   }
 
-This module is pure data/IO — it never talks to ComfyUI. The generate() pipeline
-reads a location's `canonical` image and uses it as an img2img reference.
+This module is pure data/IO — it never talks to ComfyUI. generate_background passes
+a location's `canonical` image to Klein as a reference image (v3.0.0; it was an
+img2img seed under FLUX.1), so a new view keeps the place's look from any camera.
 """
 
 import os
