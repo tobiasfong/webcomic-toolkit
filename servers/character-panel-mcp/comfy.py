@@ -1,17 +1,12 @@
 """
-comfy.py — shared ComfyUI plumbing for this server.
+comfy.py — the main ComfyUI (port 8188), which this server uses for MATTING only.
 
-Extracted from the former workflow.py when the SD1.5/SDXL path was retired in
-favor of FLUX (see CHANGELOG). Everything here is model-agnostic: connecting to
-ComfyUI, auto-launching it, uploading images, the clean-backdrop prompt suffix
-that makes a render matte cleanly, and rembg matting.
+Rendering moved to FLUX 3 Klein on its own ComfyUI (klein_workflow.py) and
+FLUX.1 was removed in v2.0.0. What stays here is model-agnostic: connecting to
+the main install, auto-launching it, uploading images, and the learned matte.
 
-Graph construction and generation live in flux_workflow.py. Nothing in this
-module knows what a checkpoint is.
-
-Shares its ComfyUI connection (COMFY_URL) with webcomic-background-mcp by
-convention — both point at the same local install by default — but there is no
-code dependency on that server.
+Shares its ComfyUI connection (COMFY_URL) with the other servers by convention,
+with no code dependency on them.
 """
 
 import os
@@ -96,33 +91,6 @@ def _upload_image(path: str) -> str:
     return r.json()["name"]
 
 
-# Tier-1's actual mechanism: a plain/clean backdrop so the render mattes cleanly
-
-# NOTE the words that are deliberately absent: "studio", "even lighting" and
-# "sharp edges" all read as photography to FLUX and fought the manhwa LoRA hard
-# enough to return photoreal people (measured 2026-08-01, live). Say what the
-# BACKDROP is; say nothing about the medium here — flux_workflow's
-# FLUX_STYLE_SUFFIX owns that.
-CLEAN_BACKDROP_SUFFIX = (
-    ", solo, full body, standing pose, plain flat light-gray background, "
-    "solid color background, no scenery"
-)
-CLEAN_BACKDROP_NEGATIVE = (
-    "background clutter, scenery, room, outdoors, patterned background, "
-    "multiple people, crowd, extra limbs, extra fingers, fused fingers, "
-    "mutated hands, poorly drawn face, blurry, low quality, watermark, text, signature, "
-    # Added 2026-07-19 after live testing against busy source illustrations: a
-    # reference image with its own VFX (magic circles, fire, ice) bleeds those
-    # effects into every render regardless of the backdrop prompt, because
-    # IP-Adapter's identity conditioning doesn't separate "this person" from
-    # "this scene." Suppress the common categories explicitly.
-    "magic effects, spell effects, glowing runes, glowing effects, particle effects, "
-    "motion lines, speed lines, energy effects, sparkles, fire, flames, embers, "
-    "ice, ice crystals"
-)
-DEFAULT_NEGATIVE = "blurry, low quality, watermark, text, signature, deformed"
-
-
 # rembg's DEFAULT session is u2net, which is trained on photographs and must be
 # downloaded from GitHub on first use — a download that fails behind SSL
 # interception with SSLCertVerificationError, from inside rembg, so it does not
@@ -131,26 +99,135 @@ DEFAULT_NEGATIVE = "blurry, low quality, watermark, text, signature, deformed"
 REMBG_MODEL = os.environ.get("WEBCOMIC_CHAR_REMBG_MODEL", "isnet-anime")
 
 
+def _submit_and_wait(graph: dict, output_node: str, timeout: int = 300) -> bytes:
+    """Submit a graph and return the output image's bytes. The timeout counts
+    QUEUE time as well as running time -- keep jobs serial (AGENTS.md)."""
+    r = requests.post(f"{COMFY_URL}/prompt", json={"prompt": graph}, timeout=30)
+    if r.status_code != 200:
+        raise ComfyUIError(f"Prompt rejected ({r.status_code}): {r.text[:300]}")
+    prompt_id = r.json()["prompt_id"]
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        time.sleep(2.0)
+        h = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=30).json()
+        if prompt_id in h:
+            outs = h[prompt_id]["outputs"]
+            if output_node not in outs:
+                # The RMBG node's own failures (a weight download that died, for
+                # one) surface ONLY here, in /history, never to the client.
+                msgs = h[prompt_id].get("status", {}).get("messages", [])
+                raise ComfyUIError("Matting produced no image (check the ComfyUI log): "
+                                   + str(msgs)[:400])
+            img = outs[output_node]["images"][0]
+            params = {"filename": img["filename"], "subfolder": img["subfolder"], "type": img["type"]}
+            return requests.get(f"{COMFY_URL}/view", params=params, timeout=60).content
+    raise ComfyUIError(f"Timed out after {timeout}s")
+
+
+def _save(data: bytes, out_dir: str, stem: str) -> str:
+    os.makedirs(out_dir, exist_ok=True)
+    base = os.path.join(out_dir, stem)
+    out_path, n = base + ".png", 1
+    while os.path.exists(out_path):
+        out_path, n = f"{base}_{n}.png", n + 1
+    with open(out_path, "wb") as f:
+        f.write(data)
+    return out_path
+
+
+# ⚠ THE DEFAULT IS BiRefNet-general, AND THAT IS A LICENSE DECISION. RMBG-2.0 is
+# BRIA's and its downloadable weights are for non-commercial use only; a game
+# meant for sale cannot ship a sprite cut with it. BiRefNet -- the model RMBG-2.0
+# is a fine-tune of -- is MIT, and recovered 100.0% of RMBG-2.0's mask on a jade
+# slab with 0.2% extra and corners at exactly 0. BEN2 and INSPYRENET are MIT too;
+# BEN2 left stray blobs at the corners of a flat backdrop and dropped a tray.
+# Check a model's license at its ORIGINAL source the day it enters the pipeline.
+#
+# This line was the gap: the 2026-09-16 replacement switched the FLUX.1 module's
+# matte_image() and never this module's matte(), which went on calling RMBG-2.0
+# for every pose, expression and regenerated sprite. Both now go through here.
+MATTE_MODEL = os.environ.get("WEBCOMIC_CHAR_MATTE_MODEL", "BiRefNet-general")
+
+
+def _rmbg_bytes(image_path: str, model: str, sensitivity: float = 1.0,
+                process_res: int = 1024, mask_blur: int = 0, mask_offset: int = 0,
+                refine_foreground: bool = True, timeout: int = 300) -> bytes:
+    """Run ComfyUI-RMBG's node on one image. Raises ComfyUIError if it is absent."""
+    import json
+    import urllib.request
+
+    ensure_comfy_running()
+    # The pack carries two nodes with the same shape of inputs: `RMBG` (RMBG-2.0,
+    # INSPYRENET, BEN, BEN2) and `BiRefNetRMBG` (the BiRefNet family, which takes
+    # no process_res -- it sizes from its own config).
+    node_type = "BiRefNetRMBG" if model.startswith("BiRefNet") else "RMBG"
+    try:
+        with urllib.request.urlopen(f"{COMFY_URL}/object_info/{node_type}", timeout=10) as r:
+            if not json.load(r):
+                raise ComfyUIError(f"ComfyUI-RMBG's {node_type} node is not installed")
+    except ComfyUIError:
+        raise
+    except Exception as e:
+        raise ComfyUIError(f"could not query ComfyUI for the {node_type} node: {e}") from e
+
+    inputs = {"image": ["1", 0], "model": model, "sensitivity": sensitivity,
+              "mask_blur": mask_blur, "mask_offset": mask_offset, "invert_output": False,
+              "refine_foreground": refine_foreground, "background": "Alpha",
+              "background_color": "#222222"}
+    if node_type == "RMBG":
+        inputs["process_res"] = process_res
+    g = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": _upload_image(image_path)}},
+        "2": {"class_type": node_type, "inputs": inputs},
+        "3": {"class_type": "SaveImage", "inputs": {"images": ["2", 0], "filename_prefix": "matte"}},
+    }
+    return _submit_and_wait(g, "3", timeout)
+
+
+def matte_image(image_path: str, out_dir: str, model: str = MATTE_MODEL,
+                sensitivity: float = 1.0, process_res: int = 1024,
+                mask_blur: int = 0, mask_offset: int = 0,
+                refine_foreground: bool = True, timeout: int = 300) -> str:
+    """Cut an EXISTING image out onto transparency; saves <stem>_rgba.png in out_dir.
+
+    The only route that works on art already made -- locked panels, approved
+    concept panels, anything the author drew. ~4 s. Validated on the case color
+    keying provably fails: a white robe with white boots on a white field came
+    back with both intact, corners exactly 0.0000. Callers still keep the
+    largest connected region plus a soft-edge band before cropping.
+
+    refine_foreground: Fast Foreground Color Estimation, which suppresses halos
+    on light subjects. Leave it on.
+
+    Needs ComfyUI-RMBG's weights placed MANUALLY -- its auto-downloader fails
+    against huggingface_hub 1.x, and that error surfaces only in ComfyUI's
+    /history. Repo ids and folders are in custom_nodes/ComfyUI-RMBG/py/
+    AILab_RMBG.py's AVAILABLE_MODELS; everything lands under models/RMBG/.
+
+    Moved here from flux_workflow.py when FLUX.1 was removed.
+    """
+    data = _rmbg_bytes(image_path, model, sensitivity, process_res, mask_blur,
+                       mask_offset, refine_foreground, timeout)
+    stem = os.path.splitext(os.path.basename(image_path))[0]
+    return _save(data, out_dir, stem + "_rgba")
+
+
 def matte(image_path: str, out_path: str | None = None) -> str:
-    """Auto-remove the clean backdrop, producing an RGBA cutout.
+    """Auto-remove the clean backdrop, producing an RGBA cutout at out_path
+    (default <image>_matted.png).
 
-    Prefers ComfyUI-RMBG (RMBG-2.0) when that custom node is installed, and
-    falls back to `rembg` otherwise. RMBG is preferred because it lands ON the
-    lineart: measured as the brightness of the 2 px rim just inside the
-    silhouette against the figure's interior, RMBG scores -28.7 where a
-    brightness-keyed cutout scores -11.5 and leaves a white fringe.
+    Uses ComfyUI-RMBG with MATTE_MODEL (BiRefNet-general) and falls back to
+    `rembg`'s isnet-anime when that node is not available. A learned matte lands
+    ON the lineart where a brightness key leaves a white fringe, and it does not
+    key on color: brightness cannot tell a white shirt from a white backdrop, and
+    cleanup passes built on that assumption deleted a whole garment (65,026 px,
+    24% of a figure). It also removes backdrop trapped inside the silhouette.
+    For Klein renders, follow with klein_workflow.clean_matte(), which removes
+    the pale fringe a learned matte leaves between hair strands.
 
-    Neither path keys on color or brightness, which matters: brightness cannot
-    distinguish a white shirt from a white backdrop, and cleanup passes built on
-    that assumption have deleted an entire garment (65,026 px, 24% of a figure)
-    and punched 32,592 px of holes through a mid-gray t-shirt. A learned matte
-    also removes backdrop TRAPPED inside the silhouette — between the legs, or
-    between an arm and the torso — which is the failure those passes existed to
-    patch up.
-
-    Raises ComfyUIError with a usable message if neither path works. It must
-    never return the un-matted RGB path: callers composite the result, and an
-    RGB image with an opaque backdrop is only discovered much later.
+    Raises ComfyUIError if neither path works. It must never return the
+    un-matted RGB path: callers composite the result, and an RGB image with an
+    opaque backdrop is only discovered much later.
     """
     from PIL import Image
 
@@ -159,15 +236,18 @@ def matte(image_path: str, out_path: str | None = None) -> str:
         out_path = f"{root}_matted.png"
 
     try:
-        return _matte_rmbg(image_path, out_path)
+        data = _rmbg_bytes(image_path, MATTE_MODEL)
+        with open(out_path, "wb") as fh:
+            fh.write(data)
+        return out_path
     except ComfyUIError:
-        pass        # node absent or ComfyUI down — try the local model
+        pass        # node absent or ComfyUI down -- try the local model
 
     try:
         from rembg import remove, new_session
     except ImportError as e:
         raise ComfyUIError(
-            "Matting needs either the ComfyUI-RMBG custom node (see README Step 3) "
+            "Matting needs either the ComfyUI-RMBG custom node (see README) "
             "or `rembg` in the server venv: <venv>/python -m pip install rembg pillow"
         ) from e
 
@@ -181,43 +261,7 @@ def matte(image_path: str, out_path: str | None = None) -> str:
             f"  rembg downloads its model on first use, which fails behind SSL "
             f"interception. Fetch it manually into ~/.u2net/, set "
             f"WEBCOMIC_CHAR_REMBG_MODEL to a model already there, or install "
-            f"ComfyUI-RMBG (README Step 3)."
+            f"ComfyUI-RMBG (README)."
         ) from e
     cut.save(out_path)
-    return out_path
-
-
-def _matte_rmbg(image_path: str, out_path: str, model: str = "RMBG-2.0") -> str:
-    """Matte via the ComfyUI-RMBG custom node. Raises ComfyUIError if absent."""
-    import json
-    import urllib.request
-
-    ensure_comfy_running()
-    try:
-        with urllib.request.urlopen(f"{COMFY_URL}/object_info/RMBG", timeout=10) as r:
-            if not json.load(r):
-                raise ComfyUIError("ComfyUI-RMBG node not installed")
-    except ComfyUIError:
-        raise
-    except Exception as e:
-        raise ComfyUIError(f"could not query ComfyUI for the RMBG node: {e}") from e
-
-    # imported here, not at module scope: flux_workflow imports this module
-    from flux_workflow import _submit_and_wait
-
-    uploaded = _upload_image(image_path)
-    g = {
-        "1": {"class_type": "LoadImage", "inputs": {"image": uploaded}},
-        "2": {"class_type": "RMBG",
-              "inputs": {"image": ["1", 0], "model": model,
-                         "sensitivity": 1.0, "process_res": 1024,
-                         "mask_blur": 0, "mask_offset": 0,
-                         "invert_output": False, "refine_foreground": True,
-                         "background": "Alpha", "background_color": "#222222"}},
-        "3": {"class_type": "SaveImage",
-              "inputs": {"images": ["2", 0], "filename_prefix": "matte"}},
-    }
-    data = _submit_and_wait(g, "3", timeout=300)
-    with open(out_path, "wb") as fh:
-        fh.write(data)
     return out_path

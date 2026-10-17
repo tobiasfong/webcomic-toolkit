@@ -12,12 +12,13 @@ because each one was broken in practice and cost real time.
 
 Adopted after a side-by-side against FLUX.1 on the cases FLUX.1 had failed.
 The author's verdict: "better in all aspects". Character art is being
-regenerated on it from scratch. Code: `servers/character-panel-mcp/klein_workflow.py`;
-every rendering tool in that server defaults to it. **The background server
-switched too in v3.0.0** (`servers/webcomic-background-mcp/klein.py`) and has
-no FLUX.1 path left; its CHANGELOG records what replaced ControlNet, img2img
-locations and Kontext. The FLUX.1 model FILES stay installed: the
-anime-production tools still load `flux1-kontext-dev-Q6_K.gguf`.
+regenerated on it from scratch. **Both image servers are Klein only**: the
+character server since its v2.0.0 (`servers/character-panel-mcp/klein_workflow.py`)
+and the background server since its v3.0.0 (`servers/webcomic-background-mcp/klein.py`).
+Their CHANGELOGs record what replaced each FLUX.1 part. FLUX.1's model files
+stay installed only until its last two users move: the anime-production
+keyframe edit (Kontext) and the visual novel's camera-angle tool (Kontext plus
+a camera LoRA).
 
 ### Setup
 
@@ -144,45 +145,32 @@ Everything else stands until it is re-tested on Klein: the negation rules,
 naming the state rather than the parts, "tall fills the canvas", the token
 economy. Re-test before deleting any of it.
 
-## Model quantization — settled 2026-08-10
+⚠ **The FLUX.1-era sections below name functions that no longer exist** —
+`flux_workflow.generate()`, `edit_image()`, `img2img()`, `clean_backdrop`,
+Kontext, ControlNet and the LoRAs went with the character server's v2.0.0.
+They are kept for what they observed about prompts and pictures, not as
+instructions to call anything. The Klein equivalents: `klein_workflow.generate()`
+with `refs=` for anything that needs a likeness, `edit_region()` for a boxed
+edit, and a reference image where a ControlNet guide or an img2img seed used
+to go.
 
-**Everything runs Q6_K. Both FLUX models are on disk and both are configured.**
-(FLUX.1 only. Klein runs INT8 on its own ComfyUI — see the section above.)
+## Model quantization — what bit depth taught (FLUX.1, 2026-08-10)
 
-| | model | why |
-|---|---|---|
-| Kontext | `flux1-kontext-dev-Q6_K.gguf` | decisive quality win, see below |
-| generation | `flux1-dev-Q6_K.gguf` | no quality change, but faster and lighter |
-
-⚠ **WHERE BIT DEPTH ACTUALLY MATTERS, measured on both:**
+FLUX.1 is retired, but the measurement behind its Q6_K choice is the general
+rule for any quantized model here:
 
 | task | Q3_K_S -> Q6_K |
 |---|---|
 | Kontext REPAIR of a damaged hand | 0 of 6 frames usable -> **3 of 3 usable** |
 | Panel GENERATION, same seed and prompt | **identical — no visible difference, no character drift** |
 
-The rule that explains both: **quantization error surfaces when the task is
-HARD.** Kontext repair reconstructs destroyed structure from corrupted pixels,
-right at the edge of the model's capability, and 3.3 bits per weight is not
-enough — hands came back as fused blobs. Generation from a good prompt with a
-LoRA and ControlNet is a much easier ask, the model has headroom, and the extra
-precision buys nothing you can see.
-
-So: **do not expect Q6 to improve generated panels. It will not.** Existing
-Q3-era panels and character sheets are NOT compromised and do not need
-regenerating. If sheets get regenerated for a new series, that is a story
-decision, not a technical migration.
-
-The Q3_K_S files have been DELETED (2026-08-10) — 10.5 GB reclaimed, and there
-is no measured case where they are preferable. Reverting means re-downloading:
-`flux1-dev-Q3_K_S.gguf` from city96/FLUX.1-dev-gguf, `flux1-kontext-dev-Q3_K_S`
-from QuantStack/FLUX.1-Kontext-dev-GGUF. Do not "fall back to Q3" casually;
-nothing here suggests you would want to.
-
-Q6 was adopted for generation anyway because it costs nothing: **225 s against
-Q3's 339 s, and 5482 MiB peak VRAM against 5892** — faster and lighter, with
-LoRA and ControlNet both active at 832x1216. Low K-quants are more expensive to
-unpack per operation, which is the likely reason the bigger file is quicker.
+**Quantization error surfaces when the task is HARD.** Repair reconstructs
+destroyed structure from corrupted pixels, right at the edge of the model's
+capability, and 3.3 bits per weight was not enough — hands came back as fused
+blobs. Generation from a good prompt has headroom, and the extra precision
+bought nothing visible. Q6 was also faster (225 s against Q3's 339 s) and
+lighter: low K-quants are more expensive to unpack per operation. Klein runs
+INT8 for the card's tensor cores, not for size — see its section above.
 
 ⚠ **VRAM IS NOT THE CONSTRAINT ON THIS CARD, and assuming it is has cost real
 work three times now.** ComfyUI offloads to system RAM and streams weights: this
@@ -193,9 +181,9 @@ The three occasions, for pattern recognition:
 - LTX defaulted to `832x576` "for the 6 GB card" — cost 65 hand-redrawn frames
   on one scene. A later ceiling sweep found no out-of-memory point at ANY
   resolution tested.
-- Kontext at `Q3_K_S` — produced nothing usable across 18 repair attempts.
-- Generation at `Q3_K_S` — harmless as it turned out, but chosen for the same
-  bad reason.
+- FLUX.1 Kontext at `Q3_K_S` — produced nothing usable across 18 repair attempts.
+- FLUX.1 generation at `Q3_K_S` — harmless as it turned out, but chosen for the
+  same bad reason.
 
 **Before concluding a model "can't do" something, check its bit depth and check
 whether the limit you are respecting was ever measured.**
@@ -314,16 +302,15 @@ renders under `output/` are disposable.
 
 ## Identity conditioning — know which path you are on
 
-- `flux_workflow.generate()` — **no identity input.** Only `pose_ref_path` for
-  ControlNet. Identity comes from prompt text alone, so it *will* drift.
-- `flux_workflow.edit_image()` — real identity conditioning via `ReferenceLatent`
-  from **one** source image. This is what the locked panels used.
-- `workflow.generate()` (SD1.5) — has `ref_path`/`identity_mode`, but SD1.5 has
-  the anatomy ceiling.
+- `klein_workflow.generate(..., refs=[...])` — identity from each reference
+  image, referred to in the prompt as "image 1", "image 2". Held two
+  identities through a pose change with no bleed on 3 of 3 seeds. Every
+  character tool passes the PRIMARY REFERENCE.
+- `klein_workflow.generate()` with no `refs` — **no identity input.** Identity
+  comes from the prompt text alone, so it *will* drift. Right for a concept or
+  a from-scratch creature, wrong for anyone already in the bible.
 
-⚠ **On FLUX 3 Klein this is no longer true** — its multi-reference held two
-identities through a pose change with no bleed on 3 of 3 seeds. What follows
-is FLUX.1's behavior.
+What follows is FLUX.1's behavior, kept as history:
 
 Every mechanism binds **one reference to one generation**. There is no way to
 lock two different characters' identities in a single image. Attempting it gives
@@ -2002,4 +1989,5 @@ Four things a session must carry without looking anything up:
     an f-string. Write any script containing backslashes as a file through the
     editor, not as a heredoc.
 - Use the repo venv: `servers/character-panel-mcp/.venv/Scripts/python.exe`.
-- ~15 min per ControlNet generation, ~8 min per Kontext edit on a 6 GB card.
+- Klein on the 6 GB card: 18 s text-to-image, 38–78 s with references, 86 s
+  for a 2560x1024 four-view sheet; ~4–8 s per matte.

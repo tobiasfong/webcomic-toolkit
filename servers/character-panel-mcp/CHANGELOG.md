@@ -8,6 +8,65 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [2.0.0] — 2026-10-17 — FLUX 3 Klein only; FLUX.1 removed
+
+FLUX 3 Image Klein became the default for every rendering tool on 2026-10-17
+after a side-by-side on the cases FLUX.1 had failed (the author: "better in all
+aspects"). With the background server on Klein too (its v3.0.0), nothing else
+in either image server loaded FLUX.1, so it is removed here.
+
+### Removed
+
+- **`flux_workflow.py`** — FLUX.1-dev and FLUX.1-Kontext-dev (GGUF), the
+  `manwha_style` and turnaround LoRAs, ControlNet, the hand `detail_fix` pass
+  and `img2img`.
+- **`setup_models_controlnet_pro.py`** — downloaded the ControlNet Union Pro 2
+  model, which nothing uses now.
+- **`tools/sketch_to_lineart.py`** — turned a sketch into a ControlNet map, and
+  ControlNet was its only consumer. Klein has no ControlNet; the background
+  server passes a composition sketch as a reference image instead, which is
+  the route to test if sketch-driven poses are wanted again.
+- **Parameters that only reached FLUX.1**: `model`, `lora`, `lora_strength` and
+  `negative` everywhere; `pose_ref_path`, `pose_strength`, `pose_preprocess`,
+  `pose_control_type` and `detail_fix` on `generate_character_pose`;
+  `detail_fix` on `generate_reference_sheet`; `mask_feather` on
+  `edit_character_image`.
+- `comfy.CLEAN_BACKDROP_SUFFIX`, `CLEAN_BACKDROP_NEGATIVE` and
+  `DEFAULT_NEGATIVE` — Klein runs at cfg 1 and takes no negative prompt.
+
+### Changed
+
+- **`generate_reference_sheet` renders on Klein**, one render per view, each
+  from the primary reference. The front-to-back chaining is gone: it existed
+  because IP-Adapter conditioned on the whole reference image, which Klein
+  does not need. For the four body angles `generate_turnaround_sheet` is
+  better — one render, a genuine profile included.
+- **`generate_character_concept` defaults to `n=1`** (the author asks for a
+  reroll when he wants one) and to 832x1216.
+- **`tools/repair_hand.py`** uses `klein_workflow.edit_region()`;
+  **`tools/complete_figure.py`** renders fresh from the clipped figure, padded
+  ~18% first so Klein does not copy the clip.
+- `matte_image()` moved from `flux_workflow.py` to `comfy.py`.
+
+### Fixed
+
+- **`comfy.matte()` was cutting with RMBG-2.0, a non-commercial model.** The
+  2026-09-16 matting replacement switched `flux_workflow.matte_image()` to
+  BiRefNet-general and never touched `comfy.matte()`, which every pose,
+  expression and regenerated sprite goes through. On 2026-10-17 alone the main
+  ComfyUI made 466 mattes through RMBG-2.0 against 2 through BiRefNet. Both
+  functions now share one code path on `comfy.MATTE_MODEL`
+  (`BiRefNet-general`, MIT); verified through ComfyUI's own history that the
+  node run was `BiRefNetRMBG` / `BiRefNet-general`. Anything matted by this
+  server before this fix should be re-cut from its raw render.
+
+### Added (earlier the same day, with the Klein adoption)
+
+- `klein_workflow.py`; `generate_scene` (several characters in one render);
+  `generate_expression` (an expression as a whole new body, from scratch);
+  `clean_matte()` for the pale fringe a learned matte leaves on Klein's
+  outline; a four-view turnaround sheet cut exactly by its layout boxes.
+
 ## [Unreleased] — matting actually mattes
 
 ### Fixed

@@ -4,62 +4,39 @@ Character & Panel Generator — MCP Server
 A local Model Context Protocol server for writers who aren't artists (and artists
 who'd rather not redraw six angles by hand): register or generate a character's
 reference art, then generate consistent poses and composite them onto background
-plates into finished comic panels — all against a local ComfyUI + FLUX pipeline.
+plates into finished comic panels — all against a local ComfyUI.
 
 The character-domain sibling of webcomic-background-mcp's World Builder: same
 philosophy (reference-driven, never generate-from-text-and-pray), same skeleton,
 no code dependency between the two servers.
 
-**FLUX-only since the SD retirement** (see CHANGELOG). The SD1.5/SDXL path and
-its three-tier consistency design are gone: Tier 1's img2img and Tier 2's
-IP-Adapter identity are both superseded by FLUX Kontext's reference-latent
-conditioning, which is what produced this project's finished panels; Tier 3's
-per-character LoRA baking was never used and has no FLUX equivalent built.
-Consequences worth knowing:
+**FLUX 3 Image Klein only, since v2.0.0** (see CHANGELOG). FLUX.1 — its GGUF
+models, the manhwa and turnaround LoRAs, ControlNet and Kontext — was removed
+once both this server and the background server had moved to Klein. What that
+means for a caller:
 
-  * Identity comes from conditioning on an IMAGE (edit_character_image /
-    generate_turnaround_sheet), not from a tier stack. One reference binds to
-    one generation — multi-character panels are generated as solos and
-    composited.
-  * generate_character_pose is now pure text-to-image plus optional ControlNet.
-    It has NO image identity input, so identity drifts; use it when direction
-    matters more than likeness, and edit_character_image when likeness matters.
-  * Generation is minutes, not the 20-40s the SD path ran at. Compositing stays
-    instant and GPU-free.
+  * Identity comes from the character's PRIMARY REFERENCE on every render that
+    draws them. Klein's multi-reference held two identities through a pose
+    change with no attribute bleed on 3 of 3 seeds, so generate_scene puts
+    several characters in one render.
+  * When the asked-for pose is the one the reference already shows, Klein
+    COPIES the reference, flaws and crop included. Pad a tight reference first.
+  * There is no ControlNet and no LoRA. Describe a pose in words; the style is
+    Klein's own, accepted by the author.
+  * Renders take 18-90 s, not FLUX.1's minutes.
 
-Ships Concept Genesis (ARCHITECTURE.md §8b.6) — three on-ramps into the bible for
-users who don't already have a full reference set: no art at all
-(generate_character_concept), a composite concept sheet from a sheet generator
-(crop_reference), or one finished drawing that just needs turnaround views
-(generate_reference_sheet — also the tool for on-ramp 3, an artist's own art;
-that on-ramp needs no new tool, just register_character on the drawing itself).
-
-generate_character_pose still accepts a control map via pose_ref_path (any
-OpenPose, depth or canny map you supply), which is how tools/sketch_to_lineart.py
-corrects hand-drawn anatomy. The 3D mannequin and VRM depth-map GENERATORS that
-used to feed it were removed with the SD path: they forced direction structurally
-but produced a figure with no identity, which cannot become a reference for a
-specific character. generate_turnaround_sheet gives a genuine back view WITH the
-likeness intact, which is what the finished sheets actually used.
-
-The Kontext tools are the ones that carry identity: generate_turnaround_sheet
-(Kontext + a turnaround-sheet LoRA — a multi-pose sheet from one reference
-image) and edit_character_image (Kontext as a plain-English image editor —
-validated for local anatomy/costume fixes, NOT for full viewpoint rotation, see
-its docstring). compose_reference_sheet and compose_full_reference_sheet
-assemble Avery-style posters from already-existing images, as opposed to
-generate_reference_sheet's fresh-generation-per-view path.
+Klein runs on its own ComfyUI (v0.41, port 8189), started on first use by
+klein_workflow. Matting still runs on the main ComfyUI (port 8188), so both are
+up during character work. Measured behavior is in the repo's AGENTS.md.
 
 Exposes: register_character, get_character, list_characters, forget_character,
 list_projects, generate_character_concept, crop_reference,
-generate_character_pose, generate_reference_sheet,
-generate_turnaround_sheet, edit_character_image, compose_reference_sheet,
-compose_full_reference_sheet, apply_gradient_background, apply_vfx_overlay,
-compose_panel, check_status.
+generate_character_pose, generate_reference_sheet, generate_turnaround_sheet,
+edit_character_image, generate_scene, generate_expression,
+compose_reference_sheet, compose_full_reference_sheet,
+apply_gradient_background, apply_vfx_overlay, compose_panel, check_status.
 
-Requires a running ComfyUI instance (default http://127.0.0.1:8188) for anything
-that generates pixels — the bible, cropping, and compositing tools are GPU-free.
-Runs locally over stdio.
+The bible, cropping and compositing tools are GPU-free. Runs locally over stdio.
 """
 
 import os
@@ -68,13 +45,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcp.server.fastmcp import FastMCP
 import characters
 import comfy
-import flux_workflow
 import klein_workflow
-
-# FLUX 3 Klein is the default for every rendering tool since 2026-10-17; it runs on
-# its own ComfyUI (klein_workflow). model="flux_manwha" still reaches the FLUX.1 path
-# until the background server has switched too and FLUX.1 is retired.
-KLEIN = "klein"
 
 
 def _klein_pose_text(entry, pose, prompt, words=None):
@@ -89,15 +60,9 @@ def _klein_pose_text(entry, pose, prompt, words=None):
             "of their reference image. Lit from the upper left.")
 
 
-def _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte,
-                pose_ref_path=None):
-    """generate_character_pose on Klein: identity from the PRIMARY REFERENCE.
-
-    FLUX.1's pose path had no image identity input at all and drifted; Klein's
-    multi-reference holds identity through a pose change, so the character's own
-    reference is passed every time. The description still goes in, resolved from
-    the bible -- never retyped.
-    """
+def _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte):
+    """generate_character_pose: identity from the PRIMARY REFERENCE. The
+    description still goes in, resolved from the bible -- never retyped."""
     try:
         entry = characters.get_character(character, project)
         if entry is None:
@@ -105,25 +70,32 @@ def _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, 
         ref = characters.primary_ref_path(character, project)
     except characters.CharacterError as e:
         return f"Could not generate pose: {e}"
-    if (width, height) == (640, 896):
-        width, height = 832, 1216
     text = _klein_pose_text(entry, pose, prompt)
     try:
         raw = klein_workflow.generate(text, out_dir, width, height, seed=seed, refs=[ref], stem="pose")
     except klein_workflow.KleinError as e:
         return f"Generation failed: {e}"
-    note = "FLUX 3 Klein, identity from the primary reference"
-    if pose_ref_path:
-        note += " (pose_ref_path IGNORED: no ControlNet on Klein -- describe the pose in words)"
     if not matte:
-        return f"Pose generated (not matted): {raw}\n{note} -- curate before use."
+        return f"Pose generated (not matted): {raw}\nCurate before use."
     try:
         matted = klein_workflow.clean_matte(raw, comfy.matte(raw))
     except Exception as e:
+        # Deliberately broad: whatever goes wrong, the caller must be TOLD the
+        # image is not matted, or an RGB render is only discovered at composite.
         return (f"Pose generated but MATTING FAILED -- this image is RGB, not RGBA, and is NOT "
                 f"ready for compose_panel: {type(e).__name__}: {e}\n  raw render: {raw}")
-    return (f"Pose generated: {matted}\n  raw render (with backdrop): {raw}\n{note} -- "
-            f"curate before compose_panel. Feed this to compose_panel as character_layer_path.")
+    return (f"Pose generated: {matted}\n  raw render (with backdrop): {raw}\n"
+            f"Curate before compose_panel. Feed this to compose_panel as character_layer_path.")
+
+
+def _matte_or_note(raw):
+    """(path, note): the matted cutout, or the raw render and why it is not one."""
+    try:
+        return klein_workflow.clean_matte(raw, comfy.matte(raw)), ""
+    except Exception as e:
+        return raw, f" (MATTING FAILED, still RGB: {type(e).__name__}: {e})"
+
+
 from tools.compose_panel import compose_panel as _compose_panel
 from tools.crop_reference import crop_reference as _crop_reference
 from tools.compose_sheet import compose_sheet as _compose_sheet
@@ -135,7 +107,6 @@ from tools.bg_composite import screen_blend as _screen_blend
 mcp = FastMCP("character-panel-generator")
 
 OUTPUT_DIR = os.environ.get("WEBCOMIC_CHAR_OUTPUT", os.path.join(os.path.dirname(__file__), "output"))
-
 
 @mcp.tool()
 def register_character(
@@ -210,9 +181,7 @@ def get_character(character: str, project: str = characters.DEFAULT_PROJECT) -> 
     hand-written and drifted — a panel shipped with the wrong hair color and the
     wrong eye color, both of which the bible had recorded correctly all along.
 
-    `primary_ref` is the image to condition on (`edit_image`). Note that
-    `flux_workflow.generate()` has no identity input at all, so a reference
-    cannot be applied there.
+    `primary_ref` is the image every render of this character conditions on.
     """
     entry = characters.get_character(character, project)
     if not entry:
@@ -289,100 +258,58 @@ def list_projects() -> str:
         return "No projects yet. Register a character with register_character (set `project`)."
     return "Projects with a character bible:\n" + "\n".join(f"• {p}" for p in projs)
 
-
 @mcp.tool()
 def generate_character_concept(
     description: str,
     style_prompt: str = "",
-    negative: str | None = None,
-    n: int = 4,
+    n: int = 1,
     label: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = KLEIN,
-    width: int = 640,
-    height: int = 896,
+    width: int = 832,
+    height: int = 1216,
     seed: int | None = None,
-    lora: str | None = None,
-    lora_strength: float | None = None,
 ) -> str:
-    """**Defaults to FLUX 3 Klein** (model="klein"); "flux_manwha" is the FLUX.1
-    path, kept only until FLUX.1 is retired.
-
-    Generate a batch of character-concept candidates for a character who
-    doesn't exist in the bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md
-    §8b.6): a writer with a story but no reference art. Pure txt2img, n distinct
-    seeds, the same clean backdrop as every other tier (matting-ready).
+    """Generate character-concept candidates for a character who doesn't exist in
+    the bible yet — Concept Genesis on-ramp 1 (ARCHITECTURE.md §8b.6): a writer
+    with a story but no reference art. Text-to-image on FLUX 3 Klein, one seed
+    per candidate, on a plain pale gray backdrop.
 
     Output is RGB, NOT matted, and deliberately so: concepts are candidates to
     look at and choose between, and the chosen one gets cropped into a reference
-    (`crop_reference`), which wants the backdrop intact. "Matting-ready" above
-    means the backdrop is clean enough TO matte later, not that it has been.
-    If you need a cutout from a concept, run it through `comfy.matte()` yourself.
+    (`crop_reference`), which wants the backdrop intact.
 
-    **Defaults to FLUX** (`flux_manwha`), unlike the SD1.5-defaulting tools
-    around it. Concept genesis is pure text-to-image with no identity to
-    preserve — nothing here depends on the SD tier stack — so it gets FLUX's
-    better anatomy and hands for free. `generate_character_pose` deliberately
-    still defaults to SD1.5, because its value IS the tier stack (IP-Adapter
-    identity + ControlNet) and FLUX has no IP-Adapter support at all; pointing
-    it at FLUX would silently downgrade identity to prompt-text-only. Pass
-    `model="solstice"` here for the fast SD path (~20-40s vs FLUX's minutes).
-
-    Does NOT register anything. Look at the candidates, then
-    register_character(image_paths=['<the winner>'], ...) to make one canon —
-    the rest are disposable drafts (nothing auto-commits; a human always picks).
+    Does NOT register anything. Look at the candidate, then
+    register_character(image_paths=['<the winner>'], ...) to make it canon.
+    The author asks for a reroll when he wants one; n defaults to 1.
 
     Args:
         description: Visually renderable identity facts ONLY — build, face,
             hair, costume, signature elements, palette. Not quotes/backstory/
-            stats (belongs in your own story docs, not this generation asset).
-            E.g. "gaunt young man, long nose, manic grin, purple-and-black
-            military uniform, white gloves, gold pocket chain, slicked dark hair".
-        style_prompt: Extra rendering-style detail, appended after description.
-        negative: Extra negative terms (appended to sane defaults).
-        n: How many candidates to generate (default 4). Each costs one GPU render.
-        label: Optional output-folder name (e.g. "aria"); defaults to a slug
-            of description.
+            stats. Leave out "tall" (it fills the canvas and clips the figure)
+            and build words on a clothed character (muscle came back as skin).
+        style_prompt: Extra detail, appended after the description.
+        n: How many candidates (default 1). Each costs one render.
+        label: Optional output-folder name; defaults to a slug of description.
         project: Which comic this is for.
-        model / width / height: As generate_character_pose.
-        seed: If set, candidates use seed, seed+1, seed+2… (reproducible batch);
-            omitted gives each its own random seed.
-        lora / lora_strength: Optional style LoRA (same pool as generate_character_pose).
+        width / height: Default 832x1216, a full figure in portrait.
+        seed: If set, candidates use seed, seed+1, seed+2… (reproducible batch).
 
     Returns:
-        The filesystem paths to all n candidates.
+        The filesystem paths to the candidates.
     """
     label_slug = characters._slug(label or description[:40])
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_concepts", label_slug)
     full_prompt = f"{description}, {style_prompt}" if style_prompt else description
+    text = ("A single full-body figure of " + full_prompt.rstrip(". ") + ", standing "
+            "facing the viewer, on a plain flat pale gray backdrop, clear empty space "
+            "above the head and below the feet. Lit from the upper left.")
     try:
-        if (width, height) == (640, 896):
-            width, height = 832, 1216
-        if model == KLEIN:
-            # No negative prompt and no LoRA on Klein: cfg is 1, and FLUX.1 LoRAs
-            # cannot load (0 of manwha_style's 494 layers exist in Klein).
-            text = ("A single full-body figure of " + full_prompt.rstrip(". ") + ", standing "
-                    "facing the viewer, on a plain flat pale gray backdrop, clear empty space "
-                    "above the head and below the feet. Lit from the upper left.")
-            paths = [klein_workflow.generate(text, out_dir, width, height,
-                                             seed=(seed + i) if seed is not None else None,
-                                             stem="concept")
-                     for i in range(n)]
-        else:
-            paths = flux_workflow.generate_concepts(
-                prompt=full_prompt,
-                out_dir=out_dir,
-                n=n,
-                negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
-                width=width,
-                height=height,
-                seed=seed,
-                model=model,
-                lora=lora,
-                lora_strength=lora_strength,
-            )
-    except (comfy.ComfyUIError, klein_workflow.KleinError) as e:
-        return f"Generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
+        paths = [klein_workflow.generate(text, out_dir, width, height,
+                                         seed=(seed + i) if seed is not None else None,
+                                         stem="concept")
+                 for i in range(n)]
+    except klein_workflow.KleinError as e:
+        return f"Generation failed: {e}"
     lines = "\n".join(f"  {i + 1}. {p}" for i, p in enumerate(paths))
     return (f"{len(paths)} concept candidate(s) generated:\n{lines}\n"
             f"Nothing is registered yet — look at these, pick the one that's your "
@@ -390,204 +317,45 @@ def generate_character_concept(
             f"character_id=..., name=..., project='{project}').")
 
 
-def _render_pose(
-    character, pose, prompt, negative, project, model, width, height, seed,
-    pose_ref_path, pose_strength,
-    lora, lora_strength, out_dir, pose_preprocess=True, ref_override=None,
-    detail_fix=False, pose_control_type="openpose",
-):
-    """Core FLUX pose rendering, shared by generate_character_pose and
-    generate_reference_sheet. Raises characters.CharacterError if the character
-    isn't registered, comfy.ComfyUIError on generation failure. Returns
-    (raw_path, tier_note) — matting is each caller's own responsibility (they
-    want different messaging around a matting failure).
-
-    ref_override: use this image as the img2img seed / IP-Adapter identity
-    source instead of the bible's primary reference — generate_reference_sheet's
-    sequential chaining (front view generated first, then reused as the anchor
-    for back/expression views) passes the freshly-generated front view here,
-    since it's already in the target render style, which should condition
-    identity more reliably than jumping styles from a raw source photo.
-
-    pose_control_type="depth" (FLUX + pose_ref_path only, ARCHITECTURE.md
-    §8b.9): the character's bible `description` is deliberately EXCLUDED from
-    the auto-built prompt here — a bare depth mesh has no costume, and
-    including a costume description (the usual case) causes a text-vs-geometry
-    conflict that produces ragged texture-clash artifacts. Only the name and
-    the explicit `pose`/`prompt` text are used; apply the character's actual
-    costume afterward via edit_character_image, as its own separate pass."""
-    ref_override or characters.primary_ref_path(character, project)
-    entry = characters.get_character(character, project)
-    full_prompt = f"{entry['name']}, {pose}"
-    if prompt:
-        full_prompt = f"{full_prompt}, {prompt}"
-    if entry.get("description") and pose_control_type != "depth":
-        full_prompt = f"{full_prompt}, {entry['description']}"
-
-    # A character may carry its own style LoRA in the bible; caller can override.
-    effective_lora = lora if lora is not None else entry.get("lora")
-
-    # FLUX has no image identity input on this path (IP-Adapter was never
-    # supported and the SD tiers are retired). Identity
-    # comes from the prompt/description text alone, same as this project's
-    # plain-text-only path. pose_ref_path routes to FLUX's own ControlNet
-    # (InstantX Union, ~2/3-seed reliable for back views — see
-    # flux_workflow.py's docstring), independent of workflow.py's SD1.5/
-    # SDXL OpenPose branch.
-    if (width, height) == (640, 896):
-        width, height = 832, 1216
-    raw_path = flux_workflow.generate(
-        prompt=full_prompt,
-        out_dir=out_dir,
-        negative=negative if negative is not None else comfy.DEFAULT_NEGATIVE,
-        width=width,
-        height=height,
-        seed=seed,
-        model=model,
-        lora=effective_lora,
-        lora_strength=lora_strength,
-        pose_ref_path=pose_ref_path,
-        pose_strength=pose_strength,
-        pose_preprocess=pose_preprocess,
-        pose_control_type=pose_control_type,
-        detail_fix=detail_fix,
-    )
-    tier_note = "FLUX base generation"
-    if effective_lora and effective_lora == entry.get("lora"):
-        tier_note = f"style LoRA '{effective_lora}' + " + tier_note
-    if pose_ref_path:
-        if pose_control_type == "depth":
-            tier_note += (" + ControlNet pose (depth map, ~3/3-seed reliable "
-                          "for back views once calibrated — see vrm_depth.py)")
-        else:
-            tier_note += (" + ControlNet pose (skeleton map, ~2/3-seed "
-                          "reliable for back views — reroll on a miss)" if not pose_preprocess
-                          else " + ControlNet pose (OpenPose)")
-    if detail_fix:
-        tier_note += " + hand detail fix (no face pass — untested for FLUX)"
-    return raw_path, tier_note
-
-
 @mcp.tool()
 def generate_character_pose(
     character: str,
     pose: str,
     prompt: str = "",
-    negative: str | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = KLEIN,
-    width: int = 640,
-    height: int = 896,
+    width: int = 832,
+    height: int = 1216,
     seed: int | None = None,
-    pose_ref_path: str | None = None,
-    pose_strength: float = 1.0,
-    pose_preprocess: bool = True,
-    pose_control_type: str = "openpose",
-    detail_fix: bool = False,
-    lora: str | None = None,
-    lora_strength: float | None = None,
     matte: bool = True,
 ) -> str:
     """Render a registered character alone, in a new pose, on a clean backdrop.
 
-    **Defaults to FLUX 3 Klein**, which takes the character's PRIMARY REFERENCE
-    and holds identity through the pose change -- so everything below about this
-    path having no identity input describes model="flux_manwha" (FLUX.1) only.
-    On Klein, pose_ref_path / ControlNet / LoRA options are ignored; describe
-    the pose in words.
+    FLUX 3 Klein, with the character's PRIMARY REFERENCE as image 1 and the
+    bible description in the prompt: identity holds through the pose change.
+    Describe the pose in words -- there is no ControlNet on Klein.
 
-    **This path has NO image identity input.** Identity comes from the
-    character's bible description as prompt text, so it WILL drift — the SD
-    tiers that used to compensate (img2img seeding, IP-Adapter) are retired,
-    and FLUX never supported IP-Adapter. Reach for this tool when the camera
-    angle matters more than the likeness; reach for edit_character_image
-    (Kontext, conditions on an actual image) when the likeness matters more.
+    ⚠ If the pose asked for is the one the reference already shows, Klein
+    COPIES the reference, flaws and crop included (a tight crop came back cut
+    off at the head or feet 17 times in 40). Pad the reference ~18% on its own
+    backdrop color before a same-pose request.
 
-    pose_ref_path pins the pose structurally via ControlNet, and is the reason
-    this tool still exists: a supplied control map is the only way to force
-    structure the prompt cannot. For a genuine back view WITH the likeness,
-    use generate_turnaround_sheet instead.
-
-    detail_fix (opt-in, needs ComfyUI-Impact-Pack + ComfyUI-Impact-Subpack):
-    detect-and-repair pass on face/hands after the main render — fixes
-    hallucinated hands/faces, a resolution problem (small in a full-body
-    frame) that prompt wording can't solve. ~2x generation time; no-ops
-    silently if nothing's confidently detected.
-
-    Output is auto-matted to RGBA by default, ready for compose_panel.
+    Output is matted to RGBA by default, ready for compose_panel.
 
     Args:
         character: A character_id already in the bible.
         pose: The pose/action to render (e.g. "arms crossed, looking over shoulder").
-        prompt: Extra scene-agnostic detail (lighting, angle) — the character's
-            bible name/description is prepended automatically.
-        negative: Extra negative terms (appended to sane defaults).
+            Keep expression words out of a body meant as an expression base.
+        prompt: Extra scene-agnostic detail (lighting, angle).
         project: Which comic's bible/output to use.
-        model / width / height / seed: model defaults to "flux_manwha"; SD
-            resolutions (640x896) are bumped to FLUX-native 832x1216
-            automatically. detail_fix=True improves hand anatomy.
-        pose_ref_path: A pose photo (extracted to OpenPose) or a
-            pre-made control map (pass pose_preprocess=False). Pinned via ControlNet.
-        pose_strength: ControlNet strength for pose_ref_path. For genuine back
-            views (yaw=180 mannequin maps), 1.0 pins the pose but drifts back
-            toward front-facing — 1.4-1.5 actually forces the direction.
-        pose_preprocess: True (default) runs OpenposePreprocessor — use for real
-            photos/art. False feeds the image straight to ControlNet unprocessed
-            — use for generate_pose_map output (the preprocessor fails on a
-            stick figure).
-        pose_control_type: FLUX + pose_ref_path only. "openpose" (default,
-            ~2/3-seed direction-lock) or "depth" (generate_pose_depth_map's VRM
-            mesh, ~3/3-seed once calibrated, but excludes the bible
-            `description` from the prompt — the mesh wears a plain t-shirt, so
-            describing a costume causes texture-clash; apply the real costume
-            after via edit_character_image). Forces pose_preprocess off.
-        detail_fix: Auto-repair hallucinated hands/faces. Default False (needs
-            extra custom nodes; ~2x generation time when on).
-        lora / lora_strength: Optional style LoRA, same pool as the background
-            server's. Overrides the character's baked Tier-3 LoRA if any; pass
-            lora="" to force neither.
-        matte: Auto-remove the backdrop to RGBA (default True). False keeps the
-            raw render with backdrop, e.g. to eyeball the pose first.
+        width / height / seed: Default 832x1216.
+        matte: Remove the backdrop to RGBA (default True). False keeps the raw
+            render, e.g. to eyeball the pose first.
 
     Returns:
         The filesystem path to the matted (or raw) pose PNG.
     """
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "poses")
-    if model == KLEIN:
-        return _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte,
-                           pose_ref_path)
-    try:
-        raw_path, tier_note = _render_pose(
-            character, pose, prompt, negative, project, model, width, height, seed,
-            pose_ref_path, pose_strength,
-            lora, lora_strength, out_dir, pose_preprocess=pose_preprocess,
-            detail_fix=detail_fix, pose_control_type=pose_control_type)
-    except characters.CharacterError as e:
-        return f"Could not generate pose: {e}"
-    except comfy.ComfyUIError as e:
-        return f"Generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
-
-    if not matte:
-        return (f"Pose generated (not matted): {raw_path}\n"
-                f"{tier_note} — curate before use.")
-    try:
-        matted_path = comfy.matte(raw_path)
-    except Exception as e:
-        # Deliberately broad. comfy.matte() raises ComfyUIError for the failures
-        # it anticipates, but its backends raise their own: rembg downloads its
-        # model on first use and that surfaced as requests.SSLError, which sailed
-        # through a `except ComfyUIError` clause. Whatever goes wrong, the caller
-        # must be TOLD the image is not matted — this path used to be where an
-        # un-matted RGB render got handed back and only discovered at composite
-        # time.
-        return (f"Pose generated but MATTING FAILED — this image is RGB, not RGBA, "
-                f"and is NOT ready for compose_panel: {type(e).__name__}: {e}\n"
-                f"  raw render: {raw_path}")
-    return (f"Pose generated: {matted_path}\n"
-            f"  raw render (with backdrop): {raw_path}\n"
-            f"{tier_note} — curate before compose_panel. "
-            f"Feed this to compose_panel as character_layer_path.")
-
+    return _klein_pose(character, pose, prompt, project, width, height, seed, out_dir, matte)
 
 
 def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int] | None:
@@ -602,48 +370,17 @@ def _hex_to_rgb(hex_color: str | None) -> tuple[int, int, int] | None:
         return None
 
 
-# Reduced from the original 7-view checklist (front/back/side/3-4 body + 3 face)
-# to match Avery's actual template (2026-07-19, per Tobias): a frontal view, a
-# back view, and a few 3/4 close-ups with different expressions — not a full
-# angle survey. "3/4 view" for the close-ups (Avery's expression rows use that
-# angle), applied to the head/face specifically — "face close-up, 3/4 view"
-# alone was ambiguous enough that a live test (2026-07-20) got interpreted as
-# a 3/4-angle BODY shot, not a tight face crop; "close-up portrait, head/
-# shoulders only" makes the framing an instruction, not just a vibe.
+# Avery's template (2026-07-19, per Tobias): a frontal view, a back view, and a
+# few 3/4 close-ups with different expressions — not a full angle survey.
+# "close-up portrait, head and shoulders only" makes the framing an
+# instruction; "face close-up" alone once came back as a 3/4 BODY shot.
 DEFAULT_SHEET_VIEWS = [
     "full body, front view",
     "full body, back view",
     "close-up portrait, head and shoulders only, head turned three-quarters, neutral expression",
-    "close-up portrait, head and shoulders only, head turned three-quarters, smiling",
-    "close-up portrait, head and shoulders only, head turned three-quarters, determined expression",
+    "close-up portrait, head and shoulders only, head turned three-quarters, a small closed-mouth smile",
+    "close-up portrait, head and shoulders only, head turned three-quarters, a determined expression",
 ]
-
-# Real-world tuning (2026-07-19, against actual hand-drawn art — see CHANGELOG): the
-# original defaults (ip_adapter_weight=0.8, ref_denoise=0.7) let a busy source
-# illustration's own composition (VFX, specific pose) dominate every view
-# regardless of what the text prompt asked for — every "view" came out as a
-# near-identical re-roll of the source pose, backdrop and all. Fix, in order of
-# how much each moved the needle: (1) ref_denoise near 1.0 lets the img2img
-# branch go, so the text prompt actually gets to steer composition; (2) a much
-# lower ip_adapter_weight (0.8 -> 0.25) — IP-Adapter's identity embedding
-# doesn't separate "this person" from "this scene," so a high weight drags the
-# reference's exact VFX/lighting along regardless of the backdrop prompt; (3)
-# explicit VFX-suppression terms, now baked into comfy.py's
-# CLEAN_BACKDROP_NEGATIVE globally (not just here) since clean backdrops are
-# Tier 1's whole promise, not a sheet-only concern. This also surfaced a second
-# artifact — SD1.5 sometimes renders two figures side-by-side at full denoise —
-# suppressed via the extra negative terms below. Genuine back/3-4 views remain
-# unreliable even after all of this (see the tool's honest caveat) — a real
-# SD1.5-checkpoint limitation for non-front angles on top of the composition-
-# anchoring bug, not something parameter tuning alone fully solves.
-SHEET_NEGATIVE = (comfy.DEFAULT_NEGATIVE
-                  + ", two people, duplicate, multiple figures, split screen, "
-                    "comparison, twins, side by side, before and after, "
-                    # Validated during the SDXL back-view campaign (2026-07-19):
-                    # these specifically eliminated the fused-body/multi-figure
-                    # artifacts that OpenPose-conditioned generations produced.
-                    "2boys, 2girls, multiple people, clone, duplicate character, "
-                    "multiple views, character sheet, fused body, conjoined")
 
 
 @mcp.tool()
@@ -651,172 +388,90 @@ def generate_reference_sheet(
     character: str,
     views: list[str] | None = None,
     project: str = characters.DEFAULT_PROJECT,
-    model: str = flux_workflow.DEFAULT_FLUX_MODEL,
-    width: int = 640,
-    height: int = 896,
-    detail_fix: bool = False,
-    lora: str | None = None,
-    lora_strength: float | None = None,
+    width: int = 832,
+    height: int = 1216,
+    seed: int | None = None,
     matte: bool = False,
     combine: bool = True,
 ) -> str:
-    """Grow a registered character's reference set toward a standard turnaround
-    checklist (front, back, a few 3/4 expression close-ups) — Concept Genesis
-    on-ramp for a writer with no art yet, or an artist with one drawing who
-    doesn't want to hand-draw six angles (ARCHITECTURE.md §8b.6). One Tier-2
-    generation per view.
+    """Grow a registered character's reference set toward the Avery-style
+    checklist — front, back, and a few 3/4 expression close-ups — one FLUX 3
+    Klein render per view, each from the character's primary reference
+    (ARCHITECTURE.md §8b.6).
 
-    Sequential, not independent rolls: front is always rendered first, then
-    back, then expressions, regardless of `views` order. The front view then
-    anchors the back view (img2img seed + IP-Adapter ref) instead of the
-    bible's raw source photo. Expressions deliberately do NOT chain off front
-    (tried, reverted — a close-up chained off a full-body ref drags that
-    framing/pose along, since IP-Adapter conditions on the whole reference
-    image, not just "this person's face"); they fall back to the bible's
-    primary reference. If front generation fails, back falls back to the
-    bible's reference too.
+    For the four body angles, generate_turnaround_sheet is the better tool: one
+    render, each view in its own layout box, a genuine profile included. This
+    one is for the close-ups and the poster.
 
-    Honest limitation: genuine back views remain unreliable here. Auto-wiring
-    the 3D mannequin's ControlNet pose map into this tool was tried and
-    reverted (2026-07-20) — forcing identity_mode="off" won the direction
-    fight but produced a fused hand and hoof-like feet on review, and didn't
-    improve on retry. For an actual back view, use generate_pose_map +
-    generate_character_pose directly and curate across a few seeds by hand
-    (ARCHITECTURE.md §8b.7) instead of expecting this bulk call to land one
-    unattended.
+    ⚠ The front view usually comes back close to a copy of the reference --
+    Klein copies when the pose asked for is the pose it was shown.
 
-    combine=True (default) also lays every view onto one poster-style sheet —
-    Avery-template layout: title, large front hero pose, back panel, labeled
-    expression row, text blocks from the bible's profile/abilities/description
-    ("Appearance") — set those before calling, for a sheet worth looking at.
-    Needs a front view to build the poster; falls back to a plain grid
-    otherwise. register_character still wants the individual files, not the
-    combined sheet.
+    combine=True (default) lays every view onto one poster-style sheet: title,
+    large front hero pose, back panel, labeled expression row, and text blocks
+    from the bible's profile/abilities/description — set those before calling.
+    Needs a front view for the poster; falls back to a plain grid otherwise.
 
     Nothing auto-registers. Look at each view, then register_character
     (image_paths=[<keepers>], character_id=<character>, project=...).
 
-    Write the bible's `description` (register_character) with real visual
-    detail BEFORE calling this — without it the prompt has nothing to anchor
-    identity, and every view leans entirely on the source image (dragging its
-    exact pose/background along too).
-
-    Back/3-4 views drift more than front/face even with good settings — a real
-    checkpoint limitation for non-front angles, not just "needs curation."
-    Expect to retry those, or supply a real back-facing photo via
-    generate_character_pose's pose_ref_path to force the angle structurally.
-    This is genesis, not verification — curate hard, and consider
-    bake_character_lora once ~10+ curated refs accumulate.
-
     Args:
         character: A character_id already in the bible.
-        views: Which views to generate. Defaults to a 7-view standard checklist
-            (front/back/side/3-4 body views + 3 face expressions). Pass a single
-            view to redo just one.
+        views: Which views to render. Defaults to front, back and three 3/4
+            close-ups. Pass a single view to redo just one. Keep expressions
+            small: big ones came back cartoonish.
         project: Which comic's bible/output to use.
-        model / width / height: As generate_character_pose.
-        detail_fix: Auto-repair hallucinated hands/faces on every view. Default
-            False — ~2x generation time per view; consider enabling once
-            you're generating the keeper set.
-        lora / lora_strength: Optional style LoRA; defaults to the character's
-            baked Tier-3 LoRA if any, same as generate_character_pose.
-        matte: Auto-remove the backdrop to RGBA. Default False — sheet views
-            are reference material, not compositing layers.
-        combine: Also build the poster-style sheet (or plain grid, if no front
-            view this call). Default True.
+        width / height: Default 832x1216.
+        seed: If set, views use seed, seed+1, seed+2… in order.
+        matte: Remove the backdrop to RGBA. Default False — sheet views are
+            reference material, not compositing layers.
+        combine: Also build the poster-style sheet. Default True.
 
     Returns:
-        The filesystem path for each view, plus the combined sheet path if
-        requested. A single view's failure is reported inline, not fatal.
+        The path for each view, plus the combined sheet path if requested. A
+        single view's failure is reported inline, not fatal.
     """
     view_list = views if views else DEFAULT_SHEET_VIEWS
     if not view_list:
         return "generate_reference_sheet needs at least one view."
-
-    # Sequential discipline: front first, then back, then everything else —
-    # regardless of the order the caller listed them in. See the docstring
-    # above for why (front becomes the identity anchor for what follows).
-    def _bucket(v: str) -> int:
-        vl = v.lower()
-        if "front" in vl:
-            return 0
-        if "back" in vl:
-            return 1
-        return 2
-    view_list = sorted(view_list, key=_bucket)
+    try:
+        entry = characters.get_character(character, project)
+        if entry is None:
+            raise characters.CharacterError(f"'{character}' is not registered in '{project}'.")
+        ref = characters.primary_ref_path(character, project)
+    except characters.CharacterError as e:
+        return f"Could not generate reference sheet: {e}"
 
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
                            "_concepts", "sheet")
-    lines = []
-    ok_paths, ok_labels = [], []
+    lines, ok_paths, ok_labels, expr_items = [], [], [], []
     front_path = back_path = None
-    expr_items = []  # (path, short_label)
-    chain_ref = None  # set once the front view succeeds; reused for the back view only
-    for view in view_list:
-        bucket = _bucket(view)
-        # Automatically wiring the mannequin's ControlNet pose map into the back
-        # view was tried and reverted (2026-07-20): forcing identity_mode="off"
-        # + pose_strength=1.45 to win the direction fight against IP-Adapter did
-        # get genuine back-facing content into frame, but live scrutiny (not
-        # just checking "does it face backward") showed it came with a fused,
-        # fingerless hand and hoof-like feet — worse overall anatomy, not just
-        # a wrong-direction one, and retrying didn't fix it. Back view stays
-        # plain text + IP-Adapter here, honestly unreliable (see the docstring
-        # caveat below) — the validated mannequin recipe
-        # (pose_strength=1.4-1.5, identity_mode="off", multi-seed curation) is
-        # a deliberate, reviewed, one-at-a-time flow via generate_pose_map +
-        # generate_character_pose, not something safe to bulk-automate
-        # unattended inside a multi-view sheet call.
-        #
-        # Only the back view (still a full-body shot, like the front) reuses
-        # the front view as an img2img/IP-Adapter identity anchor for costume/
-        # color continuity. Expression/face close-ups do NOT chain off front —
-        # a close-up chained off a full-body reference drags that framing and
-        # pose along (IP-Adapter conditions on the whole reference image, not
-        # just "this person's face"), which is exactly what broke here: a
-        # "face close-up, smiling" request came back as a repeat of the front
-        # view's full-body pose. Expressions fall back to the bible's own
-        # primary reference, matching this tool's pre-chaining behavior.
-        view_ref_override = chain_ref if bucket == 1 else None
+    for i, view in enumerate(view_list):
+        text = ("The character from image 1, " + view.strip().rstrip(".") + ", on a plain flat "
+                "pale gray backdrop. The character from image 1: " + entry["description"].rstrip(". ")
+                + ". They keep the face, hair and costume of their reference image. "
+                "Lit from the upper left.")
         try:
-            raw_path, tier_note = _render_pose(
-                character, view, "", SHEET_NEGATIVE, project, model, width, height, None,
-                None, 1.0,
-                lora, lora_strength, out_dir,
-                ref_override=view_ref_override, detail_fix=detail_fix)
-        except characters.CharacterError as e:
-            return f"Could not generate reference sheet: {e}"
-        except comfy.ComfyUIError as e:
+            raw = klein_workflow.generate(text, out_dir, width, height,
+                                          seed=(seed + i) if seed is not None else None,
+                                          refs=[ref], stem="view")
+        except klein_workflow.KleinError as e:
             lines.append(f"• {view}: FAILED — {e}")
             continue
-        view_path = raw_path
-        if matte:
-            try:
-                view_path = comfy.matte(raw_path)
-                lines.append(f"• {view}: {view_path}")
-            except Exception as e:
-                # broad on purpose — see the note in generate_character_pose
-                lines.append(f"• {view}: generated but MATTING FAILED, still RGB "
-                             f"({type(e).__name__}: {e}) — raw: {raw_path}")
-        else:
-            lines.append(f"• {view}: {view_path}")
-        ok_paths.append(view_path)
+        path, note = _matte_or_note(raw) if matte else (raw, "")
+        lines.append(f"• {view}: {path}{note}")
+        ok_paths.append(path)
         ok_labels.append(view)
-
-        if bucket == 0:  # front
-            if front_path is None:
-                front_path = raw_path
-            chain_ref = raw_path  # anchor the back view off this
-        elif bucket == 1:  # back
-            if back_path is None:
-                back_path = raw_path
-        else:
-            expr_items.append((raw_path, view.split(",")[-1].strip() or view))
+        vl = view.lower()
+        if "front" in vl and front_path is None:
+            front_path = raw
+        elif "back" in vl and back_path is None:
+            back_path = raw
+        elif "front" not in vl and "back" not in vl:
+            expr_items.append((raw, view.split(",")[-1].strip() or view))
 
     combined_note = ""
     if combine and front_path:
         try:
-            entry = characters.get_character(character, project) or {}
             sheet_path = _compose_concept_sheet(
                 front_path=front_path,
                 back_path=back_path,
@@ -836,7 +491,8 @@ def generate_reference_sheet(
         try:
             sheet_path = _compose_sheet(ok_paths, ok_labels,
                                         out=os.path.join(out_dir, "combined_sheet.png"))
-            combined_note = f"\nCombined sheet (plain grid — no front view generated this call, so the poster layout was skipped): {sheet_path}"
+            combined_note = (f"\nCombined sheet (plain grid — no front view this call, so the "
+                             f"poster layout was skipped): {sheet_path}")
         except SystemExit as e:
             combined_note = f"\n(Could not build the combined sheet: {e})"
 
@@ -852,103 +508,62 @@ def generate_turnaround_sheet(
     character: str,
     project: str = characters.DEFAULT_PROJECT,
     seed: int | None = None,
-    width: int = flux_workflow.FLUX_TURNAROUND_WIDTH,
-    height: int = flux_workflow.FLUX_TURNAROUND_HEIGHT,
+    width: int = 2560,
+    height: int = 1024,
     extra_prompt: str = "",
-    model: str = KLEIN,
 ) -> str:
-    """**Defaults to FLUX 3 Klein**: front, three-quarter, profile and back in ONE
-    render, each view held in its own layout box, and every panel cut out
-    EXACTLY by its box (no gap search). Measured 2026-10-17: four true views
-    including a genuine profile, no strangers, 0.0% of figure pixels outside
-    the boxes. Everything below describes model="flux_manwha" (FLUX.1 Kontext +
-    the turnaround LoRA), kept only until FLUX.1 is retired.
+    """Front, three-quarter, profile and back in ONE FLUX 3 Klein render, from the
+    character's primary reference, each view held in its own layout box and cut
+    out EXACTLY by that box (no gap search). Measured 2026-10-17: four true
+    views including a genuine profile, no strangers, 0.0% of figure pixels
+    outside the boxes, ~86 s.
 
-    FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): generate a multi-pose
-    turnaround sheet from a registered character's primary reference image, via
-    FLUX Kontext dev + a dedicated turnaround-sheet LoRA. Recommended staged
-    workflow for getting a new character into the bible with FLUX, designed to
-    catch mistakes early:
+    The staged way to get a new character into the bible:
 
-    1. generate_character_concept(description=..., model="flux_manwha", n=1) —
-       one candidate front view. Not right? Regenerate before the next step.
+    1. generate_character_concept(description=...) — one candidate. Not right?
+       Regenerate before the next step.
     2. register_character(image_paths=[<the approved concept>], ...) — make it
-       canon; becomes the reference this tool reads from.
-    3. generate_turnaround_sheet(character=...) — this tool. Typically comes
-       back as 7 panels in a row (some front/3-4/profile repeats alongside one
-       back view, per the LoRA's own design). Inspect the WHOLE figure on
-       every panel that matters, not just facing direction — collar/neckline
-       shape (front dips toward chest, back sits flat), hands, shoe
-       orientation (toe box vs. heel). A genuine back view has correct
-       back-of-garment details throughout, not just a turned head. Retry with
-       a different seed if the back panel isn't genuinely clean.
-    4. crop_reference(sheet_path, boxes=[...]) — slice out panels to keep.
-       Must include front + back; a profile/3-4 view and 1-2 close-ups round
-       out the Avery-template's three image slots (hero + back panel +
-       expression row).
-    5. compose_reference_sheet(character=..., front_path=..., back_path=...,
-       expression_paths=[...], ...) — assemble the final poster from those
-       crops, pulling bible text in automatically.
-    6. Optionally, edit_character_image on any panel with a specific anatomy
-       problem before step 4/5 — validated for local fixes on a pose already
-       facing the right direction (see its own docstring for what it's not
-       good for).
+       canon; it becomes the reference this tool reads from.
+    3. generate_turnaround_sheet(character=...) — this tool. Check each panel
+       is the angle it claims, over the WHOLE figure (collar shape, hands, shoe
+       orientation), and that the costume agrees across all four. Reroll with a
+       new seed if one is wrong.
+    4. compose_reference_sheet(character=..., front_path=..., back_path=...,
+       expression_paths=[...], ...) — the final poster from those panels.
 
-    Nothing is auto-registered or auto-composed — same staging discipline as
-    everything else here.
+    Nothing is auto-registered or auto-composed.
 
     Args:
         character: A character_id already in the bible, with a primary
             reference image set.
         project: Which comic's bible to use.
         seed: Fixed seed for reproducibility; random if omitted.
-        width / height: Output canvas — wide (horizontal panel row), but tall
-            enough (default 1280) that Kontext doesn't infer squat proportions
-            from a short canvas.
-        extra_prompt: Reinforce ONE character-specific accessory across all
-            panels if it's prone to going missing/faint in some (found live:
-            a character's glasses) — e.g. "she wears a black choker with a round
-            jade pendant in every panel." Leave blank if nothing needs that.
-            If the sheet comes back wrong some other way (proportions, a
-            duplicate pose), try a plain reroll with a new seed first — that
-            alone has fixed it before.
+        width / height: Default 2560x1024, four boxes of 640x1024.
+        extra_prompt: Anything a view keeps losing (glasses, a full-length
+            hem, an emblem on the back the front reference cannot show). The
+            full bible description already goes in; this is IN ADDITION.
 
     Returns:
-        The filesystem path to the raw (uncropped) turnaround sheet.
+        The path to the sheet and to each cut panel.
     """
     try:
         ref_path = characters.primary_ref_path(character, project)
+        entry = characters.get_character(character, project)
     except characters.CharacterError as e:
         return f"Could not generate turnaround sheet: {e}"
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character),
                            "_concepts", "turnaround")
-    if model == KLEIN:
-        entry = characters.get_character(character, project)
-        try:
-            sheet_path, panels = klein_workflow.turnaround_sheet(
-                ref_path, entry["description"], out_dir, width=width, height=height,
-                seed=seed, extra_prompt=extra_prompt)
-        except klein_workflow.KleinError as e:
-            return f"Turnaround sheet generation failed: {e}"
-        lines = "\n".join(f"  {k}: {v}" for k, v in panels.items())
-        return (f"Turnaround sheet generated (FLUX 3 Klein): {sheet_path}\n"
-                f"Panels, cut exactly by their layout boxes:\n{lines}\n"
-                f"Check each view is the angle it claims and that the costume agrees "
-                f"across all four. extra_prompt carries anything a view keeps losing.")
     try:
-        sheet_path = flux_workflow.generate_turnaround_sheet(
-            image_path=ref_path, out_dir=out_dir, seed=seed, width=width, height=height,
-            extra_prompt=extra_prompt)
-    except comfy.ComfyUIError as e:
-        return f"Turnaround sheet generation failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
+        sheet_path, panels = klein_workflow.turnaround_sheet(
+            ref_path, entry["description"], out_dir, width=width, height=height,
+            seed=seed, extra_prompt=extra_prompt)
+    except klein_workflow.KleinError as e:
+        return f"Turnaround sheet generation failed: {e}"
+    lines = "\n".join(f"  {k}: {v}" for k, v in panels.items())
     return (f"Turnaround sheet generated: {sheet_path}\n"
-            f"Scan the WHOLE figure on each panel you care about (collar shape, "
-            f"hands, shoe orientation), not just facing direction — a partial "
-            f"rotation can look right at a glance and still be wrong. If the "
-            f"back view isn't genuinely clean, retry with a different seed.\n"
-            f"Next: crop_reference to slice out front + back (+ a profile view "
-            f"and 1-2 close-ups), then compose_reference_sheet to build the "
-            f"final poster.")
+            f"Panels, cut exactly by their layout boxes:\n{lines}\n"
+            f"Check each view is the angle it claims and that the costume agrees "
+            f"across all four. extra_prompt carries anything a view keeps losing.")
 
 
 @mcp.tool()
@@ -962,75 +577,39 @@ def edit_character_image(
     matte: bool = False,
     matte_tol: float | None = None,
     mask_box: tuple[int, int, int, int] | None = None,
-    mask_feather: int = 32,
-    model: str = KLEIN,
 ) -> str:
-    """**Defaults to FLUX 3 Klein.** Without mask_box, the image is a REFERENCE
-    and the instruction describes the result -- Klein holds identity through a
-    pose change, so this is also how a character is re-posed from their art.
-    With mask_box, only that region is redrawn and pasted back; the change
-    outside it is exactly zero (the local model otherwise redraws the whole
-    frame). mask_box also sets the SIZE of what is drawn: an oversized box gave
-    an oversized hand. When a hand stays wrong, reroll the whole render rather
-    than patching -- six patches gave one clean hand in testing.
-    Everything below describes model="flux_manwha" (Kontext), kept only until
-    FLUX.1 is retired.
+    """Edit or re-pose an existing image with FLUX 3 Klein.
 
-    FLUX-only (ARCHITECTURE.md §8b.9, Stage 5): surgically edit an existing
-    image with a plain-English instruction, via FLUX Kontext dev as a pure
-    image editor (no LoRA).
+    WITHOUT mask_box, the image is a REFERENCE and the instruction describes
+    the result. Every pixel is drawn fresh with the image's identity, so this
+    is also how a character is re-posed from their own art, or a figure is
+    re-framed on a taller canvas. Describe the whole result, not only the
+    change.
 
-    mask_box: (x0, y0, x1, y1) in the SOURCE image's pixel coordinates. Only
-    that rectangle is denoised; everything outside it is carried through
-    untouched. WITHOUT it this re-renders the WHOLE canvas at denoise=1.0 and
-    no wording protects anything — a costume pass repainted a raised kicking
-    leg as a continuation of the sleeve three times running, because the model
-    was free to redecide every pixel. On a multi-panel turnaround sheet an
-    unmasked edit re-decides every panel, including the ones you liked. Fence
-    the edit; don't ask the prompt to be careful. Mutually exclusive with
-    canvas_width/canvas_height.
+    WITH mask_box (x0, y0, x1, y1, in the source's pixels), only that region is
+    redrawn and pasted back: the change outside it is exactly zero, where the
+    model on its own redraws the whole frame (18.5 of mean change outside a
+    boxed edit). The box also sets the SIZE of what is drawn — an oversized box
+    gave an oversized, swollen hand. Size it to the thing.
 
-    canvas_width / canvas_height: explicit output panel size, e.g. a
-    landscape action panel (1600x900) from a portrait character reference.
-    Default (both None) matches the reference image's own aspect ratio, same
-    as before this parameter existed. Supply both or neither.
+    ⚠ When a hand stays wrong, reroll the whole render rather than patching:
+    six region repairs gave one clean hand; three fresh seeds of the full
+    render gave one with both hands right.
 
-    matte: key the result to a transparent RGBA cutout, ready to drop onto a
-    background plate (compose_panel, or a plate from webcomic-background-mcp).
-    Off by default because it only makes sense when the edit was rendered on a
-    clean backdrop — a story panel with real scenery has nothing to key.
-    Uses tools/cutout.py's border-connected keying, NOT rembg: the backdrop is
-    whatever is connected to the frame edge AND close to the border color,
-    which keeps white, black and skin inside the figure regardless of their
-    value, and takes the cast shadow with it.
+    canvas_width / canvas_height: output size for an unmasked edit, e.g. a
+    landscape panel from a portrait reference. Default: the image's own size.
 
-    matte_tol: keying tolerance. Omit to MEASURE it from this image (Otsu over
-    the distance-to-backdrop histogram) rather than guess — tolerance is
-    genuinely per-image; live values ranged 14 to 120 across two characters.
-    The measured number is always reported so you can re-run with an override.
-    Watch for `pale_figure_risk` in the response: silver hair or a cream costume
-    sits close to a pale backdrop and the measurement runs high there, which
-    bites into the figure's edge. Lower matte_tol if you see it.
-
-    Validated for LOCAL fixes on a pose already facing the right direction —
-    e.g. "show both of his hands fully visible hanging at his sides, relaxed
-    and open, fingers clearly separated. Keep everything else exactly the
-    same." A targeted ask + explicit "keep everything else the same" produces
-    a clean result with no side effects on direction, costume, or pose.
-
-    NOT validated for a full viewpoint rotation in one edit — one test
-    produced a chimera (back-facing head/hair/hands, front-facing torso/shoes:
-    the tank-top's neckline was still a front-facing scoop, both shoes still
-    showed toe box not heel), since "turn him around" + "keep everything else
-    the same" is self-contradicting for a full pose change. Use
-    generate_turnaround_sheet for direction changes instead.
+    matte: key the result to a transparent RGBA cutout with tools/cutout.py's
+    border-connected keying — for an edit rendered on a clean backdrop only.
+    matte_tol: keying tolerance; omit to MEASURE it from this image. Watch for
+    `pale_figure_risk` in the response (pale hair or costume near a pale
+    backdrop) and lower matte_tol if the silhouette is bitten.
 
     Args:
-        image_path: An existing image to edit (any generated output, or a
-            registered reference).
-        instruction: Plain-English edit instruction. Be specific about what to
-            keep unchanged, not just what to change — vague instructions risk
-            the same partial-edit inconsistency described above.
+        image_path: An existing image to edit.
+        instruction: Plain-English instruction. Name what stays as well as what
+            changes, and state things positively — a negation names what it
+            forbids.
         project: Which comic's output folder to save under.
         seed: Fixed seed for reproducibility; random if omitted.
 
@@ -1039,24 +618,17 @@ def edit_character_image(
     """
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), "_edits")
     try:
-        if model == KLEIN:
-            if mask_box:
-                edited_path = klein_workflow.edit_region(
-                    image_path, instruction, out_dir, tuple(mask_box), seed=seed)
-            else:
-                w0, h0 = klein_workflow.size_of(image_path)
-                edited_path = klein_workflow.generate(
-                    instruction, out_dir, canvas_width or w0, canvas_height or h0, seed=seed,
-                    refs=[image_path], megapixels=klein_workflow.megapixels_of(image_path),
-                    stem="edit")
+        if mask_box:
+            edited_path = klein_workflow.edit_region(
+                image_path, instruction, out_dir, tuple(mask_box), seed=seed)
         else:
-            edited_path = flux_workflow.edit_image(
-                image_path=image_path, instruction=instruction, out_dir=out_dir, seed=seed,
-                canvas_width=canvas_width, canvas_height=canvas_height,
-                mask_box=tuple(mask_box) if mask_box else None,
-                mask_feather=mask_feather)
-    except (comfy.ComfyUIError, klein_workflow.KleinError) as e:
-        return f"Edit failed: {e}\nIs ComfyUI running at {comfy.COMFY_URL}?"
+            w0, h0 = klein_workflow.size_of(image_path)
+            edited_path = klein_workflow.generate(
+                instruction, out_dir, canvas_width or w0, canvas_height or h0, seed=seed,
+                refs=[image_path], megapixels=klein_workflow.megapixels_of(image_path),
+                stem="edit")
+    except klein_workflow.KleinError as e:
+        return f"Edit failed: {e}"
     matte_note = ""
     if matte:
         try:
@@ -1081,9 +653,7 @@ def edit_character_image(
     return (f"Edited image: {edited_path}\n{matte_note}"
             f"Scan the WHOLE figure before trusting this — head, collar/"
             f"neckline, hands, legs, shoes — not just the region the "
-            f"instruction targeted; a local edit can succeed exactly where "
-            f"asked and still leave the rest of the figure inconsistent with "
-            f"it.")
+            f"instruction targeted.")
 
 
 @mcp.tool()
@@ -1523,12 +1093,12 @@ def compose_panel(
 
 @mcp.tool()
 def check_status() -> str:
-    """Check whether the ComfyUI backend is reachable and ready (only needed for
-    generate_character_pose — the bible and compose_panel work without it)."""
+    """Check whether both ComfyUIs are reachable: Klein's (rendering) and the
+    main one (matting). The bible and compose_panel work without either."""
     import requests
     lines = []
     for label, url in (("Klein (rendering)", klein_workflow.KLEIN_URL),
-                       ("main (matting, FLUX.1)", comfy.COMFY_URL)):
+                       ("main (matting)", comfy.COMFY_URL)):
         try:
             r = requests.get(f"{url}/system_stats", timeout=10)
             lines.append(f"{label}: up at {url}" if r.status_code == 200

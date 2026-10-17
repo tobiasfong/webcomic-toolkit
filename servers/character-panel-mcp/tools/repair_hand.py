@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Repair a malformed hand on a generated figure with a MASKED Kontext pass.
+"""Repair a malformed hand on a generated figure with a boxed Klein redraw.
 
     python repair_hand.py <project> <label> --grid              # find the box
     python repair_hand.py <project> <label> --box 520 690 660 820 [--seed 9001]
@@ -7,37 +7,36 @@
 `label` is a concept folder under output/<project>/_concepts. The newest
 render there is the source.
 
-⚠ THIS IS THE ONE THING KONTEXT IS VALIDATED FOR HERE. The repo's measured
-result: repairing a damaged hand went from 0 of 6 frames usable at Q3_K_S to
-3 of 3 at Q6_K, which is the whole reason both FLUX models run Q6. Quantization
-error surfaces when the task is hard, and reconstructing a hand from corrupted
-pixels sits right at the edge of what the model can do.
+⚠ REROLL FIRST. Measured on FLUX 3 Klein, 2026-10-17: six region repairs on
+one figure produced one clean hand, while three fresh seeds of the FULL render
+produced one with both hands right. Reach for this only when the rest of the
+render is worth keeping and a reroll has already been tried.
 
-Do NOT reach for this to change a silhouette, move a marking, or complete a
-figure that runs off the canvas. Those are the restructure and
-invent-what-lies-beyond cases that fail however they are worded; a clipped
-figure needs a taller canvas (complete_figure.py, beside this) and a
-misplaced emblem needs a mirror or a regeneration.
+How it works: klein_workflow.edit_region() redraws the whole frame from the
+source as a reference, then pastes back only the box (grown and feathered), so
+the change outside it is exactly zero. Klein on its own redraws the whole
+frame even for a boxed edit -- 18.5 of mean change outside the box.
 
-⚠ KEEP THE MASK SMALL AND KEEP IT INSIDE THE FIGURE. Two separate findings
-push the same way:
+⚠ THE BOX SETS THE HAND'S SIZE, not only its place. A hand asked to fill a
+220x166 box came back 220x166 and swollen beside the other one. Size the box
+to the hand the figure should have, measured off the other hand.
 
-  * A masked pass that repainted 780 px of face drifted everything inside it
-    and failed twice; a tight 140x105 mask over a mouth and chin succeeded.
-    The less there is inside the box, the less the model re-decides.
-  * A mask whose box ends in open background leaves a visible rectangular
-    seam, because the area outside the subject is repainted differently
-    inside the box than outside it. Masks that stay within a solid object
-    blend invisibly. A hand at the end of a sleeve is usually reachable with
-    a box that is mostly sleeve and hand rather than mostly backdrop -- bias
-    the box INWARD toward the body, and check the result for an edge.
+⚠ A box does NOT decide which side of the hand the thumb grows on. Check
+handedness on the result: a right hand on a left arm is a common failure.
+
+⚠ The feather blends onto the WORKING image. Blending onto an original that
+still holds the old hand let the old fingertips show through as ghosts.
+
+--erase fills the box with the surrounding color first, so the model cannot
+build on what is there. On a pale floor that gave a clean new hand; on a dark
+textured floor the flat patch was read as the hand's SILHOUETTE and filled as
+a paper cutout. Off by default.
 
 --grid writes a coordinate overlay beside the render so the box can be read
-off it rather than guessed, which is how a plaque on a wall plate was
-located once.
+off it rather than guessed.
 
-Moved here from a project's tools folder on 2026-09-14: it is a general
-technique and was living beside one game's emitters.
+Count the fingers at FULL resolution afterwards; a sixth finger was missed at
+a downscaled look.
 """
 import argparse
 import glob
@@ -47,20 +46,20 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.dirname(HERE)
 sys.path.insert(0, SERVER)
-import flux_workflow  # noqa: E402
+import klein_workflow  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
 # Positives only, and it names what a hand IS rather than what is wrong with
 # it -- naming the defect is the negation trap that summons it back.
 INSTRUCTION = ("a single clean hand with four fingers and one thumb, the "
-               "fingers together and relaxed, hanging at the end of the "
-               "sleeve, crisp black outlines and hard-edged flat color, "
-               "every edge in sharp focus")
+               "fingers together and relaxed, at the end of the sleeve, "
+               "the same size as the other hand")
 
 
 def newest(folder):
-    fs = [f for f in glob.glob(os.path.join(folder, "flux_*.png"))
-          if not f.endswith(("_body.png", "_rgba.png", "_cut.png"))]
+    fs = [f for f in glob.glob(os.path.join(folder, "*.png"))
+          if not os.path.basename(f).startswith("_")
+          and not f.endswith(("_body.png", "_rgba.png", "_cut.png", "_matted.png", "_region.png"))]
     return sorted(fs, key=os.path.getmtime)[-1] if fs else None
 
 
@@ -84,7 +83,8 @@ def main(argv=None):
     ap.add_argument("--box", type=int, nargs=4, metavar=("X0", "Y0", "X1", "Y1"))
     ap.add_argument("--grid", action="store_true")
     ap.add_argument("--seed", type=int, default=9001)
-    ap.add_argument("--feather", type=int, default=24)
+    ap.add_argument("--feather", type=int, default=14)
+    ap.add_argument("--erase", action="store_true")
     a = ap.parse_args(argv)
 
     folder = os.path.join(SERVER, "output", a.project, "_concepts", a.label)
@@ -102,24 +102,12 @@ def main(argv=None):
 
     x0, y0, x1, y1 = a.box
     print("repairing %s  box (%d,%d)-(%d,%d)  %dx%d px"
-          % (os.path.basename(src), x0, y0, x1, y1, x1 - x0, y1 - y0),
-          flush=True)
-    if (x1 - x0) * (y1 - y0) > 200000:
-        print("  ⚠ that box is large. A masked pass that repainted 780 px of "
-              "face drifted everything in it; tighten toward the hand.",
-              flush=True)
-
-    out = flux_workflow.edit_image(
-        image_path=src,
-        instruction=INSTRUCTION,
-        out_dir=folder,
-        seed=a.seed,
-        mask_box=(x0, y0, x1, y1),
-        mask_feather=a.feather,
-    )
+          % (os.path.basename(src), x0, y0, x1, y1, x1 - x0, y1 - y0), flush=True)
+    out = klein_workflow.edit_region(src, INSTRUCTION, folder, (x0, y0, x1, y1),
+                                     seed=a.seed, feather=a.feather, erase=a.erase)
     print("wrote %s" % os.path.basename(out), flush=True)
-    print("Check for a rectangular seam at the box edge, then re-matte it "
-          "with the project's matte tool.", flush=True)
+    print("Count the fingers at full resolution and check which hand it is, "
+          "then re-matte it.", flush=True)
     return 0
 
 

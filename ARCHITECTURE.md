@@ -1,5 +1,10 @@
 # Webcomic Studio — Architecture & Build Plan
 
+> **Rendering since 2026-10-17: FLUX 3 Image Klein only.** The SD1.5, SDXL and
+> FLUX.1 machinery this plan describes (consistency tiers, IP-Adapter, LoRAs,
+> ControlNet, Kontext, the 3D mannequin) is retired in both image servers. Read
+> it as history; each server's CHANGELOG records what replaced each part.
+>
 > **Status:** Mixed. The core visual pipeline (`webcomic-background-mcp`,
 > `character-panel-mcp`, all 3 consistency tiers, Concept Genesis, the 3D
 > mannequin, FLUX/Stage 5) is built and shipping — see each server's own

@@ -1,8 +1,9 @@
 """Paste a rectangular region from one render into another, with a feathered
 edge so the seam does not read.
 
-Why this exists: `flux_workflow.edit_image` runs Kontext at denoise=1.0 over the
-whole canvas — there is no mask, so NOTHING in the frame is protected. On panel
+Why this exists: FLUX.1 Kontext's `edit_image` (removed in v2.0.0) ran at
+denoise=1.0 over the whole canvas — there was no mask, so NOTHING in the frame
+was protected. Klein redraws the whole frame too, even for a boxed edit. On panel
 4 that let two separate costume passes repaint the raised kicking leg as an
 extension of the sleeve (the fusion rule, in Kontext rather than in ControlNet).
 
