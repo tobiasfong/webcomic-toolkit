@@ -1148,36 +1148,33 @@ def generate_expression(
     seed: int,
     project: str = characters.DEFAULT_PROJECT,
     prompt: str = "",
-    face_box: list[int] | None = None,
 ) -> str:
-    """FLUX 3 Klein: two candidates for one expression of a base body, to choose between.
+    """FLUX 3 Klein: an expression as a WHOLE new body, rendered from scratch and matted.
 
-    The base body must already exist from generate_character_pose(character, pose,
-    prompt, seed=seed) -- pass the SAME pose, prompt and seed. Keep expression words
-    out of the base's pose ("a calm neutral expression"), or the from-scratch
-    candidate is asked for two expressions at once.
+    The author's rule, 2026-10-17: "Body can move." Body language and posture
+    follow the mood, and a pose that shifts with the face makes the change easier
+    to read -- so an expression is its own full body, never a face pasted onto
+    the base. It is rendered from the character's reference with the base body's
+    pose and prompt plus the expression, on a seed DIFFERENT from the base's.
+    Reusing the base's own seed froze the posture -- the body came back with a
+    mean change of 0.5 of 255 -- which reads as static; the expressions the
+    author approved used the base's seed + 5000, and the posture moved with them.
 
-    Two candidates, because neither method won every expression in testing
-    (2026-10-17): the anger the author picked was rendered from scratch, the smile
-    he picked was copied from the base picture.
-      * from scratch -- a new render from the character's reference, the base's
-        exact prompt and seed, plus the expression. The body comes back almost
-        identical (mean change 0.5-0.9 of 255), but a small expression can fail
-        to take: the smile came back neutral.
-      * copied -- the base picture itself as the reference, asked to repeat it
-        with the new expression. The expression always showed, and followed the
-        head's tilt on its own; the body moved more (a mean of about 3).
-    Both then have ONLY their face pasted onto the base body, so outside the face
-    every pixel and the alpha are the base's -- the sprite cannot jump when its
-    face swaps mid-conversation.
+    Not done, and why: pasting the new face onto the base (built on the idea that
+    the body must not move) broke on bodies rendered from text alone -- the faces
+    lost the hair strands crossing them; and a candidate "copied" from the base
+    picture was rejected on sight as "bad and unnatural". From scratch was
+    "excellent and more natural".
 
     expression: "smile", "anger" or "laugh" -- the names the game already uses,
         with deliberately small wordings (bigger ones came back cartoonish).
         Anything else is used as plain words, but the game wires expressions BY
         NAME: do not invent new ones without the author.
-    face_box: [x0, y0, x1, y1] of the face; omit for an automatic guess, which
-        drifts when hair covers one side. Only this region is taken from the
-        candidates.
+    pose / prompt: the ones the base body was made with by
+        generate_character_pose. Keep expression words out of the base's pose
+        ("a calm neutral expression"), or this render is asked for two at once.
+    seed: the seed for THIS render, used as given. Pass a different one from
+        the base's -- the base's seed + 5000 is what the approved ones used.
     """
     words = klein_workflow.EXPRESSIONS.get(expression, expression)
     name = expression if expression in klein_workflow.EXPRESSIONS else "custom"
@@ -1188,45 +1185,19 @@ def generate_expression(
         ref = characters.primary_ref_path(character, project)
     except characters.CharacterError as e:
         return f"Could not make the expression: {e}"
-    poses = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "poses")
-    base_raw = os.path.join(poses, f"pose_{seed}.png")
-    base_rgba = os.path.join(poses, f"pose_{seed}_matted.png")
-    if not (os.path.isfile(base_raw) and os.path.isfile(base_rgba)):
-        return (f"No base body for seed {seed} in {poses}. Make it first with "
-                f"generate_character_pose(character='{character}', pose=..., seed={seed}).")
-    w, h = klein_workflow.size_of(base_raw)
-    try:
-        box = tuple(face_box) if face_box else klein_workflow.find_face_box(base_rgba)
-    except klein_workflow.KleinError as e:
-        return f"Could not make the expression: {e}"
     out_dir = os.path.join(OUTPUT_DIR, characters._slug(project), characters._slug(character), "expressions")
-    tmp_dir = os.path.join(out_dir, "_candidates")
-    fresh_text = _klein_pose_text(entry, pose, prompt, words=words)
-    copied_text = ("The character from image 1 exactly as shown: the same pose, the same framing, "
-                   "the same costume and the same backdrop, now with " + words.rstrip(". ") + ".")
-    report = []
     try:
-        for label, text, refs, mp in (
-                ("from_scratch", fresh_text, [ref], 1.0),
-                ("copied", copied_text, [base_raw], w * h / (1024 * 1024))):
-            raw = klein_workflow.generate(text, tmp_dir, w, h, seed=seed, refs=refs, megapixels=mp,
-                                          stem=f"{name}_{label}")
-            out = os.path.join(out_dir, f"pose_{seed}_{name}_{label}.png")
-            stem_, n = os.path.splitext(out)[0], 1
-            while os.path.exists(out):
-                out, n = f"{stem_}_{n}.png", n + 1
-            r = klein_workflow.paste_face(base_rgba, raw, out, box)
-            os.remove(raw)
-            report.append(f"  {label:12s} {r['path']}  (outside the face changed: "
-                          f"{r['changed_outside_face']} px, alpha identical: {r['alpha_identical']})")
+        raw = klein_workflow.generate(_klein_pose_text(entry, pose, prompt, words=words), out_dir,
+                                      832, 1216, seed=seed, refs=[ref], stem=f"body_{name}")
     except klein_workflow.KleinError as e:
         return f"Expression failed: {e}"
-    finally:
-        if os.path.isdir(tmp_dir) and not os.listdir(tmp_dir):
-            os.rmdir(tmp_dir)
-    return (f"Two '{name}' candidates for {character} (base seed {seed}, face box {box}"
-            f"{', automatic guess' if not face_box else ''}):\n" + "\n".join(report) +
-            "\nPick one per expression; it is the base body with only the face changed.")
+    try:
+        matted = klein_workflow.clean_matte(raw, comfy.matte(raw))
+    except Exception as e:
+        return (f"Expression rendered but MATTING FAILED -- RGB, not RGBA: {type(e).__name__}: {e}\n"
+                f"  raw render: {raw}")
+    return (f"'{name}' body for {character} (seed {seed}): {matted}\n  raw render: {raw}\n"
+            f"A whole new body -- the posture may differ from the base. Check every hand.")
 
 @mcp.tool()
 def compose_reference_sheet(

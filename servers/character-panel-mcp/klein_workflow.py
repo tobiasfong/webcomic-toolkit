@@ -320,6 +320,11 @@ EXPRESSIONS = {
 def paste_face(base_rgba_path: str, candidate_path: str, out_path: str, face_box) -> dict:
     """Paste ONLY the face of a candidate render onto the base body.
 
+    NOT how the visual novel makes expressions. The author's rule (2026-10-17):
+    "Body can move" -- an expression is a whole new body, rendered from scratch
+    (generate_expression). Kept for a case where a body truly must not move,
+    and because existing scripts call it.
+
     The candidate is a whole new render with the expression drawn in context --
     which is why it follows the head's tilt on its own. But even the closest
     candidate moves the body a little (a mean of 0.5 to 3 out of 255), and a

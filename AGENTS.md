@@ -67,6 +67,13 @@ where something genuinely cannot be generated together.
    reference** — flaws included: a figure's bad hands came straight through
    from her reference. Identity survives a pose change; it is a same-pose
    request that turns into a copy.
+   **It copies the reference's CROP too.** Measured 2026-10-17 on a whole
+   cast: front-facing sprites from tight sheet crops came back cut off at
+   the head or feet 17 times in 40, and new seeds did not help (7 of 8 cut
+   again). Padding the reference to ~18% more height, on its own backdrop
+   color, fixed all 9 retried (0 cut); padded references for a second set
+   were cut 2 in 54, and text-only renders 0 in 54. Pad every reference
+   before a same-pose request.
 3. **A layout box sets SIZE as well as place.** A hand asked to fill a 220x166
    box came back 220x166 and swollen. Size boxes to the thing.
 4. **A box does not decide which side of a hand the thumb grows on.** Handedness
@@ -93,38 +100,33 @@ where something genuinely cannot be generated together.
    frame edge, which stops dead at Klein's black outline: the outermost 2 px
    fell from a brightness of 51 to 19, the ink itself.
 
-### Expressions on Klein — the base body with only the face changed
+### Expressions on Klein — a whole new body, rendered from scratch
 
-Settled the same day, after four attempts. `generate_expression` in the
-character server does all of this.
+The author's rule, 2026-10-17: **"Body can move."** An expression is its own
+full body, rendered from scratch and matted. Body language and posture follow
+the mood, and a pose that shifts with the face makes the change easier to see.
+`generate_expression` in the character server does this.
 
-- **The body must not move between expressions**, or the sprite visibly jumps
-  when its face swaps mid-conversation. So every expression is the BASE body
-  with only its face replaced, and the alpha kept: measured 0 pixels changed
-  outside the face.
-- **Redrawing the face in place came back cartoonish** — at ~80 px wide in a
-  full-body render the model draws simplified features, the same resolution
-  failure as the childish face. Redrawing it at 4x fixed the look, but the new
-  mouth came back level on a tilted head.
-- **What won, on the author's idea: render the expression as a whole new
-  picture, then take only its face.** Drawn in context, the face follows the
-  head's tilt by itself. Two ways to make that picture, and NEITHER won both
-  expressions, so the tool makes one of each and the author picks:
-  - **from scratch** — the character's reference, the base's exact prompt and
-    seed, plus the expression. The body came back almost identical (mean change
-    0.5–0.9 of 255) — far closer than an edit, because the seed and prompt are
-    the same — but a small expression can fail to take: the smile came back
-    neutral. The picked anger came from here.
-  - **copied** — the base picture itself as the reference, asked to repeat it
-    with the new expression. The expression always showed; the body moved more
-    (a mean of about 3). The picked smile came from here.
+- **Render from the character's reference with the base body's pose and prompt,
+  plus the expression words, on a DIFFERENT seed** — the approved expressions
+  used the base's seed + 5000. Reusing the base's own seed froze the posture (a
+  mean change of 0.5 of 255), which reads as static.
+- **Never paste a face onto the base.** That was built the same day on the idea
+  that the body must not move, and it broke: on bodies rendered from text alone
+  the new render differed from its base by a mean of 7 to 46, and the pasted
+  faces lost the hair strands crossing them.
+- **A candidate "copied" from the base picture** — the base itself as the
+  reference, asked to repeat it with a new face — was rejected on sight as "bad
+  and unnatural". From scratch was "excellent and more natural".
+- **Redrawing only the face in place came back cartoonish**: ~80 px wide in a
+  full-body render, the same resolution failure as the childish face.
 - **Ask for SMALL expressions.** "Cheeks raised" and "mouth dropped open" came
   back "way too cartoonish"; a closed-mouth smile with the corners lifted only
   slightly did not.
 - **The game wires expressions by name** (`smile`, `anger`, `laugh`). Make
   exactly the ones it already has; a new name means rewiring every sprite.
-- Keep expression words OUT of a base body's pose ("a calm neutral
-  expression"), or the from-scratch candidate is asked for two at once.
+- **Keep expression words OUT of a base body's pose** ("a calm neutral
+  expression"), or the expression render is asked for two at once.
 
 ### FLUX.1 rules in this file that do NOT hold on Klein
 
