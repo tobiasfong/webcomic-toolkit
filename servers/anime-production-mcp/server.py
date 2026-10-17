@@ -78,18 +78,23 @@ def _fetch_one(outs: dict, dest: str) -> str:
     raise comfy.ComfyUIError("ComfyUI returned outputs but no files.")
 
 
-def _refuse_if_busy(url: str, what: str) -> None:
-    """Never put LTX and Klein on the 6 GB card at once.
+def _clear_card(url: str, what: str) -> None:
+    """Never put LTX and Klein on the 6 GB card at once — or in RAM at once.
 
     They live on two ComfyUIs, so neither queue can see the other's job. One
     edit submitted during an LTX batch once thrashed until the job hung and cost
-    five hours and two finished takes.
+    five hours and two finished takes. So refuse while the other side is busy.
+
+    And when it is idle, unload it: an idle ComfyUI keeps its model in system
+    RAM, and LTX streams ~24 GB of weights from there. With Klein resident an
+    LTX take started at 3.7 GB free and took 694 s; unloaded, 176 s cold.
     """
     n = klein.busy(url)
     if n:
         raise RuntimeError(
             f"{what} is running on {url} ({n} job(s) in its queue). LTX and Klein "
             f"cannot share the 6 GB card — wait for it to finish, then retry.")
+    klein.unload(url)
 
 
 # --------------------------------------------------------------------------- #
@@ -150,7 +155,7 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
                 ["size supplied by caller — NOT checked against the artwork's "
                  "aspect; a mismatch is a silent stretch"]}
     lw.validate(width, height, length, variant)
-    _refuse_if_busy(klein.KLEIN_URL, "a Klein edit")
+    _clear_card(klein.KLEIN_URL, "A Klein job")
 
     uploaded = comfy.upload_image(image_path)
     results = []
@@ -197,7 +202,8 @@ def edit_frame(image_path: str, edit: str, out_dir: str,
     player, not from video generation.
 
     Runs on Klein's own ComfyUI (port 8189), started on first use. Refuses while
-    an LTX job is running: the two cannot share the 6 GB card.
+    the main ComfyUI has a job — the two cannot share the 6 GB card — and
+    otherwise unloads the main one's models from RAM first.
 
     box: [l, t, r, b] of the region to change. Klein is told where to draw AND
         how big — a box sets size as well as place, so fit it to the thing.
@@ -220,7 +226,7 @@ def edit_frame(image_path: str, edit: str, out_dir: str,
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
     seeds = seeds or [1, 2, 3]
-    _refuse_if_busy(comfy.COMFY_URL, "An LTX job")
+    _clear_card(comfy.COMFY_URL, "An LTX or music job")
     out = [klein.edit(image_path, edit, out_dir, seed, box=box, steps=steps)
            for seed in seeds]
     return {"source": image_path, "edit": edit, "results": out,

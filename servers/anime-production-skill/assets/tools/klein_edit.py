@@ -35,6 +35,8 @@ back 220x166 and swollen. Fit the box to the thing you want drawn.
 ⚠ NEVER RUN IT DURING AN LTX JOB. Klein and LTX sit on different ComfyUIs, so
 neither queue orders them, and both models land on one small card at once. One
 edit submitted during an LTX batch once thrashed until it hung, for five hours.
+So it refuses while the LTX ComfyUI is busy, and otherwise asks that idle
+ComfyUI to unload: an idle one still holds its model in system RAM.
 
 Measured on a damaged LTX frame (1920x1088, hand blurred to a smudge on a sword
 hilt): ~97 s per seed on a 6 GB card, and exactly zero change outside the box.
@@ -136,6 +138,12 @@ def main():
     if busy(a.ltx_url):
         sys.exit(f"An LTX job is running on {a.ltx_url}. Wait for it: LTX and Klein "
                  f"cannot share a small card.")
+    try:  # idle, so free its RAM for Klein; harmless if that ComfyUI is not up
+        urllib.request.urlopen(urllib.request.Request(
+            a.ltx_url + "/free", data=b'{"unload_models": true, "free_memory": true}',
+            headers={"Content-Type": "application/json"}), timeout=10)
+    except Exception:
+        pass
     src = Image.open(a.image).convert("RGB")
     W, H = src.size
     text = f"Image 1 is the picture to edit. {a.edit.rstrip()} Keep everything else in the picture exactly as it is."

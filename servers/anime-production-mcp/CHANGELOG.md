@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.1.0 — 2026-10-17
+
+**`animate_shot` and `edit_frame` unload the other ComfyUI before they start.**
+The busy check stopped two jobs running at once, but an IDLE ComfyUI still
+holds its model in system RAM, and LTX streams ~24 GB of weights from there.
+Measured on the 32 GB machine: an LTX take that started with Klein resident
+and 3.7 GB free took **694 s**; with Klein unloaded it started at 22 GB free
+and took **176 s** cold, **75 s** warm. The unload is sent only when the other
+side is idle, so it never interrupts a job; the next job there loads its model
+again. `klein_edit.py` does the same.
+
+Also removed from `klein.py`'s docstring: a leftover of the Kontext claim
+corrected in 2.0.0 ("every damaged frame rescued").
+
 ## 2.0.0 — 2026-10-17
 
 **`edit_frame` runs FLUX 3 Image Klein; FLUX.1 Kontext is retired.** The

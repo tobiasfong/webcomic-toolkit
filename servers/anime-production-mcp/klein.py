@@ -23,6 +23,13 @@ models land on the same 6 GB card at once. One Kontext call submitted during an
 LTX batch once thrashed until the job hung and cost five hours. `busy()` is
 what server.py checks before starting either one.
 
+⚠ AN IDLE COMFYUI STILL HOLDS ITS MODEL IN SYSTEM RAM. LTX streams ~24 GB of
+weights from RAM, so a resident Klein starves it into paging. Measured
+2026-10-17 on the 32 GB machine: an LTX take that started with 3.7 GB free took
+694 s; after unloading Klein it started with 22 GB free and took 176 s cold,
+75 s warm. `unload()` is what server.py calls on the OTHER ComfyUI before each
+job, and only when that one is idle.
+
 What carries over from Kontext, and what does not — measured on Klein by the
 character server, 2026-10-17 (AGENTS.md has the detail):
 
@@ -37,9 +44,10 @@ character server, 2026-10-17 (AGENTS.md has the detail):
   * There is no guidance dial. The model is step-distilled at cfg 1, so
     Kontext's `guidance` (preservation vs obedience) has no equivalent.
 
-NOT YET MEASURED on this server's own work: hand repair on LTX frames, and
-blinks. Kontext Q6_K's numbers (every damaged frame rescued at least once in
-three seeds) are not Klein's numbers. Judge the first runs by eye.
+Measured on this server's own work, 2026-10-17: a sword hand LTX had blurred,
+boxed, three seeds — 0 usable by the artist's eye, and Klein's crisp inking
+stood out against the soft LTX frames. Kontext did no better: no machine repair
+of an LTX hand has ever shipped. Blinks are untested.
 """
 
 from __future__ import annotations
@@ -90,6 +98,22 @@ def busy(url: str = KLEIN_URL) -> int:
     except Exception:
         return 0
     return len(q.get("queue_running", [])) + len(q.get("queue_pending", []))
+
+
+def unload(url: str) -> bool:
+    """Ask the ComfyUI at `url` to drop its models from VRAM and system RAM.
+
+    Only when it is idle — never pulls a model out from under a running job.
+    The cost is that the next job on that ComfyUI loads its model again first.
+    Returns whether the request was sent.
+    """
+    if busy(url):
+        return False
+    try:
+        r = requests.post(f"{url}/free", json={"unload_models": True, "free_memory": True}, timeout=10)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 def missing_files() -> list[str]:

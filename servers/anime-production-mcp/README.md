@@ -261,7 +261,9 @@ count for *selected* takes, not for all takes.
   6 GB; it thrashed until the job hung and cost **five hours** and two finished
   takes. They now live on two ComfyUIs, so neither queue can order them —
   `animate_shot` and `edit_frame` each refuse to start while the other side has
-  a job in.
+  a job in, and otherwise unload its model first: an idle ComfyUI still holds
+  its weights in system RAM, and one LTX take with Klein resident ran 694 s
+  against 176 s without.
 - ⚠ **No machine repair of an LTX hand has ever shipped. Plan to draw them.**
   Every repaired hand in the test scene's final cut was finished by the
   artist's hand: one over a Kontext base, the rest drawn outright.
