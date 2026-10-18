@@ -63,6 +63,30 @@ def find_build(root):
     return max(candidates)[1]
 
 
+def _row_key(row):
+    """What makes two note rows the same decision: the line, the sprite and
+    the opening of the line before (a short line alone is ambiguous)."""
+    if not isinstance(row, dict):
+        return ("<raw>", repr(row))
+    return ((row.get("text") or "").strip(), row.get("tag"),
+            (row.get("prev") or "").strip()[:40].strip())
+
+
+def _merge_rows(held, incoming):
+    """The file's rows, with the sender's replacing same-key rows in place
+    and its new rows appended in the order sent."""
+    out = list(held)
+    at = {_row_key(r): i for i, r in enumerate(out)}
+    for r in incoming:
+        k = _row_key(r)
+        if k in at:
+            out[at[k]] = r
+        else:
+            at[k] = len(out)
+            out.append(r)
+    return out
+
+
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"          # keep-alive; avoids reset storms
 
@@ -103,10 +127,29 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.rfile.read(length)
         try:
             import json
-            json.loads(body.decode("utf-8"))    # a write is worth one parse
+            incoming = json.loads(body.decode("utf-8"))
         except Exception as exc:
             return self.send_error(400, "not JSON: %s" % exc)
         dest = os.path.join(self.notes_dir, name)
+        # ⚠ A LIST OF NOTES IS MERGED INTO THE FILE, NEVER WRITTEN OVER IT.
+        # The page sends its whole copy, and that copy lives in the browser's
+        # persistent data, which is only flushed now and then. Reload the
+        # page before a flush and its copy is BEHIND the file; the next send
+        # then erased 21 of the author's latest notes (2026-10-19). Merging
+        # makes a stale sender harmless: rows are keyed on what identifies a
+        # decision (the line, the sprite, the line before), a row the page
+        # sends replaces the file's row for the same key, and rows only the
+        # file has are kept. The overlay never deletes a note, so a union
+        # loses nothing it meant to keep.
+        if isinstance(incoming, list) and os.path.isfile(dest):
+            try:
+                with open(dest, encoding="utf-8") as f:
+                    held = json.load(f)
+            except Exception:
+                held = None
+            if isinstance(held, list):
+                incoming = _merge_rows(held, incoming)
+                body = json.dumps(incoming, indent=1, ensure_ascii=False).encode("utf-8")
         with open(dest, "wb") as f:
             f.write(body)
         print("  <- %s (%d bytes)" % (dest, len(body)), flush=True)
