@@ -47,14 +47,22 @@ scene, and nothing here auto-approves.
 - Fallthrough is real: a label whose body does not end in `return`/`jump`
   falls through to the next label in the file, and the graph models that.
 
-## Sprites: one body + face patches
+## Sprites: one body per expression
 
-Decided 2026-08-16: expressions are hand-drawn deltas (eyes/brows/mouth)
-over a single matted body render — never separate renders, which give
-non-identical bodies and mid-conversation jitter. The manifest
-(`sprites.json`) records body, patches, pixel offsets, `target_height`
-(fraction of the 1080p screen, for deterministic scale normalization), and
-`mirror_ok` (false for asymmetric costume details).
+Each expression is a whole matted body under the character's tag
+(`register_body`), scaled to the neutral's height and centered on its
+canvas; `show <tag> anger` swaps the figure, and the posture may change with
+the mood. This reverses the first design (2026-08-16: hand-drawn face
+patches over one body, so the body could never jitter). On flat cel art a
+repainted face shows a seam inside the face, so full bodies became the
+route on 2026-09-19, and since 2026-10-17 they are rendered from scratch on
+FLUX 3 Klein. Face patches (`register_expression`) are still supported for
+art where they work.
+
+The manifest (`sprites.json`) records the bodies, any patches and their
+pixel offsets, `target_height` (fraction of the 1080p screen, for
+deterministic scale normalization), and `mirror_ok` (false for asymmetric
+costume details).
 
 `emit_sprites` generates `sprites_generated.rpy`: one `layeredimage` per
 character, zoom computed from `target_height`, each patch padded onto a

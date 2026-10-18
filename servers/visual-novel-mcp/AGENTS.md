@@ -1,8 +1,8 @@
 # visual-novel-mcp — agent notes
 
 Branching visual-novel production for Ren'Py projects: a scene database with
-cross-session continuity, a branch-graph validator, the one-body-plus-face-patch
-sprite manifest, emitters that generate every scene from a master document,
+cross-session continuity, a branch-graph validator, the sprite manifest (one
+whole body per expression), emitters that generate every scene from a master document,
 the verification sequence, and the web build.
 
 - **`WORKFLOW.md` beside this file is the manual.** The one rule (the .rpy

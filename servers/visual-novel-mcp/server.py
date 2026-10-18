@@ -456,9 +456,10 @@ def register_sprite(character: str, body_path: str, tag: str | None = None,
 def register_expression(character: str, expression: str, patch_path: str,
                         offset_x: int, offset_y: int,
                         project: str | None = None) -> dict:
-    """Register a hand-drawn face patch at a pixel offset on the body canvas.
-    Validates the patch fits. Run preview_expression to eyeball alignment,
-    then emit_sprites."""
+    """Register a hand-drawn face patch at a pixel offset on the body canvas
+    -- the LEGACY expression path. The default since 2026-09-19 is a whole
+    body per expression (register_body). Validates the patch fits. Run
+    preview_expression to eyeball alignment, then emit_sprites."""
     slug, entry = _resolve(project)
     manifest = sprites_module.load(entry["state_dir"])
     rec = sprites_module.register_expression(
@@ -473,10 +474,9 @@ def register_expression(character: str, expression: str, patch_path: str,
 def register_body(character: str, name: str, rgba_path: str,
                   project: str | None = None) -> dict:
     """Register a FULL-BODY expression or pose variant: a matted RGBA render of
-    the same character, shown with `show <tag> <name>`. Scaled to the neutral
-    body's height and centered on its canvas; refused if wider. Use this where
-    a face patch cannot be seamed into the art (see sprites.py). Then
-    emit_sprites."""
+    the same character, shown with `show <tag> <name>`. The DEFAULT way to add
+    an expression. Scaled to the neutral body's height and centered on its
+    canvas; refused if wider. Then emit_sprites."""
     slug, entry = _resolve(project)
     manifest = sprites_module.load(entry["state_dir"])
     rec = sprites_module.register_body(

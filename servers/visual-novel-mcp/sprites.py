@@ -1,11 +1,16 @@
 """
 sprites.py — the sprite manifest (sprites.json) and its Ren'Py emission.
 
-Architecture (decided 2026-08-16, character-panel session): each character is
-ONE matted body render plus small hand-drawn face patches (eyes/brows/mouth
-deltas). Bodies must be pixel-identical across expressions or the sprite
-jitters mid-conversation — so expressions are never separate renders; they
-are overlays composited by the engine at runtime.
+Architecture: each expression is a WHOLE matted body under the character's
+tag (register_body), scaled to the neutral body's height and centered on its
+canvas, emitted as a body group so `show <tag> anger` swaps the figure. The
+posture may change with the mood (the author's rule since 2026-10-17).
+
+This reverses the first design (2026-08-16): one body plus small hand-drawn
+face patches, so bodies stayed pixel-identical and could not jitter. On flat
+cel art a repainted face leaves a seam inside the face, so full bodies became
+the route on 2026-09-19. The patch path (register_expression) still works for
+art where a face can be repainted in place.
 
 The manifest is the single source of truth; sprites_generated.rpy is EMITTED
 from it and must never be hand-edited. Patches are registered as small crops

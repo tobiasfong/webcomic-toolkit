@@ -29,13 +29,24 @@ continuity notes, approval status, the sprite manifest.
 
 ## Sprites
 
-One matted body + hand-drawn face patches (deltas over the approved face).
-Bodies are never re-rendered per expression — pixel-identical bodies are what
-keep sprites from jittering mid-conversation.
+**Each expression is a WHOLE BODY** — a separate matted render of the
+character, registered under the same tag, so `show <tag> anger` swaps the
+figure. The posture may change with the mood; that is intended (the
+author's rule since 2026-10-17: "Body can move"). How to make one is under
+Expressions below.
 
-- `register_sprite` copies the matted body into the game tree.
-- The author draws patches; `register_expression` places one at a pixel
-  offset; `preview_expression` renders the alignment check over magenta.
+⚠ This reverses the original design (2026-08-16): one body plus hand-drawn
+face patches, bodies never re-rendered so the sprite could not jitter. The
+patch route failed on this art (see "Expressions are FULL BODIES" in the
+working rules below), and the face-paste variant tried on FLUX 3 Klein was
+withdrawn too. Face patches remain in the registry for art where they do
+work, but they are not the default.
+
+- `register_sprite` copies the neutral matted body into the game tree.
+- `register_body` adds each expression body (scaled to the neutral's
+  height, centered on its canvas).
+- `register_expression` / `preview_expression` are the legacy face-patch
+  path: a patch at a pixel offset, checked over magenta.
 - `emit_sprites` regenerates `sprites_generated.rpy` — never hand-edit it.
 - Mirroring: check `mirror_ok` before flipping a sprite; asymmetric costume
   details (one-sided blossoms) make mirroring a redraw, not a flip.
@@ -45,17 +56,22 @@ memory (repo rule). Event CGs use the normal panel pipeline and its rules.
 
 ## Expressions
 
-The registry supports two kinds. Face PATCHES (`register_expression`) are
-small deltas over the neutral body, for art where a face can be repainted
-in place. FULL BODIES (`register_body`, added 2026-09-19) are a second
+The default is FULL BODIES (`register_body`, added 2026-09-19): a second
 matted render under the same tag, scaled to the neutral's height and
 centered on its canvas, emitted as a body group so `show <tag> anger` swaps
-the figure in place. Use full bodies for flat cel art: a repainted face
-redraws its own contour and the seam against the old one sits inside the
-face. The measured recipe for a full body is in the repo's AGENTS.md under
-the visual novel rules: the turnaround path with the expression as an
-extra clause, a tall canvas, the sprite's own render as the reference, the
-state named simply.
+the figure in place. Face PATCHES (`register_expression`) are small deltas
+over the neutral body, kept for art where a face can be repainted in place;
+on flat cel art a repainted face redraws its own contour and the seam
+against the old one sits inside the face.
+
+**How a full body is made, since 2026-10-17 (FLUX 3 Klein):** render it
+FROM SCRATCH with the base body's description and pose plus the expression
+words, on a different seed from the base (the approved ones used the base's
+seed + 5000), then matte it. `generate_expression` in the character server
+does this. The measured rules — small expressions, never pasting a face onto
+the base, expression words kept out of the base's pose — are in the repo's
+AGENTS.md, "Expressions on Klein". The FLUX.1 turnaround-path recipe below
+is history: kept for what it learned about prompts, not as instructions.
 
 Which line gets which face is `expressions.json` in the project, read by
 `emitlib.py` for every emitter and anchored on the opening of a paragraph,
@@ -65,7 +81,9 @@ everyone to neutral.
 
 ### Making an expression body: what a day of it taught
 
-Measured over ~60 renders on twelve characters, 2026-09-19.
+Measured over ~60 renders on twelve characters, 2026-09-19, on FLUX.1 (the
+turnaround LoRA path). FLUX.1 is uninstalled; the prompting lessons below
+are what carries over, not the tools they name.
 
 **The prompt carries the WHOLE costume description**, expression clauses
 stripped. The turnaround prompt names no costume of its own, so without it a
@@ -128,6 +146,11 @@ falls back to a browser download when the POST fails -- that is the case of a
 build opened from somewhere other than this server.
 
 ### ⚠ THE EXPRESSION RIDES ON THE REDRAW
+
+(FLUX.1, 2026-09-20. The same trap exists on Klein in a sharper form: asked
+for the pose its reference is already in, Klein COPIES the reference, so an
+expression made that way changes little. That is why Klein expression bodies
+are rendered from text on a new seed instead — see Expressions above.)
 
 Eight renders on one alternate-costume sprite, 2026-09-20, seven of them
 spent on the wrong question. The recipe was never broken; it was being asked
@@ -1081,6 +1104,11 @@ allowed, the way a Fate/stay night sprite crosses its arms when it shouts.
 `register_body` in the sprite registry scales it to the neutral's height,
 centers it on the neutral canvas, and emits a body group so
 `show <tag> anger` swaps the figure in place.
+
+⚠ **The recipe below is FLUX.1's and is superseded** (2026-10-17): on
+FLUX 3 Klein an expression body is rendered from scratch from the base's
+description, pose and a new seed — see Expressions near the top of this
+file. The reasons it worked still hold.
 
 **The recipe that produced an approved body**, after nine renders, one
 lever at a time:
