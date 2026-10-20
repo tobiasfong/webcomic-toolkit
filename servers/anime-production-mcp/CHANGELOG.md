@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.3.0 — 2026-10-21
+
+**LTX-2.5 as an `animate_shot` variant (`variant="2.5"`).** It runs on the Klein
+ComfyUI (v0.41), which hosts Lightricks' official INT8 files natively; the main
+ComfyUI stays on v0.25.1 for LTX-2.3, music and matting. `lw.build25()` follows
+ComfyUI's own `video_ltx2_5_i2v` template: two stages (half size, then a 2x
+latent upscale and a short refine), the prompt enhancer left off, frames saved
+as animated webp like 2.3's. `check_status` reports missing 2.5 files.
+
+**Use 2.5's own settings: 24 fps, 49 or 97 frames.** Run at 2.3's 17 frames
+and 48 fps, every take held still for frames 0-8, lurched at frame 9 (the
+third and last latent frame) and tore faces on full-body action. At 24 fps and
+49-97 frames, an eight-scene teaser of hand-drawn panels came back with clean
+faces, and the artist judged 2.5 much better than 2.3 on them: a real punch
+toward the viewer, a waltz turn, a prayer pose, two people talking. Measured on
+the 6 GB card with 32 GB RAM: ~3.5 min for 49 frames, ~7 min for 97, at
+1152x1728 — slower than 2.3 but not paging, despite 37 GB of weights.
+
+Still weak in that run: asked to blink, it often closed the eyes for good; it
+turned a profile head toward the camera unasked; asked to grow ice, it barely did.
+
+`motion.retime()` gains `step`: 2.5 at 24 fps is real-time motion, so its
+12 fps preview keeps every other frame. 2.3's 48 fps takes keep every frame
+and play slowed, as before.
+
 ## 2.2.0 — 2026-10-20
 
 **New tool: `animate_shot_cloud`, paid image-to-video through BytePlus

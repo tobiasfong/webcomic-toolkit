@@ -391,3 +391,146 @@ def recipe(image: str, prompt: str = DEFAULT_PROMPT, *, seed: int = 12345,
         "steps": steps or v["steps"], "cfg": v["cfg"] if cfg is None else cfg,
         "max_shift": max_shift, "base_shift": base_shift, "scheduler": scheduler,
     }
+
+
+# --------------------------------------------------------------------------- #
+# LTX-2.5 — on the Klein ComfyUI (v0.41, port 8189), not the main one
+# --------------------------------------------------------------------------- #
+#
+# Added 2026-10-20 and judged 2026-10-21: on an eight-scene teaser of hand-drawn
+# panels the artist found 2.5 "much better" than 2.3, at 24 fps and 49-97
+# frames (NOT 2.3's 17 frames, which tore faces). 2.3 is still the default
+# variant until he decides otherwise. 2.5 needs ComfyUI >= 0.32, which the main
+# install (0.25.1, kept old for the matting add-on) is not — but the separate
+# Klein install is, and runs these official files natively with no custom
+# nodes. Lightricks' own files from the gated Lightricks/LTX-2.5 repo; INT8 is
+# the build for this Ampere card.
+#
+# ⚠ RAM: transformer 21.5 GB + text encoder 15.4 GB = 36.9 GB against the 32 GB
+# machine. ComfyUI can drop the encoder after reading the prompt, so sampling
+# should need ~23 GB — expect a slow first take either way.
+#
+# The graph follows ComfyUI's own video_ltx2_5_i2v template (Image to Video
+# subgraph), with three changes:
+#   * The prompt enhancer (a second Gemma that REWRITES the prompt) is off, as
+#     Klein's is: every prompting rule here assumes the model sees the prompt
+#     that was written.
+#   * The template's ResizeImageMaskNode (longest side to 1536, Lanczos) is
+#     done in Python before upload — same resize, no dependence on how that
+#     node's newer input format serializes.
+#   * Output is frames only, saved as animated webp like 2.3's. The model
+#     generates audio jointly and its latent must be present, but it is never
+#     decoded: the soundtrack comes from the music server.
+LTX25 = {
+    "unet": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+    "text_encoder": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+    "vae": "ltx-2.5-video-vae-bf16.safetensors",
+    "audio_vae": "ltx-2.5-audio-vae-bf16.safetensors",
+    "upscaler": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+}
+# Folder each file sits in, inside the Klein install's models/ (check_status).
+LTX25_FOLDERS = {"unet": "diffusion_models", "text_encoder": "text_encoders",
+                 "vae": "vae", "audio_vae": "vae", "upscaler": "latent_upscale_models"}
+LTX25_REF_LONG_SIDE = 1536   # the template's reference-image resize
+# The template's two noise schedules: 8 steps at half size, then 3 refining
+# steps after the 2x latent upscale.
+LTX25_SIGMAS_1 = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+LTX25_SIGMAS_2 = "0.85, 0.7250, 0.4219, 0.0"
+# The template opens every image-to-video prompt with this sentence.
+LTX25_LEAD = "Use the provided start image as the first frame. "
+
+
+def validate25(width: int, height: int, length: int) -> None:
+    if (length - 1) % 8:
+        raise RecipeError(f"length must be 8n+1 (got {length}); try 17, 25, 33, 49, 97, 121.")
+    # Stage 1 renders at HALF size and its latent steps by 32, so the final
+    # size must divide by 64. 1920x1088 and 1216x832 both do.
+    for name, d in (("width", width), ("height", height)):
+        if d % 64:
+            raise RecipeError(f"{name} must be divisible by 64 for LTX-2.5 (got {d})")
+    if max(width, height) < MIN_DIM:
+        raise RecipeError(f"{width}x{height} is below the {MIN_DIM}px floor.")
+
+
+def build25(image: str, prompt: str, *, seed: int = 12345, width: int = PRIMARY[0],
+            height: int = PRIMARY[1], length: int = 17, fps: float = 48.0,
+            strength: float = 0.7, refine_strength: float = 1.0,
+            prefix: str = "ltx25") -> dict:
+    """ComfyUI API graph for one LTX-2.5 image-to-video take.
+
+    `image` must already be uploaded, and resized so its longest side is
+    LTX25_REF_LONG_SIDE. `strength` is the template's stage-1 image strength
+    (0.7) — lower than 2.3's 0.9, because stage 2 re-applies the image at 1.0.
+    `fps` is conditioning, as in 2.3; 48 keeps the comparison with the
+    approved 2.3 takes like-for-like (the template itself uses 24).
+    """
+    validate25(width, height, length)
+    m = LTX25
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["text_encoder"], "type": "ltxv", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["vae"]}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": m["audio_vae"]}},
+        "5": {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": m["upscaler"]}},
+        "6": {"class_type": "LoadImage", "inputs": {"image": image}},
+        "7": {"class_type": "LTXVPreprocess", "inputs": {"image": ["6", 0], "img_compression": 18}},
+
+        "8": {"class_type": "CLIPTextEncode", "inputs": {"text": LTX25_LEAD + prompt, "clip": ["2", 0]}},
+        # Inert: both guider cfgs are 1, which discards the negative branch.
+        "9": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["2", 0]}},
+        "10": {"class_type": "LTXVConditioning",
+               "inputs": {"positive": ["8", 0], "negative": ["9", 0], "frame_rate": fps}},
+        "11": {"class_type": "LTXVDualCFGGuider",
+               "inputs": {"model": ["1", 0], "positive": ["10", 0], "negative": ["10", 1],
+                          "video_cfg": 1.0, "audio_cfg": 1.0}},
+        "12": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler_ancestral"}},
+
+        # --- stage 1: half size ---
+        "20": {"class_type": "EmptyLTXVLatentVideo",
+               "inputs": {"width": width // 2, "height": height // 2, "length": length, "batch_size": 1}},
+        "21": {"class_type": "LTXVImgToVideoInplace",
+               "inputs": {"vae": ["3", 0], "image": ["7", 0], "latent": ["20", 0],
+                          "strength": strength, "bypass": False}},
+        "22": {"class_type": "LTXVEmptyLatentAudio",
+               "inputs": {"frames_number": length, "frame_rate": fps, "batch_size": 1,
+                          "audio_vae": ["4", 0]}},
+        "23": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["21", 0], "audio_latent": ["22", 0]}},
+        "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "25": {"class_type": "ManualSigmas", "inputs": {"sigmas": LTX25_SIGMAS_1}},
+        "26": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["24", 0], "guider": ["11", 0], "sampler": ["12", 0],
+                          "sigmas": ["25", 0], "latent_image": ["23", 0]}},
+        "27": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["26", 0]}},
+
+        # --- stage 2: 2x latent upscale, then refine ---
+        "30": {"class_type": "LTXVLatentUpsampler",
+               "inputs": {"samples": ["27", 0], "upscale_model": ["5", 0], "vae": ["3", 0]}},
+        "31": {"class_type": "LTXVImgToVideoInplace",
+               "inputs": {"vae": ["3", 0], "image": ["7", 0], "latent": ["30", 0],
+                          "strength": refine_strength, "bypass": False}},
+        "32": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["31", 0], "audio_latent": ["27", 1]}},
+        # The template fixes stage 2's noise at 42; only stage 1 takes the seed.
+        "33": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+        "34": {"class_type": "ManualSigmas", "inputs": {"sigmas": LTX25_SIGMAS_2}},
+        "35": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["33", 0], "guider": ["11", 0], "sampler": ["12", 0],
+                          "sigmas": ["34", 0], "latent_image": ["32", 0]}},
+        "36": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["35", 0]}},
+
+        # --- out: frames only ---
+        "40": {"class_type": "VAEDecodeTiled",
+               "inputs": {"samples": ["36", 0], "vae": ["3", 0], "tile_size": 512,
+                          "overlap": 64, "temporal_size": 64, "temporal_overlap": 16}},
+        "41": {"class_type": "SaveAnimatedWEBP",
+               "inputs": {"images": ["40", 0], "filename_prefix": prefix, "fps": 24.0,
+                          "lossless": False, "quality": 90, "method": "default"}},
+    }
+
+
+def recipe25(image: str, prompt: str, *, seed: int = 12345, width: int = PRIMARY[0],
+             height: int = PRIMARY[1], length: int = 17, fps: float = 48.0,
+             strength: float = 0.7, refine_strength: float = 1.0, **_ignored) -> dict:
+    return {"image": image, "prompt": prompt, "seed": seed, "width": width,
+            "height": height, "length": length, "variant": "2.5", "fps": fps,
+            "strength": strength, "refine_strength": refine_strength,
+            "model": LTX25["unet"], "lead": LTX25_LEAD.strip()}

@@ -80,6 +80,27 @@ def _fetch_one(outs: dict, dest: str) -> str:
     raise comfy.ComfyUIError("ComfyUI returned outputs but no files.")
 
 
+def _upload_ref25(image_path: str) -> str:
+    """Resize to LTX-2.5's reference size and upload to the Klein ComfyUI.
+
+    The template's own resize (longest side to 1536, Lanczos), done here.
+    """
+    import tempfile
+    klein.ensure_running()
+    with Image.open(image_path) as im:
+        im = im.convert("RGB")
+        s = lw.LTX25_REF_LONG_SIDE / max(im.size)
+        if s < 1:
+            im = im.resize((round(im.width * s), round(im.height * s)), Image.LANCZOS)
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        im.save(tmp)
+    try:
+        return klein._upload(tmp)
+    finally:
+        os.remove(tmp)
+
+
 def _clear_card(url: str, what: str) -> None:
     """Never put LTX and Klein on the 6 GB card at once — or in RAM at once.
 
@@ -106,7 +127,7 @@ def _clear_card(url: str, what: str) -> None:
 @mcp.tool()
 def animate_shot(project: str, name: str, image_path: str, prompt: str,
                  seeds: list[int] | None = None, length: int = 17,
-                 strength: float = 0.9, variant: str = "distilled",
+                 strength: float | None = None, variant: str = "distilled",
                  width: int | None = None, height: int | None = None,
                  fps: float = 48.0,
                  measure_box: list[int] | None = None,
@@ -140,6 +161,18 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     ⚠ THE SCORE IS NOT QUALITY. It measures CHANGE — a take whose faces dissolve
     scores very high. Always look at the retimed clip or a contact_sheet before
     approving. Three seeds is the working default; roughly one lands.
+
+    variant: "distilled" (LTX-2.3, the default) or "dev" run on the main
+    ComfyUI. "2.5" runs LTX-2.5 on the Klein ComfyUI instead. `strength`
+    defaults to 0.9 for 2.3 and to the template's 0.7 for 2.5.
+
+    ⚠ FOR 2.5, PASS fps=24 AND length 49 OR 97 — not 2.3's 17 frames at 48.
+    At length 17 the model has only three latent frames: every take sat still
+    for frames 0-8, lurched at frame 9, and faces tore on full-body action.
+    At 24 fps and 49-97 frames, a rebuilt 8-scene teaser of hand-drawn panels
+    came back clean, and the artist judged 2.5 "much better" than 2.3 — it
+    threw a real punch, a waltz turn, a prayer pose. Still weak: a blink often
+    becomes eyes closed for good, and it can turn a profile head toward camera.
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
@@ -156,10 +189,19 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
         size = {"width": width, "height": height, "notes":
                 ["size supplied by caller — NOT checked against the artwork's "
                  "aspect; a mismatch is a silent stretch"]}
-    lw.validate(width, height, length, variant)
-    _clear_card(klein.KLEIN_URL, "A Klein job")
+    is25 = variant == "2.5"
+    if is25:
+        lw.validate25(width, height, length)
+        # 2.5 lives on the Klein ComfyUI; the main one holds 2.3, music and matting.
+        _clear_card(comfy.COMFY_URL, "An LTX-2.3, music or matting job")
+        strength = 0.7 if strength is None else strength
+        uploaded = _upload_ref25(image_path)
+    else:
+        lw.validate(width, height, length, variant)
+        _clear_card(klein.KLEIN_URL, "A Klein job")
+        strength = 0.9 if strength is None else strength
+        uploaded = comfy.upload_image(image_path)
 
-    uploaded = comfy.upload_image(image_path)
     results = []
     for seed in seeds:
         shot_id = sh.new_shot_id(name, seed)
@@ -167,13 +209,27 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
         params = dict(image=uploaded, prompt=prompt, seed=seed, width=width,
                       height=height, length=length, variant=variant,
                       strength=strength, fps=fps)
-        outs = comfy.submit_and_wait(lw.build(prefix=f"anime/{shot_id}", **params))
-        raw = _fetch_one(outs, os.path.join(d, f"{shot_id}.webp"))
+        if is25:
+            os.makedirs(d, exist_ok=True)
+            raw = os.path.join(d, f"{shot_id}.webp")
+            g = lw.build25(prefix=f"anime_{shot_id}",
+                           **{k: v for k, v in params.items() if k != "variant"})
+            # An hour, not the usual 30 min: the first 2.5 take pages ~37 GB
+            # of weights through 32 GB of RAM.
+            with open(raw, "wb") as f:
+                f.write(klein._submit(g, "41", timeout=3600))
+        else:
+            outs = comfy.submit_and_wait(lw.build(prefix=f"anime/{shot_id}", **params))
+            raw = _fetch_one(outs, os.path.join(d, f"{shot_id}.webp"))
         view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
-        motion.retime(raw, view, fps=view_fps)
+        # 2.5 at 24 fps is real-time motion: keep every other frame for 12 fps
+        # on twos. 2.3's 48 fps takes keep every frame and play slowed, as ever.
+        motion.retime(raw, view, fps=view_fps,
+                      step=max(1, round(fps / view_fps)) if is25 and fps <= 30 else 1)
         m = motion.measure(view, tuple(measure_box) if measure_box else None)
         sh.record(project, shot_id, name,
-                        lw.recipe(**dict(params, image=os.path.basename(image_path))),
+                        (lw.recipe25 if is25 else lw.recipe)(
+                            **dict(params, image=os.path.basename(image_path))),
                         {"webp": raw, "retimed": view},
                         {"maxdev": m["maxdev"], "span": m["span"],
                          "peak_frame": m["peak_frame"], "reading": m["reading"]})
@@ -646,6 +702,9 @@ def check_status() -> dict:
     status: dict = {"comfy_url": comfy.COMFY_URL, "comfy_running": comfy.comfy_is_up()}
     status["klein"] = {"url": klein.KLEIN_URL, "running": klein.is_up(),
                        "dir": klein.KLEIN_DIR, "missing": klein.missing_files()}
+    root25 = os.path.join(klein.KLEIN_DIR, "ComfyUI", "models")
+    status["ltx25"] = {"missing": [f"{lw.LTX25_FOLDERS[k]}/{n}" for k, n in lw.LTX25.items()
+                                   if not os.path.isfile(os.path.join(root25, lw.LTX25_FOLDERS[k], n))]}
     status["cloud"] = {"provider": "byteplus", "model": cv.MODEL,
                        "key_set": cv.has_key(), "key_env": cv.API_KEY_ENV}
     try:

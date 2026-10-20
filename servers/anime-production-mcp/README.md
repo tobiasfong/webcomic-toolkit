@@ -308,6 +308,20 @@ Connector and VAE must match the checkpoint's variant *and* generation, or you
 get silent garbage instead of an error. ComfyUI caches folder listings at
 startup — restart it after adding files.
 
+### LTX-2.5 (optional), on the Klein ComfyUI
+
+`animate_shot(variant="2.5", fps=24, length=49 or 97)` runs LTX-2.5 from the
+gated `Lightricks/LTX-2.5` repo, on the same v0.41 ComfyUI as Klein:
+
+| file | folder |
+|---|---|
+| `ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors` | `models/diffusion_models/` |
+| `gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors` | `models/text_encoders/` |
+| `ltx-2.5-video-vae-bf16.safetensors`, `ltx-2.5-audio-vae-bf16.safetensors` | `models/vae/` |
+| `ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors` | `models/latent_upscale_models/` |
+
+Don't run it at 2.3's 17 frames: see the CHANGELOG for why.
+
 ### Klein, for `edit_frame`
 
 `edit_frame` runs FLUX 3 Image Klein on a **separate** ComfyUI (v0.41+, port
