@@ -177,6 +177,61 @@ def main() -> int:
                 assert os.path.getsize(r["path"]) > 10_000, "suspiciously small mp4"
             check("encode 3s with burned-in caption", encode)
 
+    print("cloud (no network)")
+    import cloud_video as cv
+    from PIL import Image
+    panel = os.path.join(tmp, "panel.png")
+    Image.new("RGB", (640, 360), (40, 90, 160)).save(panel)
+
+    def payload_shape():
+        b = cv.payload("The camera holds locked off.", first_frame=panel,
+                       last_frame=panel, duration=5, resolution="720p")
+        roles = [c.get("role") for c in b["content"] if c["type"] == "image_url"]
+        assert roles == ["first_frame", "last_frame"], roles
+        assert b["content"][0] == {"type": "text", "text": "The camera holds locked off."}
+        # The API turns audio ON unless told; the soundtrack comes from elsewhere.
+        assert b["generate_audio"] is False and b["watermark"] is False, b
+        assert b["ratio"] == "adaptive", "a fixed ratio would stretch the panel"
+        assert "seed" not in b, "Seedance 2.0 takes no seed"
+        assert b["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+    check("payload: roles, no audio, adaptive ratio, no seed", payload_shape)
+
+    def payload_refuses():
+        for kw in ({"first_frame": panel, "refs": [panel]},      # mixed modes
+                   {"first_frame": panel, "duration": 3},        # under 4 s
+                   {"first_frame": panel, "resolution": "4k"},   # not offered here
+                   {"last_frame": panel}):                       # no first frame
+            try:
+                cv.payload("x", **kw)
+            except ValueError:
+                continue
+            raise AssertionError(f"accepted {kw}")
+    check("payload refuses mixed modes and out-of-range values", payload_refuses)
+
+    try:
+        ff = assemble.find_ffmpeg()
+    except FileNotFoundError:
+        skip("cloud to_view", "no ffmpeg; set WEBCOMIC_ANIME_FFMPEG")
+    else:
+        def mp4_to_view():
+            import subprocess
+            # 2 s at 24 fps, drawn here: this ffmpeg build has no lavfi
+            # test sources. Every frame differs, like a real clip.
+            src = os.path.join(tmp, "cloudsrc")
+            os.makedirs(src, exist_ok=True)
+            for i in range(48):
+                Image.new("RGB", (640, 360), (i * 5, 90, 160)).save(
+                    os.path.join(src, "f%03d.png" % i))
+            mp4 = os.path.join(tmp, "cloud.mp4")
+            subprocess.run([ff, "-v", "error", "-framerate", "24", "-i",
+                            os.path.join(src, "f%03d.png"), "-pix_fmt", "yuv420p",
+                            mp4], check=True)
+            r = cv.to_view(mp4, os.path.join(tmp, "cloud_12fps.webp"), ff, fps=12)
+            # 2 s at 12 fps; and the webp must keep every frame, not merge any.
+            assert r["frames"] == 24, r
+            assert len(motion.read_frames(r["path"])) == 24, "frames lost in the webp"
+        check("cloud mp4 -> 12 fps webp keeps every frame", mp4_to_view)
+
     print("framing")
     if not frame:
         skip("measure_slot", "no frame argument")

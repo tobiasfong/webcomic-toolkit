@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.2.0 — 2026-10-20
+
+**New tool: `animate_shot_cloud`, paid image-to-video through BytePlus
+ModelArk (Seedance 2.0).** For the shots the free local path cannot do: an
+action that has to actually happen, and hands that have to survive it. LTX on
+the local card stays the default for everything else.
+
+- Takes land in the same shot library as LTX takes — an mp4, a 12 fps webp,
+  and the clip's last frame — so `contact_sheet`, `approve_shot` and
+  `assemble_video` need no changes.
+- **One take per call by default, at most 3.** Seedance 2.0 accepts no seed,
+  so takes cannot be reproduced and every one is billed. Each result carries a
+  cost ESTIMATE from third-party pricing; the ModelArk console has the bill.
+- `last_frame_path` enables the first-and-last-frame mode: render the pose an
+  action should end on, and the model fills in the motion between.
+- Reference images are refused alongside a first frame, because BytePlus
+  documents them as a separate mode.
+- Generated audio is switched off (the API defaults it on); the soundtrack
+  comes from the music server.
+- The 12 fps preview is resampled in Python because the ffmpeg build this
+  machine uses (Remotion's) ships without the `fps` filter.
+- `check_status` reports whether the `ARK_API_KEY` variable is set, never its
+  value.
+
+**Not yet verified against the live API** — no key existed when this was
+written. The request format follows BytePlus's documentation, and the model ID
+is the one in its examples; confirm it in the console before the first paid run.
+
 ## 2.1.0 — 2026-10-17
 
 **`animate_shot` and `edit_frame` unload the other ComfyUI before they start.**

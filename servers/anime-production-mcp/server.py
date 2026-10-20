@@ -54,10 +54,12 @@ it be discovered the hard way:
 from __future__ import annotations
 
 import os
+import time
 
 from PIL import Image
 from mcp.server.fastmcp import FastMCP
 
+import cloud_video as cv
 import comfy
 import klein
 import ltx_workflow as lw
@@ -186,6 +188,86 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
                  "approve_shot. If every seed froze, the ask is probably impossible "
                  "for LTX — check the works/fails table and consider edit_frame or "
                  "a drawn effect instead of more seeds."),
+    }
+
+
+@mcp.tool()
+def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
+                       takes: int = 1, last_frame_path: str | None = None,
+                       duration: int = 5, resolution: str = "720p",
+                       measure_box: list[int] | None = None,
+                       view_fps: int = 12) -> dict:
+    """Animate one illustration with Seedance 2.0 on BytePlus — PAID, per take.
+
+    For the shots LTX cannot do: an action that must actually happen (a full
+    kick, a thrust) and hands that must survive it. Everything else — hair,
+    cloth, small gestures, camera drift — stays on the free `animate_shot`.
+
+    ⚠ EACH TAKE IS BILLED, and Seedance 2.0 takes no seed, so a take cannot be
+    reproduced. Defaults to ONE take; at most 3 per call. The result carries a
+    cost ESTIMATE; the ModelArk console has the real bill.
+
+    ⚠ The panel is uploaded to BytePlus (ByteDance) for every take.
+
+    last_frame_path: the pose the action should END on. Interpolating between
+        two drawings is the mode for actions LTX refuses — render the end pose
+        with the character server, then let this fill in the motion.
+    duration: 4-15 s. resolution: 480p / 720p / 1080p. The clip takes its
+        aspect from the panel, so nothing is stretched.
+
+    Takes land in the same shot library as LTX takes, as an mp4 plus a 12 fps
+    webp, so contact_sheet, approve_shot and assemble_video treat them alike.
+    Prompt the same way as for LTX: camera first, the motion, then what stays
+    still — but ask for the FULL action; that is what is being paid for.
+    """
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+    if not 1 <= takes <= 3:
+        raise ValueError("Run 1-3 takes per call; each one is billed.")
+    body = cv.payload(prompt, first_frame=image_path, last_frame=last_frame_path,
+                      duration=duration, resolution=resolution)
+    ffmpeg = asm.find_ffmpeg()   # fail before paying, not after
+
+    results = []
+    for take in range(1, takes + 1):
+        t0 = time.time()
+        task_id = cv.create(body)
+        task = cv.wait(task_id)
+        shot_id = f"{sh.slugify(name)}_cloud{take}_{time.strftime('%Y%m%d_%H%M%S')}"
+        d = sh.shot_dir(project, shot_id)
+        content = task.get("content") or {}
+        raw = cv.download(content["video_url"], os.path.join(d, f"{shot_id}.mp4"))
+        files = {"mp4": raw}
+        if content.get("last_frame_url"):
+            files["last_frame"] = cv.download(content["last_frame_url"],
+                                              os.path.join(d, f"{shot_id}_last.jpg"))
+        view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
+        cv.to_view(raw, view, ffmpeg, fps=view_fps)
+        files["retimed"] = view
+        m = motion.measure(view, tuple(measure_box) if measure_box else None)
+        est = cv.estimate_usd(duration, resolution)
+        sh.record(project, shot_id, name,
+                  {"provider": "byteplus", "model": task.get("model") or cv.MODEL,
+                   "prompt": prompt, "image": os.path.basename(image_path),
+                   "last_frame": os.path.basename(last_frame_path) if last_frame_path else None,
+                   "duration": duration, "resolution": resolution,
+                   "task_id": task_id, "seed": task.get("seed"),
+                   "tokens": (task.get("usage") or {}).get("total_tokens"),
+                   "est_usd": est},
+                  files,
+                  {"maxdev": m["maxdev"], "span": m["span"],
+                   "peak_frame": m["peak_frame"], "reading": m["reading"]})
+        results.append({"shot_id": shot_id, "take": take, "view": view, "mp4": raw,
+                        "last_frame": files.get("last_frame"), "est_usd": est,
+                        "seconds": round(time.time() - t0), "maxdev": m["maxdev"],
+                        "reading": m["reading"]})
+
+    known = [r["est_usd"] for r in results if r["est_usd"] is not None]
+    return {
+        "project": project, "name": name, "model": cv.MODEL, "takes": results,
+        "est_usd_total": round(sum(known), 2) if known else None,
+        "next": ("LOOK at each `view` (or contact_sheet it) before approve_shot. The cost "
+                 "is an estimate; the ModelArk console has the real bill."),
     }
 
 
@@ -564,6 +646,8 @@ def check_status() -> dict:
     status: dict = {"comfy_url": comfy.COMFY_URL, "comfy_running": comfy.comfy_is_up()}
     status["klein"] = {"url": klein.KLEIN_URL, "running": klein.is_up(),
                        "dir": klein.KLEIN_DIR, "missing": klein.missing_files()}
+    status["cloud"] = {"provider": "byteplus", "model": cv.MODEL,
+                       "key_set": cv.has_key(), "key_env": cv.API_KEY_ENV}
     try:
         status["ffmpeg"] = asm.find_ffmpeg()
     except FileNotFoundError as e:

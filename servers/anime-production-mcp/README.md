@@ -340,11 +340,15 @@ FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 | `WEBCOMIC_ANIME_KLEIN_URL` | `http://127.0.0.1:8189` |
 | `WEBCOMIC_ANIME_KLEIN_DIR` | `C:\AI\ComfyUI_flux3` |
 | `WEBCOMIC_ANIME_KLEIN_AUTOLAUNCH` | `1` |
+| `ARK_API_KEY` | unset — only `animate_shot_cloud` needs it; a BytePlus ModelArk key |
+| `WEBCOMIC_ANIME_ARK_MODEL` | `dreamina-seedance-2-0-260128` — copy the exact ID from the ModelArk console |
+| `WEBCOMIC_ANIME_ARK_URL` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
 
 ## Tools
 
 **Generate** — `animate_shot` (the seed hunt: N takes, retimed, scored, recorded)
-· `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
+· `animate_shot_cloud` (PAID: Seedance 2.0 on BytePlus, one take per call by
+default, for actions LTX refuses) · `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
 the region only)
 
 **Judge** — `measure_motion` · `retime_clip` · `contact_sheet`
