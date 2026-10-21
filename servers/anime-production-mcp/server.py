@@ -5,8 +5,9 @@ Turns finished illustrations into an animated, music-cut video, entirely
 locally. Closes the loop with music-generation-mcp: that server makes the track,
 this one animates the art and cuts to it.
 
-Runs on the same 6 GB RTX 3060 Laptop as the other GPU servers. Unlike the ACE
-path, LTX needs a THIRD-PARTY custom node (city96's ComfyUI-GGUF) — see README.
+Runs on the same 6 GB RTX 3060 Laptop as the other GPU servers. LTX-2.5 and
+Klein both run on the separate v0.41 ComfyUI (port 8189) — see README. LTX-2.3
+was removed on 2026-10-22, after the artist judged 2.5 much better.
 
 THE RULE THAT DECIDES WHETHER A SHOT WILL WORK AT ALL, and the reason this
 server is shaped the way it is:
@@ -18,6 +19,9 @@ server is shaped the way it is:
   fails: blinks (the eyelid was never drawn) · mouth shapes (no teeth or tongue
          exist) · growing crystals (new geometry) · foreshortening (a punch
          toward the viewer needs knuckles redrawn at a new angle)
+  (That column was measured on LTX-2.3. 2.5 moved it: it threw a punch toward
+  the viewer, two people talked, and one seed in three blinked. Growing ice
+  still failed.)
 
 Everything follows from that line. `animate_shot` is for the left column.
 `edit_frame` + `composite_patch` cover eye- and mouth-scale features. The
@@ -36,15 +40,12 @@ it be discovered the hard way:
   * Then run ~3 seeds and keep the best; roughly 1 in 3 lands. Seed variance is
     real, but ONLY when the request is achievable. Re-rolling an impossible ask
     is pure waste.
-  * SEEDS DO NOT TRANSFER ACROSS CONFIGS. Change length or variant and the space
+  * SEEDS DO NOT TRANSFER ACROSS CONFIGS. Change length or prompt and the space
     reshuffles. Re-hunt after any parameter change.
-  * RESOLUTION IS THE LEVER FOR HANDS. Default 1920x1088, fallback 1216x832 —
-    both artist-approved. 832x576 puts a hand at ~5 latent pixels and cannot
+  * RESOLUTION IS THE LEVER FOR HANDS. pick_size aims at ~2 MP from the
+    artwork's own shape. 832x576 puts a hand at ~5 latent pixels and cannot
     render one that moves; at that size, one 15-panel scene needed 65 frames
-    hand-repaired. A 6 GB card hit no OOM point anywhere in a full sweep, so
-    resolution costs almost nothing — spend it.
-  * THE NEGATIVE PROMPT DOES NOTHING on `distilled` (cfg 1.0 discards it —
-    verified pixel-identical). Do not tune it; raise resolution instead.
+    hand-repaired.
   * NEGATIVE INSTRUCTIONS ARE IGNORED BY BOTH MODELS. "Do not close her eyes"
     closed them; "without turning" turned. Phrase every request positively.
   * Freezing is as useful as animating. If hands go wrong, a `hold` scene that
@@ -71,13 +72,6 @@ from tools import effects, framing, motion, subs
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 mcp = FastMCP("anime-production")
-
-
-def _fetch_one(outs: dict, dest: str) -> str:
-    for refs in outs.values():
-        for ref in refs:
-            return comfy.fetch(ref, dest)
-    raise comfy.ComfyUIError("ComfyUI returned outputs but no files.")
 
 
 def _upload_ref25(image_path: str) -> str:
@@ -126,18 +120,21 @@ def _clear_card(url: str, what: str) -> None:
 
 @mcp.tool()
 def animate_shot(project: str, name: str, image_path: str, prompt: str,
-                 seeds: list[int] | None = None, length: int = 17,
-                 strength: float | None = None, variant: str = "distilled",
+                 seeds: list[int] | None = None, length: int = 49,
+                 strength: float = 0.7,
                  width: int | None = None, height: int | None = None,
-                 fps: float = 48.0,
+                 fps: float = 24.0,
                  measure_box: list[int] | None = None,
                  view_fps: int = 12) -> dict:
-    """Animate one illustration — THE SEED HUNT, as a single call.
+    """Animate one illustration with LTX-2.5 — THE SEED HUNT, as a single call.
 
-    For each seed: submit to LTX, retime the take to `view_fps` (ComfyUI writes
-    at 24, so a 17-frame take otherwise plays in 0.7 s and reads as "nothing
-    happened"), measure its motion, and record it. Returns every take, sorted
-    best-first by `maxdev`.
+    For each seed: render on the Klein ComfyUI, make a `view_fps` preview (every
+    other frame of the 24 fps take, so it plays at true speed on twos), measure
+    its motion, and record it. Returns every take, sorted best-first by `maxdev`.
+
+    length: 49 (2 s) or 97 (4 s). NOT 17 — at 17 frames 2.5 has only three
+    latent frames: every take sat still to frame 8, lurched at frame 9 and tore
+    faces. ~3.5 min a 49-frame take on the 6 GB card, ~7 min a 97.
 
     LEAVE width/height UNSET. They are derived from the artwork by
     `lw.pick_size`, which matches the source's own aspect and then maximizes
@@ -147,9 +144,9 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     letterboxing. The chosen size and any warnings come back in `size`.
 
     Resolution is THE lever for hands — at ~5 latent pixels a moving hand cannot
-    be drawn, which cost 65 hand-repaired frames on one scene at 832x576 — and
-    it is nearly free on this card. `strength` is the other real lever (1.0
-    grips the input so hard the clip FREEZES).
+    be drawn, which cost 65 hand-repaired frames on one scene at 832x576.
+    `strength` is the template's stage-1 image strength; stage 2 re-applies the
+    image at 1.0.
 
     `prompt`: lead with the LARGEST motion that reads. Phrase positively —
     negatives are ignored by this model.
@@ -162,17 +159,11 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     scores very high. Always look at the retimed clip or a contact_sheet before
     approving. Three seeds is the working default; roughly one lands.
 
-    variant: "distilled" (LTX-2.3, the default) or "dev" run on the main
-    ComfyUI. "2.5" runs LTX-2.5 on the Klein ComfyUI instead. `strength`
-    defaults to 0.9 for 2.3 and to the template's 0.7 for 2.5.
-
-    ⚠ FOR 2.5, PASS fps=24 AND length 49 OR 97 — not 2.3's 17 frames at 48.
-    At length 17 the model has only three latent frames: every take sat still
-    for frames 0-8, lurched at frame 9, and faces tore on full-body action.
-    At 24 fps and 49-97 frames, a rebuilt 8-scene teaser of hand-drawn panels
-    came back clean, and the artist judged 2.5 "much better" than 2.3 — it
-    threw a real punch, a waltz turn, a prayer pose. Still weak: a blink often
-    becomes eyes closed for good, and it can turn a profile head toward camera.
+    Measured on an 8-scene teaser of hand-drawn panels (2026-10-21): a real
+    punch, a waltz turn, a prayer pose, two people talking. Still weak: asked to
+    "blink", eyes closed for good on three seeds ("her eyes close, then open
+    wide, then close again" worked on one in three); a head drawn in profile
+    turned toward the camera until the prompt said it stays in profile.
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
@@ -189,47 +180,31 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
         size = {"width": width, "height": height, "notes":
                 ["size supplied by caller — NOT checked against the artwork's "
                  "aspect; a mismatch is a silent stretch"]}
-    is25 = variant == "2.5"
-    if is25:
-        lw.validate25(width, height, length)
-        # 2.5 lives on the Klein ComfyUI; the main one holds 2.3, music and matting.
-        _clear_card(comfy.COMFY_URL, "An LTX-2.3, music or matting job")
-        strength = 0.7 if strength is None else strength
-        uploaded = _upload_ref25(image_path)
-    else:
-        lw.validate(width, height, length, variant)
-        _clear_card(klein.KLEIN_URL, "A Klein job")
-        strength = 0.9 if strength is None else strength
-        uploaded = comfy.upload_image(image_path)
+    lw.validate25(width, height, length)
+    # LTX-2.5 lives on the Klein ComfyUI; the main one holds music and matting.
+    _clear_card(comfy.COMFY_URL, "A music or matting job")
+    uploaded = _upload_ref25(image_path)
 
     results = []
     for seed in seeds:
         shot_id = sh.new_shot_id(name, seed)
         d = sh.shot_dir(project, shot_id)
         params = dict(image=uploaded, prompt=prompt, seed=seed, width=width,
-                      height=height, length=length, variant=variant,
-                      strength=strength, fps=fps)
-        if is25:
-            os.makedirs(d, exist_ok=True)
-            raw = os.path.join(d, f"{shot_id}.webp")
-            g = lw.build25(prefix=f"anime_{shot_id}",
-                           **{k: v for k, v in params.items() if k != "variant"})
-            # An hour, not the usual 30 min: the first 2.5 take pages ~37 GB
-            # of weights through 32 GB of RAM.
-            with open(raw, "wb") as f:
-                f.write(klein._submit(g, "41", timeout=3600))
-        else:
-            outs = comfy.submit_and_wait(lw.build(prefix=f"anime/{shot_id}", **params))
-            raw = _fetch_one(outs, os.path.join(d, f"{shot_id}.webp"))
+                      height=height, length=length, strength=strength, fps=fps)
+        os.makedirs(d, exist_ok=True)
+        raw = os.path.join(d, f"{shot_id}.webp")
+        # An hour, not the usual 30 min: the first take of a session pages
+        # ~37 GB of weights through 32 GB of RAM.
+        with open(raw, "wb") as f:
+            f.write(klein._submit(lw.build25(prefix=f"anime_{shot_id}", **params), "41",
+                                  timeout=3600))
         view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
-        # 2.5 at 24 fps is real-time motion: keep every other frame for 12 fps
-        # on twos. 2.3's 48 fps takes keep every frame and play slowed, as ever.
-        motion.retime(raw, view, fps=view_fps,
-                      step=max(1, round(fps / view_fps)) if is25 and fps <= 30 else 1)
+        # A 24 fps take is real-time motion: keep every other frame for 12 fps
+        # on twos.
+        motion.retime(raw, view, fps=view_fps, step=max(1, round(fps / view_fps)))
         m = motion.measure(view, tuple(measure_box) if measure_box else None)
         sh.record(project, shot_id, name,
-                        (lw.recipe25 if is25 else lw.recipe)(
-                            **dict(params, image=os.path.basename(image_path))),
+                        lw.recipe25(**dict(params, image=os.path.basename(image_path))),
                         {"webp": raw, "retimed": view},
                         {"maxdev": m["maxdev"], "span": m["span"],
                          "peak_frame": m["peak_frame"], "reading": m["reading"]})
@@ -694,17 +669,18 @@ def forget_rejected(project: str, name: str | None = None) -> dict:
 def check_status() -> dict:
     """Is the GPU path usable? Call this first when a generation fails.
 
-    Reports ComfyUI reachability, VRAM, whether city96's ComfyUI-GGUF custom node
-    is installed (LTX cannot run without it), which model files each variant is
-    missing, whether an ffmpeg for encoding was found, and the same for the
-    separate Klein ComfyUI that edit_frame uses.
+    Everything this server renders — LTX-2.5 and Klein — runs on the separate
+    Klein ComfyUI (v0.41, port 8189). Reports whether it is up, which LTX-2.5 and
+    Klein model files are missing from it, the paid cloud path's key status,
+    and whether an ffmpeg for encoding was found. The main ComfyUI is reported
+    only because the server unloads it (music, matting) before rendering.
     """
-    status: dict = {"comfy_url": comfy.COMFY_URL, "comfy_running": comfy.comfy_is_up()}
-    status["klein"] = {"url": klein.KLEIN_URL, "running": klein.is_up(),
-                       "dir": klein.KLEIN_DIR, "missing": klein.missing_files()}
+    status: dict = {"klein": {"url": klein.KLEIN_URL, "running": klein.is_up(),
+                              "dir": klein.KLEIN_DIR, "missing": klein.missing_files()}}
     root25 = os.path.join(klein.KLEIN_DIR, "ComfyUI", "models")
     status["ltx25"] = {"missing": [f"{lw.LTX25_FOLDERS[k]}/{n}" for k, n in lw.LTX25.items()
                                    if not os.path.isfile(os.path.join(root25, lw.LTX25_FOLDERS[k], n))]}
+    status["main_comfy"] = {"url": comfy.COMFY_URL, "running": comfy.comfy_is_up()}
     status["cloud"] = {"provider": "byteplus", "model": cv.MODEL,
                        "key_set": cv.has_key(), "key_env": cv.API_KEY_ENV}
     try:
@@ -713,45 +689,10 @@ def check_status() -> dict:
         status["ffmpeg"] = None
         status["ffmpeg_hint"] = str(e)
     status["output_root"] = sh.OUTPUT_ROOT
-
-    if not status["comfy_running"]:
-        status["hint"] = ("Start ComfyUI (it auto-launches on first generation) — "
-                          f"{comfy.COMFY_DIR}\\{comfy.COMFY_LAUNCH}")
-        return status
-
-    stats = comfy.system_stats()
-    dev = (stats.get("devices") or [{}])[0]
-    status["device"] = dev.get("name")
-    status["vram_total_gb"] = round(dev.get("vram_total", 0) / 1e9, 2)
-    status["comfyui_version"] = stats.get("system", {}).get("comfyui_version")
-
-    try:
-        gguf_unets = set(comfy.list_models("unet_gguf"))
-        gguf_clips = set(comfy.list_models("clip_gguf"))
-        status["comfyui_gguf_installed"] = True
-    except comfy.ComfyUIError:
-        status["comfyui_gguf_installed"] = False
-        status["hint"] = ("city96's ComfyUI-GGUF custom node is NOT installed. LTX "
-                          "loads its GGUF weights through it; core ComfyUI cannot. "
-                          "Install it into custom_nodes and restart.")
-        return status
-
-    vae = set(comfy.list_models("vae"))
-    variants = {}
-    for vname, v in lw.VARIANTS.items():
-        missing = [n for n, present in ((v["unet"], gguf_unets),
-                                        (v["connector"], gguf_clips),
-                                        (v["vae"], vae)) if n not in present]
-        if lw.GEMMA not in gguf_clips:
-            missing.append(lw.GEMMA)
-        variants[vname] = {"ready": not missing, "missing": missing}
-    status["ltx_variants"] = variants
-
-    if any(not v["ready"] for v in variants.values()):
-        status["hint"] = ("Missing model files. NOTE: ComfyUI caches folder listings at "
-                          "startup — if you just downloaded these, restart ComfyUI before "
-                          "trusting this list. The text encoder must sit in "
-                          "models/text_encoders/, NOT models/checkpoints/.")
+    if status["ltx25"]["missing"] or status["klein"]["missing"]:
+        status["hint"] = ("Model files missing from the Klein ComfyUI — see README "
+                          "'Models'. ComfyUI caches folder listings at startup, so "
+                          "restart it after adding files.")
     return status
 
 

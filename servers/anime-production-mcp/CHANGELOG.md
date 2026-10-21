@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.0.0 — 2026-10-22
+
+**LTX-2.3 is removed; `animate_shot` runs LTX-2.5 only.** On an eight-scene
+teaser of hand-drawn panels the artist judged 2.5 much better and had 2.3
+uninstalled.
+
+**Breaking:** `animate_shot` loses `variant`. Defaults change to 2.5's own
+settings: `length=49`, `fps=24`, `strength=0.7`. Its 12 fps preview keeps every
+other frame of the 24 fps take, so it plays at true speed.
+
+- `ltx_workflow.py` drops the 2.3 graph (`build`, `recipe`, `validate`, the
+  GGUF `VARIANTS`, Gemma 3, the inert negative prompt). `pick_size` and the 2.5
+  builder stay; the module notes keep the 2.3 lessons that are about pictures.
+- `check_status` drops the ComfyUI-GGUF and 2.3 file checks. It reports the
+  Klein ComfyUI (which now runs everything this server renders), the LTX-2.5
+  and Klein files on it, and the main ComfyUI only as the thing the server
+  unloads before rendering.
+- The README's Models section describes 2.5 alone; ComfyUI-GGUF is no longer
+  required.
+
+The skill follows: `ltx_run.py` is rewritten for 2.5 (stdlib + Pillow, the same
+graph as the server, sizes from the artwork, writes a 12 fps preview);
+`fetch-ltx.sh` downloads the 2.5 files from the gated Lightricks repo;
+`ltx_hybrid.py`, a 2.3-only two-variant trick, is removed; `ltx-setup.md`,
+`SKILL.md` and the skill's `AGENTS.md` describe 2.5, including the wording that
+fixed its blink and head-turn failures.
+
 ## 2.3.0 — 2026-10-21
 
 **LTX-2.5 as an `animate_shot` variant (`variant="2.5"`).** It runs on the Klein

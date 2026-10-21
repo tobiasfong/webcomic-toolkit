@@ -34,6 +34,10 @@ when the request is achievable.
 
 ## The second rule: resolution, and the two curves that cross
 
+*The measurements in this section and the next were made on LTX-2.3, removed
+2026-10-22. The resolution rule held on 2.5; the length rule flipped (see
+the CHANGELOG, 2.3.0).*
+
 **Do not pick a size by hand.** `animate_shot` derives it from the artwork via
 `lw.pick_size`, which matches the source's own aspect and aims at ~2.2 MP.
 `LTXVImgToVideo` silently resizes the input to whatever it is given — no
@@ -235,7 +239,7 @@ count for *selected* takes, not for all takes.
   Feature-scale motion only ever arrives as a passenger.
 - **Negative instructions are ignored by both models.** "Do not close her eyes"
   closed them; "without turning" turned. Phrase everything positively.
-- **Seeds do not transfer across configs.** Change `length` or `variant` and the
+- **Seeds do not transfer across configs.** Change `length` or the prompt and the
   space reshuffles. Re-hunt after any parameter change.
 - **Retime before judging.** ComfyUI writes at 24 fps, so a 17-frame take plays
   in 0.7 s and reads as "nothing happened". `animate_shot` does this for you.
@@ -289,29 +293,13 @@ claude mcp add anime-production -- /abs/path/.venv/Scripts/python.exe /abs/path/
 
 ## Models
 
-LTX runs through the main ComfyUI. **It loads GGUF weights, which
-core ComfyUI cannot do** — install [city96's
-ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) into `custom_nodes` first.
-`check_status` reports whether it is present.
+Everything this server renders runs on the **Klein ComfyUI** (v0.41+, port
+8189, `C:\AI\ComfyUI_flux3`), started on first use. No custom nodes are needed.
 
-| file | folder |
-|---|---|
-| `ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf` | `models/unet/` |
-| `ltx-2.3-22b-distilled_embeddings_connectors.safetensors` | `models/text_encoders/` |
-| `ltx-2.3-22b-distilled_video_vae.safetensors` | `models/vae/` |
-| `gemma-3-12b-it-Q3_K_M.gguf` | `models/text_encoders/` |
+### LTX-2.5, for `animate_shot`
 
-⚠ **The text encoder goes in `models/text_encoders/`, never
-`models/checkpoints/`.** Core's `LTXAVTextEncoderLoader` reads `checkpoints/`,
-and `.gguf` is not in ComfyUI's supported extensions, so it can never list one.
-Connector and VAE must match the checkpoint's variant *and* generation, or you
-get silent garbage instead of an error. ComfyUI caches folder listings at
-startup — restart it after adding files.
-
-### LTX-2.5 (optional), on the Klein ComfyUI
-
-`animate_shot(variant="2.5", fps=24, length=49 or 97)` runs LTX-2.5 from the
-gated `Lightricks/LTX-2.5` repo, on the same v0.41 ComfyUI as Klein:
+From Lightricks' gated `Lightricks/LTX-2.5` repo (accept its license on Hugging
+Face first). INT8 is the build for an RTX 30-series card:
 
 | file | folder |
 |---|---|
@@ -320,14 +308,21 @@ gated `Lightricks/LTX-2.5` repo, on the same v0.41 ComfyUI as Klein:
 | `ltx-2.5-video-vae-bf16.safetensors`, `ltx-2.5-audio-vae-bf16.safetensors` | `models/vae/` |
 | `ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors` | `models/latent_upscale_models/` |
 
-Don't run it at 2.3's 17 frames: see the CHANGELOG for why.
+About 40 GB, against 32 GB of RAM on the machine it was built on: ComfyUI drops
+the text encoder after reading the prompt, and takes ran ~3.5 min (49 frames)
+and ~7 min (97 frames) on a 6 GB card. Run it at 24 fps and 49 or 97 frames,
+never 17 — see the CHANGELOG.
+
+LTX-2.3 (GGUF, on the main ComfyUI with city96's ComfyUI-GGUF) was this
+server's model until 2026-10-22. The measurements in the sections above were
+made on it.
 
 ### Klein, for `edit_frame`
 
 `edit_frame` runs FLUX 3 Image Klein on a **separate** ComfyUI (v0.41+, port
 8189, `C:\AI\ComfyUI_flux3`), the same install the character and background
 servers use, started on first use. The main ComfyUI is deliberately not
-upgraded: LTX and the music model run there through add-ons never tested on
+upgraded: the music model and matting run there through add-ons never tested on
 v0.41. Files, from BFL's gated `black-forest-labs/flux-3-image-klein-comfy`
 repo (each BFL repo needs its own license click):
 

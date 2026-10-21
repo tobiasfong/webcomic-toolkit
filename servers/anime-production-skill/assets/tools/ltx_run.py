@@ -1,189 +1,225 @@
 """
-ltx_run.py — submit an LTX-2.3 image-to-video job to ComfyUI and wait for it.
+ltx_run.py — animate one illustration with LTX-2.5, image-to-video, locally.
 
-Builds the graph in API format and POSTs to /prompt, then polls /history.
-Keeps every tunable at the top so OOM hunting is a one-line edit.
+Standalone driver for the skill: stdlib + Pillow only. The anime-production MCP
+server's `animate_shot` does the same with a shot library and a seed hunt on
+top; use that when you have it.
 
 Usage:
-  python ltx_run.py [--image ltx_test.png] [--w 832] [--h 576] [--len 25]
-                    [--steps 8] [--variant distilled|dev] [--prompt "..."]
+  python ltx_run.py --image panel.png --out takes \
+      --prompt "The camera holds locked off. She lowers her sword slowly. ..."
+  python ltx_run.py --image panel.png --out takes --len 97 --seed 2 --prompt "..."
 
-⚠ THE 832x576 DEFAULT IS A GUESS, NOT A VRAM CEILING, and it is the most
-expensive mistake in this pipeline's history: at that size a hand is ~5 latent
-pixels after the VAE's 8x compression and cannot be rendered while moving. On
-one 15-panel scene that cost 65 hand-redrawn frames. A ceiling sweep found NO
-out-of-memory point at any resolution tested on a 6 GB card.
+Needs a ComfyUI of v0.32+ with LTX-2.5's official files (see ltx-setup.md and
+fetch-ltx.sh). This project runs it on the same v0.41 ComfyUI as FLUX 3 Klein,
+port 8189. No custom nodes.
 
-⚠ MATCH THE ARTWORK'S OWN ASPECT. There is no letterboxing here — the input is
-silently resized to whatever --w/--h say, so a mismatch is a stretch, and a
-vertical panel comes out crushed into landscape. Size from the art.
+Writes <stem>_s<seed>.webp (24 fps, every frame) and <stem>_s<seed>_12fps.webp
+(every other frame, true speed on twos — judge from this one).
 
-⚠ RESOLUTION AND PROMPT MOVE TOGETHER. More pixels fixes anatomy but gives the
-model spare capacity, which a one-sentence prompt does not constrain — at 2.2 MP
-with one sentence it abandoned the requested action entirely. Go high only with
-a 4-8 sentence prompt; with a short one, stay near 1 MP.
+THE SETTINGS THAT MATTER, all measured on a 6 GB RTX 3060 Laptop, 32 GB RAM:
+  * 24 fps and 49 (2 s) or 97 (4 s) frames. NEVER 17: with three latent frames
+    every take sat still to frame 8, lurched at frame 9 and tore faces.
+  * Size from the ARTWORK'S OWN SHAPE at ~2 MP (the default here). The model
+    stretches the input to whatever size it is given, with no letterboxing.
+  * ~3.5 min a 49-frame take, ~7 min a 97. The first take of a session loads
+    ~37 GB of weights and is slower.
+  * Prompt for MOTION ONLY: camera first, the motion, then what stays still,
+    4-8 sentences, positive phrasing. "Blink" became eyes closed for good on
+    three seeds; "her eyes close, then open wide, then close again" blinked.
 
-⚠ THE NEGATIVE PROMPT IS INERT on `distilled`: cfg 1.0 discards the negative
-branch entirely (verified pixel-identical with and without). It applies only on
-`dev` at cfg 3.0. Raise resolution instead of tuning it.
+⚠ NEVER RUN IT WHILE ANOTHER BIG MODEL IS ON THE CARD. It refuses while the
+other ComfyUI (--other-url, the music/matting install here) is busy, and asks
+that idle one to unload: an idle ComfyUI still holds its model in system RAM,
+and one take with another model resident took 694 s instead of 176 s.
 """
-import argparse, json, time, urllib.request, urllib.error
+import argparse, io, json, os, sys, time, uuid, urllib.error, urllib.parse, urllib.request
 
-HOST = "http://127.0.0.1:8188"
+from PIL import Image, ImageSequence
 
-VARIANTS = {
-    "distilled": {
-        "unet": "ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
-        "connector": "ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
-        "vae": "ltx-2.3-22b-distilled_video_vae.safetensors",
-        "steps": 8, "cfg": 1.0,
-    },
-    "dev": {
-        "unet": "ltx-2.3-22b-dev-Q4_K_M.gguf",
-        "connector": "ltx-2.3-22b-dev_embeddings_connectors.safetensors",
-        "vae": "ltx-2.3-22b-dev_video_vae.safetensors",
-        "steps": 25, "cfg": 3.0,
-    },
-}
-GEMMA = "gemma-3-12b-it-Q3_K_M.gguf"
-
-NEG = "blurry, distorted, deformed hands, extra limbs, warped face, watermark, text"
+MODEL = "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"
+TEXT_ENCODER = "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"
+VAE = "ltx-2.5-video-vae-bf16.safetensors"
+AUDIO_VAE = "ltx-2.5-audio-vae-bf16.safetensors"
+UPSCALER = "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+REF_LONG_SIDE = 1536      # the template's reference-image resize
+SIGMAS_1 = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+SIGMAS_2 = "0.85, 0.7250, 0.4219, 0.0"
+LEAD = "Use the provided start image as the first frame. "
 
 
-def build(a, v):
-    """ComfyUI API-format graph. Node ids are strings; links are [node_id, output_index]."""
+def pick_size(w, h, target=2_200_000, align=64, max_dim=1920):
+    """Largest size at the art's own aspect near `target` pixels, both sides /64."""
+    aspect = w / h
+    best = None
+    for hh in range(align * 4, max_dim + 1, align):
+        ww = round(hh * aspect / align) * align
+        if ww < align * 4 or ww > max_dim or ww * hh > target:
+            continue
+        err = abs(ww / hh - aspect) / aspect
+        if err <= 0.01 and (best is None or ww * hh > best[0] * best[1]):
+            best = (ww, hh)
+    if not best:
+        raise SystemExit(f"no size within 1% of the art's aspect {aspect:.3f}; pass --w/--h")
+    return best
+
+
+def busy(url):
+    try:
+        q = json.loads(urllib.request.urlopen(url + "/queue", timeout=3).read().decode())
+    except Exception:
+        return 0
+    return len(q.get("queue_running", [])) + len(q.get("queue_pending", []))
+
+
+def upload(host, img):
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    name, bnd = f"{uuid.uuid4().hex[:8]}_ltx_ref.png", uuid.uuid4().hex
+    body = (f"--{bnd}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{name}\"\r\n"
+            f"Content-Type: image/png\r\n\r\n").encode() + buf.getvalue() + \
+           (f"\r\n--{bnd}\r\nContent-Disposition: form-data; name=\"overwrite\"\r\n\r\ntrue"
+            f"\r\n--{bnd}--\r\n").encode()
+    req = urllib.request.Request(host + "/upload/image", data=body,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={bnd}"})
+    return json.loads(urllib.request.urlopen(req, timeout=60).read().decode())["name"]
+
+
+def build(image, prompt, seed, w, h, length, fps, strength, prefix):
+    # ComfyUI's own video_ltx2_5_i2v template: stage 1 at half size, then a 2x
+    # latent upscale and a short refine. Its prompt enhancer is left OFF (it
+    # rewrites the prompt). Both cfgs are 1, so the negative is inert. The model
+    # makes audio jointly; its latent must exist but is never decoded.
     return {
-        # --- loaders ---
-        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": v["unet"]}},
-        # ⚠ GGUF text encoders MUST go through city96's loader. The core
-        # LTXAVTextEncoderLoader reads models/checkpoints/, and ComfyUI's
-        # supported_pt_extensions has no .gguf — so it can never list one.
-        "2": {"class_type": "DualCLIPLoaderGGUF",
-              "inputs": {"clip_name1": GEMMA, "clip_name2": v["connector"], "type": "ltxv"}},
-        "3": {"class_type": "VAELoader", "inputs": {"vae_name": v["vae"]}},
-        "4": {"class_type": "LoadImage", "inputs": {"image": a.image}},
-
-        # --- conditioning ---
-        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": a.prompt, "clip": ["2", 0]}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": NEG, "clip": ["2", 0]}},
-
-        # image -> video latent (also rewrites the conditioning)
-        "7": {"class_type": "LTXVImgToVideo",
-              "inputs": {"positive": ["5", 0], "negative": ["6", 0], "vae": ["3", 0],
-                         "image": ["4", 0], "width": a.w, "height": a.h,
-                         "length": a.length, "batch_size": 1, "strength": a.strength}},
-        "8": {"class_type": "LTXVConditioning",
-              "inputs": {"positive": ["7", 0], "negative": ["7", 1], "frame_rate": a.fps}},
-
-        # --- sampling ---
-        "9": {"class_type": "ModelSamplingLTXV",
-              "inputs": {"model": ["1", 0], "max_shift": a.max_shift, "base_shift": a.base_shift,
-                         "latent": ["7", 2]}},
-        # Scheduler. LTXVScheduler is the native one; BasicScheduler is the
-        # community workaround claimed to unstick dev's motion.
-        "10": ({"class_type": "LTXVScheduler",
-                "inputs": {"steps": a.steps, "max_shift": a.max_shift,
-                           "base_shift": a.base_shift, "stretch": True,
-                           "terminal": 0.1, "latent": ["7", 2]}}
-               if a.scheduler == "ltxv" else
-               {"class_type": "BasicScheduler",
-                "inputs": {"model": ["9", 0], "scheduler": a.scheduler,
-                           "steps": a.steps, "denoise": 1.0}}),
-        "11": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
-        "12": {"class_type": "SamplerCustom",
-               "inputs": {"model": ["9", 0], "add_noise": True, "noise_seed": a.seed,
-                          "cfg": v["cfg"], "positive": ["8", 0], "negative": ["8", 1],
-                          "sampler": ["11", 0], "sigmas": ["10", 0],
-                          "latent_image": ["7", 2]}},
-
-        # --- out ---
-        "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["3", 0]}},
-        "14": {"class_type": "SaveAnimatedWEBP",
-               "inputs": {"images": ["13", 0], "filename_prefix": a.prefix,
-                          "fps": 24.0, "lossless": False, "quality": 90,
-                          "method": "default"}},
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT_ENCODER, "type": "ltxv", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": AUDIO_VAE}},
+        "5": {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": UPSCALER}},
+        "6": {"class_type": "LoadImage", "inputs": {"image": image}},
+        "7": {"class_type": "LTXVPreprocess", "inputs": {"image": ["6", 0], "img_compression": 18}},
+        "8": {"class_type": "CLIPTextEncode", "inputs": {"text": LEAD + prompt, "clip": ["2", 0]}},
+        "9": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["2", 0]}},
+        "10": {"class_type": "LTXVConditioning",
+               "inputs": {"positive": ["8", 0], "negative": ["9", 0], "frame_rate": fps}},
+        "11": {"class_type": "LTXVDualCFGGuider",
+               "inputs": {"model": ["1", 0], "positive": ["10", 0], "negative": ["10", 1],
+                          "video_cfg": 1.0, "audio_cfg": 1.0}},
+        "12": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler_ancestral"}},
+        "20": {"class_type": "EmptyLTXVLatentVideo",
+               "inputs": {"width": w // 2, "height": h // 2, "length": length, "batch_size": 1}},
+        "21": {"class_type": "LTXVImgToVideoInplace",
+               "inputs": {"vae": ["3", 0], "image": ["7", 0], "latent": ["20", 0],
+                          "strength": strength, "bypass": False}},
+        "22": {"class_type": "LTXVEmptyLatentAudio",
+               "inputs": {"frames_number": length, "frame_rate": fps, "batch_size": 1,
+                          "audio_vae": ["4", 0]}},
+        "23": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["21", 0], "audio_latent": ["22", 0]}},
+        "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "25": {"class_type": "ManualSigmas", "inputs": {"sigmas": SIGMAS_1}},
+        "26": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["24", 0], "guider": ["11", 0], "sampler": ["12", 0],
+                          "sigmas": ["25", 0], "latent_image": ["23", 0]}},
+        "27": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["26", 0]}},
+        "30": {"class_type": "LTXVLatentUpsampler",
+               "inputs": {"samples": ["27", 0], "upscale_model": ["5", 0], "vae": ["3", 0]}},
+        "31": {"class_type": "LTXVImgToVideoInplace",
+               "inputs": {"vae": ["3", 0], "image": ["7", 0], "latent": ["30", 0],
+                          "strength": 1.0, "bypass": False}},
+        "32": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["31", 0], "audio_latent": ["27", 1]}},
+        "33": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+        "34": {"class_type": "ManualSigmas", "inputs": {"sigmas": SIGMAS_2}},
+        "35": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["33", 0], "guider": ["11", 0], "sampler": ["12", 0],
+                          "sigmas": ["34", 0], "latent_image": ["32", 0]}},
+        "36": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["35", 0]}},
+        "40": {"class_type": "VAEDecodeTiled",
+               "inputs": {"samples": ["36", 0], "vae": ["3", 0], "tile_size": 512,
+                          "overlap": 64, "temporal_size": 64, "temporal_overlap": 16}},
+        "41": {"class_type": "SaveAnimatedWEBP",
+               "inputs": {"images": ["40", 0], "filename_prefix": prefix, "fps": 24.0,
+                          "lossless": False, "quality": 90, "method": "default"}},
     }
 
 
-def post(path, payload=None):
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(HOST + path, data=data,
+def run(host, graph, timeout=3600):
+    req = urllib.request.Request(host + "/prompt", data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read().decode())
+    try:
+        pid = json.loads(urllib.request.urlopen(req, timeout=60).read().decode())["prompt_id"]
+    except urllib.error.HTTPError as e:
+        sys.exit("REJECTED:\n" + e.read().decode()[:2500])
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        time.sleep(3)
+        h = json.loads(urllib.request.urlopen(f"{host}/history/{pid}", timeout=30).read().decode())
+        if pid in h:
+            st = h[pid].get("status", {})
+            if st.get("status_str") == "error":
+                sys.exit("ERROR: " + json.dumps(st.get("messages", []))[:2000])
+            img = h[pid]["outputs"]["41"]["images"][0]
+            q = urllib.parse.urlencode({k: img[k] for k in ("filename", "subfolder", "type")})
+            return urllib.request.urlopen(f"{host}/view?{q}", timeout=120).read()
+    sys.exit("timed out")
+
+
+def preview(raw, dst, step=2, fps=12):
+    frames = [f.convert("RGB") for f in ImageSequence.Iterator(Image.open(raw))][::step]
+    # Pillow's WebP writer merges identical neighbors; nudge them apart.
+    for i in range(1, len(frames)):
+        if frames[i].tobytes() == frames[i - 1].tobytes():
+            frames[i] = frames[i].copy()
+            frames[i].putpixel((0, 0), tuple((c + 1) % 256 for c in frames[i].getpixel((0, 0))))
+    frames[0].save(dst, save_all=True, append_images=frames[1:],
+                   duration=int(round(1000 / fps)), loop=0, quality=90)
+    return len(frames)
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--image", default="ltx_test.png")
-    p.add_argument("--w", type=int, default=832)
-    p.add_argument("--h", type=int, default=576)   # 540 is the floor, not the target — see header
-    p.add_argument("--len", dest="length", type=int, default=25)  # must be 8n+1
-    p.add_argument("--steps", type=int, default=0)
-    p.add_argument("--seed", type=int, default=12345)
-    p.add_argument("--variant", default="distilled", choices=list(VARIANTS))
-    p.add_argument("--strength", type=float, default=1.0,
-                   help="image conditioning grip. 1.0 = perfectly faithful but the clip FREEZES "
-                        "(the notorious LTX I2V failure). ~0.8 gives motion room. THE key lever.")
-    p.add_argument("--fps", type=float, default=24.0,
-                   help="frame_rate conditioning; 48 is a known anti-static trick")
-    p.add_argument("--scheduler", default="ltxv",
-                   choices=["ltxv","simple","sgm_uniform","karras","exponential",
-                            "ddim_uniform","beta","normal","linear_quadratic"],
-                   help="ltxv = native LTXVScheduler; anything else uses BasicScheduler")
-    p.add_argument("--max-shift", dest="max_shift", type=float, default=2.05,
-                   help="sigma schedule shift; higher = starts further from the input = more motion")
-    p.add_argument("--base-shift", dest="base_shift", type=float, default=0.95)
-    p.add_argument("--cfg", type=float, default=0.0, help="override variant cfg; higher sticks harder to the input image (and reduces motion)")
-    p.add_argument("--prefix", default="ltx_test",
-                   help="output filename prefix; give each run of a sweep its own so "
-                        "results can be told apart afterwards")
-    p.add_argument("--prompt", default="anime illustration, the character moves slightly, "
-                                       "hair and clothes sway, subtle natural motion, "
-                                       "cel shaded, clean linework")
+    p.add_argument("--image", required=True, help="path to the illustration")
+    p.add_argument("--prompt", required=True, help="motion only; camera first; what stays still")
+    p.add_argument("--out", default="ltx_takes")
+    p.add_argument("--len", dest="length", type=int, default=49, help="49 or 97 (8n+1); never 17")
+    p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--strength", type=float, default=0.7, help="stage-1 image strength (template)")
+    p.add_argument("--fps", type=float, default=24.0)
+    p.add_argument("--w", type=int, help="override the size; must keep the art's aspect, /64")
+    p.add_argument("--h", type=int)
+    p.add_argument("--host", default=os.environ.get("LTX_URL", "http://127.0.0.1:8189"))
+    p.add_argument("--other-url", default="http://127.0.0.1:8188",
+                   help="the other ComfyUI on this card, checked and unloaded first")
     a = p.parse_args()
-    v = VARIANTS[a.variant]
-    if not a.steps:
-        a.steps = v["steps"]
-    if a.cfg:
-        v = dict(v, cfg=a.cfg)
     if (a.length - 1) % 8:
-        raise SystemExit(f"--len must be 8n+1 (got {a.length}); try 25, 49, 73, 97")
-    for d in (a.w, a.h):
-        if d % 32:
-            raise SystemExit(f"width/height must be divisible by 32 (got {a.w}x{a.h})")
+        sys.exit("--len must be 8n+1, e.g. 49 or 97")
 
-    print(f"variant={a.variant} {a.w}x{a.h} len={a.length} steps={a.steps} cfg={v['cfg']} shift={a.max_shift}/{a.base_shift} sched={a.scheduler} strength={a.strength} fps={a.fps}")
+    if busy(a.other_url):
+        sys.exit(f"A job is running on {a.other_url}. Wait for it: two models cannot share a small card.")
+    try:  # idle, so free its RAM for LTX; harmless if that ComfyUI is not up
+        urllib.request.urlopen(urllib.request.Request(
+            a.other_url + "/free", data=b'{"unload_models": true, "free_memory": true}',
+            headers={"Content-Type": "application/json"}), timeout=10)
+    except Exception:
+        pass
+
+    src = Image.open(a.image).convert("RGB")
+    w, h = (a.w, a.h) if a.w and a.h else pick_size(*src.size)
+    if w % 64 or h % 64:
+        sys.exit(f"{w}x{h}: both sides must divide by 64 (stage 1 renders at half size)")
+    s = REF_LONG_SIDE / max(src.size)
+    ref = src.resize((round(src.width * s), round(src.height * s)), Image.LANCZOS) if s < 1 else src
+    uploaded = upload(a.host, ref)
+
+    os.makedirs(a.out, exist_ok=True)
+    stem = f"{os.path.splitext(os.path.basename(a.image))[0]}_s{a.seed}"
+    print(f"ltx-2.5: {a.image} -> {w}x{h}, {a.length} frames at {a.fps:g} fps, seed {a.seed}")
     t0 = time.time()
-    try:
-        r = post("/prompt", {"prompt": build(a, v)})
-    except urllib.error.HTTPError as e:
-        print("REJECTED by ComfyUI:\n" + e.read().decode()[:3000])
-        raise SystemExit(1)
-    pid = r["prompt_id"]
-    print("queued", pid)
-
-    while True:
-        time.sleep(3)
-        h = post("/history/" + pid) if False else json.loads(
-            urllib.request.urlopen(f"{HOST}/history/{pid}", timeout=30).read().decode())
-        if pid in h:
-            entry = h[pid]
-            st = entry.get("status", {})
-            if st.get("status_str") == "error" or not st.get("completed", True):
-                for m in st.get("messages", []):
-                    if m[0] in ("execution_error", "execution_interrupted"):
-                        print("ERROR:", json.dumps(m[1], indent=1)[:2500])
-                        raise SystemExit(1)
-            outs = entry.get("outputs", {})
-            files = [f for o in outs.values() for f in o.get("images", [])]
-            print(f"DONE in {time.time()-t0:.0f}s ->",
-                  [f["filename"] for f in files] or "(no file)")
-            return
-        el = time.time() - t0
-        print(f"  ...{el:.0f}s", flush=True)
-        if el > 3600:
-            raise SystemExit("timed out after 1h")
+    raw = os.path.join(a.out, stem + ".webp")
+    with open(raw, "wb") as f:
+        f.write(run(a.host, build(uploaded, a.prompt, a.seed, w, h, a.length, a.fps,
+                                  a.strength, "ltx25_" + stem)))
+    n = preview(raw, os.path.join(a.out, stem + "_12fps.webp"), step=max(1, round(a.fps / 12)))
+    print(f"  {time.time() - t0:.0f}s -> {raw} (+ {n}-frame 12 fps preview)")
 
 
 if __name__ == "__main__":

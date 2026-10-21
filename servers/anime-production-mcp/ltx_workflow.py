@@ -1,116 +1,61 @@
 """
-ltx_workflow.py — build the ComfyUI API graph for LTX-2.3 image-to-video.
+ltx_workflow.py — build the ComfyUI API graph for LTX-2.5 image-to-video.
 
-RESOLUTION IS THE LEVER. Everything else is a detail. This module defaulted to
-832x576 for two days because it was fast; that cost an artist 65 hand-repaired
-frames on a single 15-panel scene, and the seven panels that came back clean
-were the ones that barely moved.
+LTX-2.3 WAS REMOVED 2026-10-22. On an eight-scene teaser of hand-drawn panels
+the artist judged 2.5 "much better" — a real punch toward the viewer, a waltz
+turn, a prayer pose, two people talking — and had 2.3 uninstalled. Its graph
+(GGUF loaders, Gemma 3, the `distilled`/`dev` variants) is gone from this file;
+git history has it. The lessons below were measured on 2.3 unless marked, and
+are kept because they are about pictures, not about that model.
+
+RESOLUTION IS THE LEVER. This module defaulted to 832x576 for two days because
+it was fast; that cost an artist 65 hand-repaired frames on a single 15-panel
+scene, and the seven panels that came back clean were the ones that barely moved.
 
     DO NOT PICK A SIZE BY HAND — call pick_size(src_w, src_h). It matches the
-    ARTWORK'S OWN ASPECT and then maximizes pixels inside a budget. A constant
-    cannot do this: LTXVImgToVideo silently resizes the input to whatever it is
-    given, so a fixed "good default" stretches every panel of a different shape.
-    1216x832 art at a 1920x1088 default ships 20% too wide, with no warning.
+    ARTWORK'S OWN ASPECT and then maximizes pixels inside a budget. The model
+    silently resizes its input to whatever it is given, so a fixed "good
+    default" stretches every panel of a different shape. 1216x832 art at a
+    1920x1088 default ships 20% too wide, with no warning.
 
 Why: at 832x576 a hand is ~40px, which after the VAE's 8x compression is ~5
 latent pixels. There is not enough there to draw fingers, so any hand that MOVES
 becomes mush. That is a resolution problem and no seed fixes it.
 
-And it is nearly free. A ceiling sweep on a 6 GB RTX 3060 Laptop found NO
-out-of-memory point at all, and steady-state cost was ~90-140 s a take across
-the entire range once the model is resident. (The first take of a session pays
-the model load and reads far slower — never benchmark on it.) The low default
-bought speed that was immediately spent on repairs.
+⚠ FRAME COUNT FLIPPED BETWEEN VERSIONS. 2.3 was clean only at 17 frames (25
+smeared, 33 lost a finger, 49 grew a third arm). 2.5 is the opposite: at 17
+frames it has three latent frames, so every take sat still to frame 8, lurched
+at frame 9 and tore faces; at 49 or 97 frames and 24 fps it came back clean.
+Use 2.5's own settings — 24 fps, 49 (2 s) or 97 (4 s) frames.
 
-WHAT LIGHTRICKS RECOMMEND, on the knobs still left wrong:
-  * PROMPT LENGTH: 4-8 descriptive sentences; longer consistently beats shorter.
-    One-sentence prompts (what this project used throughout) are far too short.
-    ComfyUI ships `TextGenerateLTX2Prompt` as an expander for exactly this.
-  * FRAME COUNT: upstream uses 121 and 257; 17 is the floor of the 8n+1 rule.
-    TESTED AND REJECTED HERE ANYWAY. Re-run at 1920x1088 changing only length:
-    17 clean, 25 smears at frames 18-19, 33 loses a finger at 11-13, and 49
-    grows a third arm in EVERY frame (a broken composition, not drift). At
-    1216x832 the length-33 damage was frames 12-17; at 1920x1088 it was 11-13 —
-    same place, more pixels, so length is its own failure mode. Cutting the bad
-    window out does not rescue them: dropping 3 of 33 frames left a seam 5.2x
-    the clip's own median motion, a visible pop. Stay at 17.
-  * MOTION DENSITY: do not stack simultaneous motions into a short clip. A
-    spin-and-slash inside 1.4 s is over-packed by the model's own guidance.
-    CONFIRMED IN PRODUCTION: asked to "snap her leg forward in a fast kick",
-    LTX scored 3.6/5.8/8.2 against a scene typical of 11-48 and the artist
-    said the leg "rises very slightly, almost like never". The same panel,
-    same seed, same 2.18 MP, asked to "raise her extended leg a little higher"
-    worked first try. ⚠ LTX DECLINES AN ASK IT CANNOT MEET RATHER THAN
-    SMEARING — an unusually low motion score means "it refused", not "it is
-    subtle". That is the one situation where the score predicts a real problem.
-  * STEPS: distilled at 8 is correct — this one choice held up.
+⚠ LTX DECLINES AN ASK IT CANNOT MEET RATHER THAN SMEARING. 2.3 asked for a
+kick scored 3.6/5.8/8.2 against a scene typical of 11-48 and barely moved the
+leg; 2.5 asked to grow ice raised the hand ~3% and grew almost nothing. An
+unusually LOW motion score means "it refused", not "it is subtle".
 
-⚠ THE NEGATIVE PROMPT IS INERT ON `distilled`. It runs at cfg 1.0, and
-classifier-free guidance discards the negative branch entirely at cfg 1.0.
-Measured: generating with the full negative and with an empty string produced
-PIXEL-IDENTICAL output (mean abs difference 0.000, against ~67 between two
-seeds). Every word of NEG below is thrown away before sampling. It is kept only
-because `dev` runs at cfg 3.0, where it does apply.
+PROMPTS (both versions): camera first, then the motion, then what stays still,
+4-8 sentences, phrased positively — negatives are ignored. The first motion
+named gets the motion budget, so lead with the one that matters. 2.5 notes:
+"blinks" became eyes closed for good on three seeds; "her eyes close, then open
+wide, then close again" produced a blink on one seed in three. A head drawn in
+profile turned toward the camera unasked until the prompt said it stays in
+profile.
 
-⚠ WHERE DAMAGE LANDS MOVES WITH RESOLUTION, and this is the most useful thing
-in this file. At 0.5 MP defects sat MID-CLIP — a melted hand at f10 with good
-frames either side, fixable only by drawing. At ~2 MP, across a whole 14-panel
-scene, every single rejected take had its damage in the FINAL few frames, where
-a cut costs nothing (no join, no seam). Resolution does not just reduce defects,
-it relocates them somewhere cheap.
+⚠ WHERE DAMAGE LANDS MOVES WITH RESOLUTION. At 0.5 MP defects sat MID-CLIP and
+needed drawing; at ~2 MP every rejected take had its damage in the final few
+frames, where a cut costs nothing. Find the bad window; don't blind-truncate.
+A mid-clip drop of 2-3 frames is fine — 0.17-0.25 s at 12 fps reads as a faster
+action, not a hole.
 
-Still not a law, though: at length 33 the bad window was frames 12-17 and the
-clip RECOVERED afterwards, tail included. Find the bad window; don't
-blind-truncate. And a mid-clip drop of 2-3 frames is fine anyway — 0.17-0.25 s
-at 12 fps reads as a faster action, not a hole.
-
-⚠ HEIGHT MAY NEED TO BE DIVISIBLE BY 64, NOT 32 (UNCONFIRMED). validate()
-enforces 32. In the ceiling sweep, 1408x800 was the only size whose height fails
-64 (800/64 = 12.5) and the only one that produced extra fingers, plus a deformed
-hand in its last two frames. The VAE compresses 8x and the transformer
-patchifies 2x2 above that, so 64 is a plausible real alignment unit. One take at
-1408x832 would settle it. Until then prefer 704, 832, 896, 1088.
-
-⚠ THE GGUF TEXT ENCODER GOTCHA, which costs the most time of anything here:
-core's `LTXAVTextEncoderLoader` reads `models/checkpoints/`, and `.gguf` is not
-in ComfyUI's `supported_pt_extensions`, so it can never list one. The encoder
-must go through city96's `DualCLIPLoaderGGUF(type="ltxv")` with the file in
-`models/text_encoders/`. Connector and VAE must also match the checkpoint's
-variant *and* generation, or you get silent garbage rather than an error.
-
-Nothing in this module talks to ComfyUI — it returns a dict. comfy.py submits.
+Nothing in this module talks to ComfyUI — it returns a dict. klein.py submits.
 """
 
 from __future__ import annotations
 
-VARIANTS = {
-    "distilled": {
-        "unet": "ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
-        "connector": "ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
-        "vae": "ltx-2.3-22b-distilled_video_vae.safetensors",
-        "steps": 8, "cfg": 1.0,
-    },
-    "dev": {
-        "unet": "ltx-2.3-22b-dev-Q4_K_M.gguf",
-        "connector": "ltx-2.3-22b-dev_embeddings_connectors.safetensors",
-        "vae": "ltx-2.3-22b-dev_video_vae.safetensors",
-        "steps": 25, "cfg": 3.0,
-    },
-}
-GEMMA = "gemma-3-12b-it-Q3_K_M.gguf"
-
-# INERT on `distilled` (cfg 1.0 discards the negative branch — proven by
-# pixel-identical output with and without it). Applies only to `dev` at cfg 3.0.
-NEG = "blurry, distorted, deformed hands, extra limbs, warped face, watermark, text"
-
-DEFAULT_PROMPT = ("anime illustration, the character moves slightly, hair and "
-                  "clothes sway, subtle natural motion, cel shaded, clean linework")
-
 # ⚠ DO NOT HARDCODE A DEFAULT SIZE. Use pick_size(). A fixed default is the
-# wrong SHAPE of answer, and getting this wrong is silent: LTXVImgToVideo
-# resizes the input to whatever width/height it is given, with no letterboxing
-# and no complaint. Point 1216x832 artwork at a 1920x1088 "default" and every
-# panel ships stretched 20% wider. These two are kept only as reference points:
+# wrong SHAPE of answer, and getting this wrong is silent: the model resizes the
+# input to whatever width/height it is given, with no letterboxing and no
+# complaint. These two are kept only as reference points:
 PRIMARY = (1920, 1088)   # artist-approved, 16:9-ish art
 FALLBACK = (1216, 832)   # artist-approved; also a common panel native size
 
@@ -283,124 +228,12 @@ class RecipeError(ValueError):
     """A parameter combination ComfyUI would reject, caught before submitting."""
 
 
-def validate(width: int, height: int, length: int, variant: str) -> None:
-    if variant not in VARIANTS:
-        raise RecipeError(f"variant must be one of {list(VARIANTS)}, got {variant!r}")
-    if (length - 1) % 8:
-        raise RecipeError(
-            f"length must be 8n+1 (got {length}); try 17, 25, 33, 49, 73, 97. "
-            f"17 is this project's VRAM-constrained default, not a good one — "
-            f"Lightricks' own guidance uses 121 and 257."
-        )
-    for name, d in (("width", width), ("height", height)):
-        if d % 32:
-            raise RecipeError(f"{name} must be divisible by 32 (got {d})")
-    if max(width, height) < MIN_DIM:
-        raise RecipeError(
-            f"{width}x{height} is below the {MIN_DIM}px floor — fine linework "
-            f"mushes at that size and no upscale brings it back."
-        )
-
-
-def build(image: str, prompt: str = DEFAULT_PROMPT, *, seed: int = 12345,
-          width: int = PRIMARY[0], height: int = PRIMARY[1], length: int = 17,
-          variant: str = "distilled", strength: float = 0.9, fps: float = 48.0,
-          steps: int | None = None, cfg: float | None = None,
-          max_shift: float = 2.05, base_shift: float = 0.95,
-          scheduler: str = "ltxv", prefix: str = "ltx",
-          negative: str = NEG) -> dict:
-    """ComfyUI API-format graph. Node ids are strings; links are [id, out_index]."""
-    validate(width, height, length, variant)
-    v = VARIANTS[variant]
-    steps = steps or v["steps"]
-    cfg = v["cfg"] if cfg is None else cfg
-
-    return {
-        # --- loaders ---
-        "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": v["unet"]}},
-        "2": {"class_type": "DualCLIPLoaderGGUF",
-              "inputs": {"clip_name1": GEMMA, "clip_name2": v["connector"], "type": "ltxv"}},
-        "3": {"class_type": "VAELoader", "inputs": {"vae_name": v["vae"]}},
-        "4": {"class_type": "LoadImage", "inputs": {"image": image}},
-
-        # --- conditioning ---
-        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["2", 0]}},
-
-        # image -> video latent (also rewrites the conditioning).
-        # `strength` is THE lever: 1.0 is perfectly faithful to the input and the
-        # clip FREEZES — the notorious LTX i2v failure. 0.9 gives motion room
-        # without losing the drawing.
-        "7": {"class_type": "LTXVImgToVideo",
-              "inputs": {"positive": ["5", 0], "negative": ["6", 0], "vae": ["3", 0],
-                         "image": ["4", 0], "width": width, "height": height,
-                         "length": length, "batch_size": 1, "strength": strength}},
-        # frame_rate is conditioning, not output fps. Telling it 48 is a known
-        # anti-static trick: the model reads the shot as high-framerate footage,
-        # where more inter-frame change is normal.
-        "8": {"class_type": "LTXVConditioning",
-              "inputs": {"positive": ["7", 0], "negative": ["7", 1], "frame_rate": fps}},
-
-        # --- sampling ---
-        "9": {"class_type": "ModelSamplingLTXV",
-              "inputs": {"model": ["1", 0], "max_shift": max_shift,
-                         "base_shift": base_shift, "latent": ["7", 2]}},
-        "10": ({"class_type": "LTXVScheduler",
-                "inputs": {"steps": steps, "max_shift": max_shift,
-                           "base_shift": base_shift, "stretch": True,
-                           "terminal": 0.1, "latent": ["7", 2]}}
-               if scheduler == "ltxv" else
-               {"class_type": "BasicScheduler",
-                "inputs": {"model": ["9", 0], "scheduler": scheduler,
-                           "steps": steps, "denoise": 1.0}}),
-        "11": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
-        "12": {"class_type": "SamplerCustom",
-               "inputs": {"model": ["9", 0], "add_noise": True, "noise_seed": seed,
-                          "cfg": cfg, "positive": ["8", 0], "negative": ["8", 1],
-                          "sampler": ["11", 0], "sigmas": ["10", 0],
-                          "latent_image": ["7", 2]}},
-
-        # --- out ---
-        # Written at 24 fps regardless of the conditioning fps above, so a
-        # 17-frame take plays in 0.7 s. ALWAYS retime before judging it.
-        "13": {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["3", 0]}},
-        "14": {"class_type": "SaveAnimatedWEBP",
-               "inputs": {"images": ["13", 0], "filename_prefix": prefix,
-                          "fps": 24.0, "lossless": False, "quality": 90,
-                          "method": "default"}},
-    }
-
-
-def recipe(image: str, prompt: str = DEFAULT_PROMPT, *, seed: int = 12345,
-           width: int = PRIMARY[0], height: int = PRIMARY[1], length: int = 17,
-           variant: str = "distilled", strength: float = 0.9, fps: float = 48.0,
-           steps: int | None = None, cfg: float | None = None,
-           max_shift: float = 2.05, base_shift: float = 0.95,
-           scheduler: str = "ltxv", **_ignored) -> dict:
-    """Everything needed to reproduce a take. Stored on the shot record.
-
-    Seeds do NOT transfer across configs — change `length` or `variant` and the
-    whole seed space reshuffles — so the recipe must carry every parameter, not
-    just the seed.
-    """
-    v = VARIANTS[variant]
-    return {
-        "image": image, "prompt": prompt, "seed": seed,
-        "width": width, "height": height, "length": length,
-        "variant": variant, "strength": strength, "fps": fps,
-        "steps": steps or v["steps"], "cfg": v["cfg"] if cfg is None else cfg,
-        "max_shift": max_shift, "base_shift": base_shift, "scheduler": scheduler,
-    }
-
-
 # --------------------------------------------------------------------------- #
 # LTX-2.5 — on the Klein ComfyUI (v0.41, port 8189), not the main one
 # --------------------------------------------------------------------------- #
 #
-# Added 2026-10-20 and judged 2026-10-21: on an eight-scene teaser of hand-drawn
-# panels the artist found 2.5 "much better" than 2.3, at 24 fps and 49-97
-# frames (NOT 2.3's 17 frames, which tore faces). 2.3 is still the default
-# variant until he decides otherwise. 2.5 needs ComfyUI >= 0.32, which the main
+# Added 2026-10-20, judged "much better" than 2.3 on 2026-10-21, and the only
+# LTX since 2026-10-22, when 2.3 was removed. 2.5 needs ComfyUI >= 0.32, which the main
 # install (0.25.1, kept old for the matting add-on) is not — but the separate
 # Klein install is, and runs these official files natively with no custom
 # nodes. Lightricks' own files from the gated Lightricks/LTX-2.5 repo; INT8 is
@@ -418,7 +251,7 @@ def recipe(image: str, prompt: str = DEFAULT_PROMPT, *, seed: int = 12345,
 #   * The template's ResizeImageMaskNode (longest side to 1536, Lanczos) is
 #     done in Python before upload — same resize, no dependence on how that
 #     node's newer input format serializes.
-#   * Output is frames only, saved as animated webp like 2.3's. The model
+#   * Output is frames only, saved as animated webp. The model
 #     generates audio jointly and its latent must be present, but it is never
 #     decoded: the soundtrack comes from the music server.
 LTX25 = {

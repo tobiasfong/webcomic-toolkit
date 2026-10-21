@@ -1,57 +1,50 @@
 #!/usr/bin/env bash
-# fetch-ltx.sh — download LTX-2.3 (22B) + Gemma encoder for local image-to-video.
+# fetch-ltx.sh — download LTX-2.5 (22B, INT8) for local image-to-video.
 #
-# Repo: unsloth/LTX-2.3-GGUF — a self-consistent set (checkpoint + matching
-# embeddings connector + matching VAE per variant). Do NOT mix files across
-# generations: Kijai/LTXV2_comfy is the OLDER LTX-2 19B and its connector/VAE
-# are not interchangeable with 2.3.
+# Repo: Lightricks/LTX-2.5 — Lightricks' own files. It is GATED: open
+# https://huggingface.co/Lightricks/LTX-2.5, accept the license, create a read
+# token at https://huggingface.co/settings/tokens, then:
+#     HF_TOKEN=hf_... bash fetch-ltx.sh
 #
-# Ordered by priority: if you cancel partway, the essentials are already down.
-# Resumable (curl -C -): safe to re-run.
-# See docs/ltx-setup.md for placement and the 6GB settings.
+# INT8 ("int8-convrot") is the build for RTX 30/40-series cards; NVFP4 needs
+# Blackwell. ~40 GB in all. Needs ComfyUI v0.32+ (this project uses a v0.41
+# install shared with FLUX 3 Klein); set COMFY_MODELS to its models folder.
+# Resumable (curl -C -): safe to re-run. See ltx-setup.md.
 set -u
-M=/c/AI/ComfyUI_windows_portable/ComfyUI/models
-mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae"
-HF=https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main
+M=${COMFY_MODELS:-/c/AI/ComfyUI_flux3/ComfyUI/models}
+HF=https://huggingface.co/Lightricks/LTX-2.5/resolve/main
+if [ -z "${HF_TOKEN:-}" ]; then
+  echo "HF_TOKEN is not set — the repo is gated, so every download would fail."
+  exit 1
+fi
+mkdir -p "$M/diffusion_models" "$M/text_encoders" "$M/vae" "$M/latent_upscale_models"
 
-get () { # get <url-path> <dest>
-  local dest="$2" name; name=$(basename "$dest")
-  echo "[get] $name"
-  curl -L -C - --retry 5 --retry-delay 10 -o "$dest" "$HF/$1" \
-    && echo "[done] $name ($(du -h "$dest" | cut -f1))" \
-    || echo "[FAILED] $name"
+get () { # get <repo path>  -> same subfolder under $M
+  local dest="$M/$1"
+  echo "[get] $1"
+  curl -L -C - --retry 5 --retry-delay 10 -H "Authorization: Bearer $HF_TOKEN" \
+       -o "$dest" "$HF/$1" \
+    && echo "[done] $(basename "$1") ($(du -h "$dest" | cut -f1))" \
+    || echo "[FAILED] $1"
 }
 
-# ---- ESSENTIAL: distilled-1.1 — the fast variant (4–8 steps).
-# Use this for the first session: while hunting OOM settings you want quick
-# iterations, not 30-step renders. ~13 GB
-get "distilled-1.1/ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf" \
-    "$M/diffusion_models/ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf"
-
-# Connector + VAE must match the distilled variant.
-get "text_encoders/ltx-2.3-22b-distilled_embeddings_connectors.safetensors" \
-    "$M/text_encoders/ltx-2.3-22b-distilled_embeddings_connectors.safetensors"
-get "vae/ltx-2.3-22b-distilled_video_vae.safetensors" \
-    "$M/vae/ltx-2.3-22b-distilled_video_vae.safetensors"
-
-# Text encoder: Gemma 3 12B (LTX-2.3 uses Gemma, NOT T5). Runs once per
-# generation and can be offloaded to CPU afterwards. ~6 GB
-curl -L -C - --retry 5 --retry-delay 10 \
-  -o "$M/text_encoders/gemma-3-12b-it-Q3_K_M.gguf" \
-  "https://huggingface.co/unsloth/gemma-3-12b-it-GGUF/resolve/main/gemma-3-12b-it-Q3_K_M.gguf" \
-  && echo "[done] gemma-3-12b-it-Q3_K_M.gguf"
-
-# ---- OPTIONAL: dev — production quality (20–30 steps), better prompt
-# adherence and cleaner fine detail (matters for cel-shaded linework and eyes).
-# Get it once distilled is proven to run. Safe to Ctrl-C before this point.
-get "ltx-2.3-22b-dev-Q4_K_M.gguf" \
-    "$M/diffusion_models/ltx-2.3-22b-dev-Q4_K_M.gguf"
-get "text_encoders/ltx-2.3-22b-dev_embeddings_connectors.safetensors" \
-    "$M/text_encoders/ltx-2.3-22b-dev_embeddings_connectors.safetensors"
-get "vae/ltx-2.3-22b-dev_video_vae.safetensors" \
-    "$M/vae/ltx-2.3-22b-dev_video_vae.safetensors"
+# Small files first, so a cancelled run still leaves something usable to test.
+get "vae/ltx-2.5-audio-vae-bf16.safetensors"                              # 0.4 GB
+get "vae/ltx-2.5-video-vae-bf16.safetensors"                              # 1.5 GB
+get "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"  # 1.0 GB
+get "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"      # 15.4 GB
+get "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"  # 21.5 GB
 
 echo
 echo "=== finished ==="
-ls -lh "$M/diffusion_models"/ltx-2.3-*.gguf "$M/text_encoders"/*.gguf \
-       "$M/text_encoders"/ltx-2.3-*.safetensors "$M/vae"/ltx-2.3-*.safetensors 2>/dev/null
+# A gated-repo failure saves an HTML error page under the model's name; a real
+# .safetensors file starts with an 8-byte length and then '{'.
+for f in "$M"/vae/ltx-2.5-*.safetensors "$M"/latent_upscale_models/ltx-2.5-*.safetensors \
+         "$M"/text_encoders/gemma4-*ltx-2.5*.safetensors "$M"/diffusion_models/ltx-2.5-*.safetensors; do
+  [ -f "$f" ] || continue
+  if [ "$(dd if="$f" bs=1 skip=8 count=1 2>/dev/null)" = "{" ]; then
+    echo "  ok   $(du -h "$f" | cut -f1)  $(basename "$f")"
+  else
+    echo "  BAD  $(basename "$f") — not a safetensors file (license not accepted, or bad token?)"
+  fi
+done

@@ -16,19 +16,17 @@ vertical (9:16) anime teaser / marketing video, rendered locally with
   showcase cover mode, video panels, BGM with fade-out)
 - Render commands and production guidance
 
-## Optional: local image-to-video (LTX-2.3)
+## Optional: local image-to-video (LTX-2.5)
 
 The skill assembles video; it does not generate motion. If the user wants shots
-that actually move, `ltx-setup.md` documents running **LTX-2.3 locally in
-ComfyUI** — no subscription — and `assets/tools/ltx_run.py` is a working driver
-(builds the ComfyUI API graph, submits, polls). Verified on a 6 GB card:
-25 frames @ 832x576 in ~161 s.
+that actually move, `ltx-setup.md` documents running **LTX-2.5 locally in
+ComfyUI** — no subscription, no custom nodes — and `assets/tools/ltx_run.py` is
+a working driver (sizes from the artwork, submits, writes the take and a 12 fps
+preview). Verified on a 6 GB card: ~3.5 min for 49 frames at ~2 MP.
 
 Read `ltx-setup.md` before attempting it. The one that wastes the most time:
-**a GGUF text encoder cannot load through ComfyUI's core `LTXAVTextEncoderLoader`**
-— it reads `models/checkpoints/`, and `.gguf` is not in ComfyUI's supported
-extensions, so the file will never appear however you move it. Use city96's
-`DualCLIPLoaderGGUF(..., type="ltxv")` with the encoder in `models/text_encoders/`.
+run it at **24 fps and 49 or 97 frames, never 17** — at 17 every take sits
+still, lurches at frame 9 and tears faces.
 
 Generated clips drop back into the pipeline as ordinary video panels.
 
@@ -42,7 +40,7 @@ Generated clips drop back into the pipeline as ordinary video panels.
 - `assets/tools/` — helper scripts: `extract-beats.mjs` (beat map),
   `repair_depth.py` (depth-map cleanup, environments only),
   `fetch-ltx.sh` + `ltx_run.py` (optional local image-to-video)
-- `ltx-setup.md` — local LTX-2.3 setup, 6 GB settings, and its gotchas
+- `ltx-setup.md` — local LTX-2.5 setup, settings that matter, and what it gets wrong
 
 The engine is plain Remotion + React + TypeScript — no harness-specific
 dependencies anywhere.

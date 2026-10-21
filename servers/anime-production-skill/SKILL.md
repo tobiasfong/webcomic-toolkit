@@ -222,89 +222,76 @@ All editing happens in one file: `src/data/manhwa-panels.ts`.
 - Render: `npx remotion render src/index.ts Manhwa out/video.mp4`
 - Spot-check a frame: `npx remotion still src/index.ts Manhwa out/f.png --frame=N`
 
-## Optional: local image-to-video (LTX-2.3)
+## Optional: local image-to-video (LTX-2.5)
 
 This skill assembles video from art you already have; it does not generate
 motion. If a shot needs to actually move, **`ltx-setup.md`** covers running
-LTX-2.3 locally in ComfyUI (no subscription), and **`assets/tools/ltx_run.py`**
-is a working driver — it builds the ComfyUI API graph, submits it and polls.
-Clips come back as ordinary video panels.
+LTX-2.5 locally in ComfyUI (no subscription), and **`assets/tools/ltx_run.py`**
+is a working driver: it sizes the shot from the artwork, builds the graph,
+submits it, and writes the 24 fps take plus a 12 fps preview to judge.
 
-**Verified on a 6 GB RTX 3060 Laptop.**
+```
+python assets/tools/ltx_run.py --image panel.png --out takes --len 49 --seed 1 \
+    --prompt "The camera holds locked off. ... (motion only) ... X and Y stay still."
+```
+
+**Verified on a 6 GB RTX 3060 Laptop with 32 GB RAM** — ~3.5 min a 49-frame
+take, ~7 min a 97 — on an eight-scene teaser of hand-drawn panels. LTX-2.3 was
+used here until 2026-10-22; 2.5 was judged much better on the same panels.
 
 **Match the ARTWORK'S OWN ASPECT, and size from the art, not from a default.**
-LTX silently resizes the input to whatever you ask for — there is no
+The model silently resizes the input to whatever you ask for — there is no
 letterboxing — so one fixed "good default" stretches every panel of a different
-shape, and a vertical panel comes out crushed into landscape.
+shape. `ltx_run.py` picks ~2 MP at the art's own aspect, both sides divisible by
+64. Do NOT pad the input with bars; letterbox at ASSEMBLY, on a finished clip.
 
-```
-# 1216x832 art (1.46:1)  ->  render at 1216x832 or 1792x1216
-# 16:9 art               ->  render at 1920x1088
-# vertical 9:16 art      ->  render at 1088x1920
-# small art (864x576)    ->  UPSCALE before animating; do not shoot it small
---variant distilled --len 17 --strength 0.9 --fps 48 --w <matched> --h <matched>
-```
+⚠ **24 fps and 49 or 97 frames — never 17.** At 17 frames 2.5 has only three
+latent frames: every take sat still to frame 8, lurched at frame 9, and tore
+faces on full-body action. (17 was the right length for 2.3, which smeared and
+grew extra limbs on longer clips. The two models want opposite things.)
 
-Do NOT pad the input with bars to reach a target aspect: they eat the pixel
-budget, and LTX has no concept of a border so it drifts and bleeds into them.
-Letterbox at ASSEMBLY, on a finished clip.
-
-⚠ **832x576 was never a VRAM ceiling — it was a guess**, and it is the most
-expensive mistake in this document's history. At that size a hand is ~40 px,
-which after the VAE's 8x compression is **~5 latent pixels** — not enough to
-draw fingers, so any hand that MOVES becomes mush. On one 15-panel scene it
-cost **65 hand-redrawn frames**, and the seven panels that came back clean were
-the ones that barely moved. A ceiling sweep later found **no OOM point at any
-resolution tested**, with steady-state cost of ~90-140 s a take across the whole
-range once the model is resident. The first take of a session pays the model
-load and looks much slower — never benchmark on it.
+⚠ **Resolution is the lever for hands.** At 832x576 a hand is ~40 px, which
+after the VAE's 8x compression is **~5 latent pixels** — not enough to draw
+fingers, so any hand that MOVES becomes mush. On one 15-panel scene that cost
+**65 hand-redrawn frames** (on 2.3).
 
 ### Two curves cross: resolution vs. prompt
 
-Measured on one hand-raise panel, same seed, three prompt styles, reviewed
-frame by frame:
+Measured on 2.3, one hand-raise panel, same seed, three prompt styles:
 
 | | 1 sentence | 5-8 sentences |
 |---|---|---|
 | **1.0 MP** | fingers fused | a defect in every style tried |
 | **2.2 MP** | perfect anatomy, but **wandered off the prompt** — a spell-cast became the character styling his hair | **clean** |
 
-- **Anatomy improves with resolution.** Too few latent pixels and the model
-  cannot render what it is moving.
-- **Prompt fidelity degrades with it.** Spare capacity is spare freedom, and a
-  one-sentence prompt does not constrain it, so the model invents motion.
-
-So the two move TOGETHER. Aim high on resolution only if you will also write
-4-8 sentences; with a one-line prompt, stay near 1 MP and accept the occasional
-finger.
+Spare resolution is spare freedom, and a one-sentence prompt does not constrain
+it. So the two move TOGETHER: aim high on resolution and write 4-8 sentences.
 
 **For image-to-video the prompt is MOTION ONLY** — do not redescribe wardrobe,
-setting or style, the drawing already fixes them. Name the camera move in the
-first sentence, lead with the largest motion, and end by saying WHAT STAYS
-STILL; that last clause is the anti-wandering one. Positive phrasing throughout.
+setting or style, the drawing already fixes them. Name the camera first, lead
+with the largest motion (it gets the motion budget), and end by saying WHAT
+STAYS STILL. Positive phrasing throughout — negatives are ignored.
 
-⚠ **Stay at length 17. Longer takes were tested and rejected.** Changing only
-length: 17 clean · 25 smears at frames 18-19 · 33 loses a finger at 11-13 · **49
-grows a third arm in every frame**, present from frame 0, which is a broken
-composition rather than drift. Resolution does not fix it — the length-33 damage
-landed in the same place at both sizes. (Caveat: that sweep was text-to-video.
-i2v pins frame 0 to the drawing, which would likely prevent the len-49 arm.)
+### What 2.5 still gets wrong, and the wording that fixed it
 
-⚠ **AN UNUSUALLY LOW MOTION SCORE IS THE ONE RELIABLE WARNING.** LTX DECLINES an
-ask it cannot meet rather than smearing. A fast kick scored 3.6/5.8/8.2 against
-a scene typical of 11-48 and simply did not move the leg; "raise her leg a
-little higher" worked first try, same seed, same size. That is motion density,
-not resolution — do not stack simultaneous motions into 1.4 s.
+- **Blinks.** "Blinks", "blinks twice quickly", "blinks once" — eyes closed and
+  stayed closed, three seeds each. **"Her eyes close, then open wide, then close
+  again"**, no word "blink", gave a real blink on one seed in three. A figure
+  lying down at night reads to the model as falling asleep.
+- **Unasked head turns.** A head drawn in profile turned to the camera, and a
+  scroll's string beside the face merged into a second pair of glasses stuck to
+  it. **"He keeps his head turned to the side in profile"** stopped both.
+- **Camera moves** despite "locked off" on one seed; **"the framing stays
+  exactly the same from start to end"** held it.
+- **New geometry.** Asked to grow ice, it raised the hand ~3% and grew almost
+  nothing. ⚠ **An unusually LOW motion score means it DECLINED**, not that the
+  motion is subtle.
+- **A clip that runs too far** (a head lowering until he seems to fall) is a
+  trim: cut the last 0.5-1 s rather than re-rolling.
 
-⚠ **The negative prompt does NOTHING on `distilled`.** It runs at cfg 1.0, and
-classifier-free guidance discards the negative branch entirely there. Verified:
-full negative vs. empty string produced **pixel-identical** output (mean abs
-diff 0.000, against ~67 between two seeds). Don't tune it — raise resolution.
-It applies only on `dev` at cfg 3.0.
-
-`distilled` at 8 steps is genuinely correct — ~5x faster than `dev` at len 25
-**with no motion penalty** (measured: distilled out-moved dev on the same shot).
-That was the one original default that held up under scrutiny.
+Run ~3 seeds per shot and judge the 12 fps preview by eye — seeds differ a lot.
+For an action no seed will do, the MCP server's `animate_shot_cloud` (Seedance
+2.0, paid per take) is the fallback.
 
 ### Is LTX worth it for this shot?
 
@@ -335,16 +322,20 @@ Everything below follows from that one line:
 | **Fire** — existing pixels churning | **Growing crystals** — new geometry |
 | Camera drift | **Foreshortening** — a punch toward the viewer needs knuckles redrawn at a new angle |
 
+(Measured on 2.3. 2.5 moved the line: it threw a punch toward the viewer, made
+two people talk, and blinked on one seed in three. Growing ice still failed.)
+
 - **Ask for the LARGEST motion that reads, and put it FIRST in the prompt.** The
   leading request gets the motion budget. "Blinks slowly" froze on 4 seeds;
   the same shot with "turns her head gently" moved — and the eyes closed *along
   with it*. Feature-scale motion only ever arrives as a passenger.
 - **Then run ~3 seeds and keep the best — roughly 1 in 3 lands.** Seed variance
   is real, but ONLY when the request is achievable; an impossible ask freezes on
-  every seed, so re-rolling a blink is wasted time.
-- **Seeds do NOT transfer across configs.** Changing `--len` or `--variant`
-  reshuffles everything — a seed that moved at len 25 can freeze at len 17.
-  Re-hunt after any parameter change.
+  every seed, so re-rolling it is wasted time. Change the WORDING first: on 2.5
+  a blink failed on every seed as "blink" and landed once the prompt described
+  the eyes closing and opening instead.
+- **Seeds do NOT transfer across configs.** Changing `--len` or the prompt
+  reshuffles everything. Re-hunt after any parameter change.
 - **Two seeds can be MERGED.** All takes share frame 0, so they start aligned:
   composite region B from seed Y over seed X through a feathered mask. One take
   moved the scrolls, another the quill — the final shot used both.
@@ -355,9 +346,8 @@ Everything below follows from that one line:
 
 ### Judging the result — the part that goes wrong
 
-- **`retime.py` FIRST.** `ltx_run.py` writes at 24 fps, so a 17-frame clip plays
-  in **0.7 s** and reads as "nothing happened" even when the motion is fine.
-  Always retime to 12 fps before looking.
+- **Judge the 12 fps preview.** `ltx_run.py` writes it beside the 24 fps take:
+  every other frame, so motion plays at true speed on twos.
 - **`measure_motion.py --box` and then LOOK.** The number measures *change*, not
   quality — a clip whose faces dissolve scores very high. Crop the moving part
   at native resolution and check it.
@@ -432,13 +422,9 @@ Everything below follows from that one line:
 - **Negative instructions are ignored by BOTH models.** "Do not close her eyes"
   closed them; "without turning" turned. Phrase every request positively.
 
-The gotcha that wastes the most time: **a GGUF text encoder will not load via
-ComfyUI's core `LTXAVTextEncoderLoader`** (it reads `models/checkpoints/`, and
-`.gguf` is not in ComfyUI's supported extensions). Use city96's
-`DualCLIPLoaderGGUF(..., type="ltxv")` with the encoder in `models/text_encoders/`.
-Also: connector and VAE must match the checkpoint's variant *and* generation, or
-you get silent garbage; and ComfyUI caches model listings at startup, so restart
-after adding files.
+Setup gotchas: LTX-2.5 needs **ComfyUI v0.32+**; its text encoder must be
+Lightricks' own Gemma 4 file (a stock Gemma 4 is refused); and ComfyUI caches
+model listings at startup, so restart it after adding files. See `ltx-setup.md`.
 
 ## Landscape MV — the Python path
 

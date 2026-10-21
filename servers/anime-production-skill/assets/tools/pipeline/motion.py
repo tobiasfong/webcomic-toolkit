@@ -84,9 +84,9 @@ def retime(src: str, dst: str, fps: int = 12, pingpong: bool = False,
            hold_ms: int = 0, step: int = 1) -> dict:
     """Re-save a clip at a watchable frame rate.
 
-    step keeps every Nth frame. LTX-2.3 takes are conditioned at 48 fps and
-    deliberately play SLOWED at 12 (step 1); an LTX-2.5 take is real 24 fps
-    motion, so step 2 plays it at true speed on twos.
+    step keeps every Nth frame. An LTX-2.5 take is real 24 fps motion, so
+    step 2 plays it at true speed on twos. (LTX-2.3 takes were conditioned at
+    48 fps and played slowed at step 1.)
 
     pingpong plays forward then backward — the honest way to judge subtle motion,
     and the right playback mode for genuinely oscillatory movement (a sway, a
