@@ -36,7 +36,9 @@ it be discovered the hard way:
   * ASK FOR THE LARGEST MOTION THAT READS, AND PUT IT FIRST in the prompt. The
     leading request gets the motion budget. "Blinks slowly" froze on four seeds;
     the same shot asked to "turn her head gently" moved — and the eyes closed
-    along with it. Feature-scale motion only ever arrives as a passenger.
+    along with it. On 2.3 feature-scale motion only arrived as a passenger; on
+    2.5 it can lead when DESCRIBED, not named ("her eyes close, then open wide,
+    then close again" blinked where "blink" shut the eyes for good).
   * Then run ~3 seeds and keep the best; roughly 1 in 3 lands. Seed variance is
     real, but ONLY when the request is achievable. Re-rolling an impossible ask
     is pure waste.
@@ -95,6 +97,29 @@ def _upload_ref25(image_path: str) -> str:
         os.remove(tmp)
 
 
+def _upload_exact(image_path: str, width: int, height: int) -> str:
+    """Fit to exactly width x height (cover, centered) and upload to Klein.
+
+    First-and-last-frame pins both pictures at the render size; the template
+    resizes them to it with a centered crop, done here in Python.
+    """
+    import tempfile
+    klein.ensure_running()
+    with Image.open(image_path) as im:
+        im = im.convert("RGB")
+        s = max(width / im.width, height / im.height)
+        r = im.resize((round(im.width * s), round(im.height * s)), Image.LANCZOS)
+        x, y = (r.width - width) // 2, (r.height - height) // 2
+        r = r.crop((x, y, x + width, y + height))
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        r.save(tmp)
+    try:
+        return klein._upload(tmp)
+    finally:
+        os.remove(tmp)
+
+
 def _clear_card(url: str, what: str) -> None:
     """Never put LTX and Klein on the 6 GB card at once — or in RAM at once.
 
@@ -125,7 +150,8 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
                  width: int | None = None, height: int | None = None,
                  fps: float = 24.0,
                  measure_box: list[int] | None = None,
-                 view_fps: int = 12) -> dict:
+                 view_fps: int = 12,
+                 last_frame_path: str | None = None) -> dict:
     """Animate one illustration with LTX-2.5 — THE SEED HUNT, as a single call.
 
     For each seed: render on the Klein ComfyUI, make a `view_fps` preview (every
@@ -159,6 +185,19 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     scores very high. Always look at the retimed clip or a contact_sheet before
     approving. Three seeds is the working default; roughly one lands.
 
+    last_frame_path: the picture the shot should END on — FIRST-AND-LAST-FRAME
+    mode. A LAST RESORT, and for KLEIN-GENERATED ART ONLY: after rewording and
+    more seeds have failed on an action, render the end pose with Klein
+    (edit_frame on the panel, "her leg fully extended in a kick", keeps the
+    composition) and the model fills in the motion between the two. Hand-drawn
+    art: no one draws extra poses. Make the end pose with a BOXED edit_frame
+    first, so only the moving part is redrawn; if that fails, an unboxed
+    edit_frame as the last resort — which re-inks the WHOLE drawing in Klein's
+    style. No shot ends as a still: a still is a failed shot. Image-to-video
+    alone handled a whole hand-drawn teaser, a punch included.
+    It must match the panel's shape; both are fitted to the render size. This
+    mode renders in ONE stage at full size, so expect it slower than i2v.
+
     Measured on an 8-scene teaser of hand-drawn panels (2026-10-21): a real
     punch, a waltz turn, a prayer pose, two people talking. Still weak: asked to
     "blink", eyes closed for good on three seeds ("her eyes close, then open
@@ -181,30 +220,47 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
                 ["size supplied by caller — NOT checked against the artwork's "
                  "aspect; a mismatch is a silent stretch"]}
     lw.validate25(width, height, length)
+    if last_frame_path:
+        if not os.path.isfile(last_frame_path):
+            raise FileNotFoundError(f"End frame not found: {last_frame_path}")
+        with Image.open(image_path) as a, Image.open(last_frame_path) as b:
+            ra, rb = a.width / a.height, b.width / b.height
+        if abs(ra - rb) / ra > 0.02:
+            raise ValueError(f"The end frame's shape ({rb:.3f}) does not match the panel's "
+                             f"({ra:.3f}); both are fitted to one size, so one would be cropped.")
     # LTX-2.5 lives on the Klein ComfyUI; the main one holds music and matting.
     _clear_card(comfy.COMFY_URL, "A music or matting job")
-    uploaded = _upload_ref25(image_path)
+    if last_frame_path:
+        first_up = _upload_exact(image_path, width, height)
+        last_up = _upload_exact(last_frame_path, width, height)
+    else:
+        uploaded = _upload_ref25(image_path)
 
     results = []
     for seed in seeds:
         shot_id = sh.new_shot_id(name, seed)
         d = sh.shot_dir(project, shot_id)
-        params = dict(image=uploaded, prompt=prompt, seed=seed, width=width,
+        params = dict(prompt=prompt, seed=seed, width=width,
                       height=height, length=length, strength=strength, fps=fps)
+        if last_frame_path:
+            graph = lw.build25_flf(first_up, last_up, prefix=f"anime_{shot_id}", **params)
+        else:
+            graph = lw.build25(uploaded, prefix=f"anime_{shot_id}", **params)
         os.makedirs(d, exist_ok=True)
         raw = os.path.join(d, f"{shot_id}.webp")
         # An hour, not the usual 30 min: the first take of a session pages
         # ~37 GB of weights through 32 GB of RAM.
         with open(raw, "wb") as f:
-            f.write(klein._submit(lw.build25(prefix=f"anime_{shot_id}", **params), "41",
-                                  timeout=3600))
+            f.write(klein._submit(graph, "41", timeout=3600))
         view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
         # A 24 fps take is real-time motion: keep every other frame for 12 fps
         # on twos.
         motion.retime(raw, view, fps=view_fps, step=max(1, round(fps / view_fps)))
         m = motion.measure(view, tuple(measure_box) if measure_box else None)
         sh.record(project, shot_id, name,
-                        lw.recipe25(**dict(params, image=os.path.basename(image_path))),
+                        lw.recipe25(image=os.path.basename(image_path),
+                                    last_frame=(os.path.basename(last_frame_path)
+                                                if last_frame_path else None), **params),
                         {"webp": raw, "retimed": view},
                         {"maxdev": m["maxdev"], "span": m["span"],
                          "peak_frame": m["peak_frame"], "reading": m["reading"]})
@@ -216,9 +272,11 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
     return {
         "project": project, "name": name, "size": size, "takes": results,
         "next": ("LOOK at the top take's `view` file (or contact_sheet it) before "
-                 "approve_shot. If every seed froze, the ask is probably impossible "
-                 "for LTX — check the works/fails table and consider edit_frame or "
-                 "a drawn effect instead of more seeds."),
+                 "approve_shot. If every seed froze or tore, REWORD first (describe "
+                 "what happens rather than naming it) and try more seeds. Still "
+                 "failing: a Klein-made end pose with last_frame_path — for "
+                 "hand-drawn art a BOXED edit_frame first, the whole panel only "
+                 "as the last resort."),
     }
 
 

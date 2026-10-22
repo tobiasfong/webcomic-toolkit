@@ -112,7 +112,7 @@ BUDGET_PX = 2_200_000
 # Latent alignment. The VAE compresses 8x and the transformer patchifies 2x2 on
 # top, making 64 the plausible true unit — 1408x800 (800/64 = 12.5) was the only
 # size in the sweep to grow an extra finger. validate() still only enforces 32,
-# so this is a preference the picker honours rather than a hard rule.
+# so this is a preference the picker honors rather than a hard rule.
 ALIGN = 64
 
 # Absolute floor below which linework mushes and no upscale recovers it. This is
@@ -286,16 +286,15 @@ def validate25(width: int, height: int, length: int) -> None:
 
 
 def build25(image: str, prompt: str, *, seed: int = 12345, width: int = PRIMARY[0],
-            height: int = PRIMARY[1], length: int = 17, fps: float = 48.0,
+            height: int = PRIMARY[1], length: int = 49, fps: float = 24.0,
             strength: float = 0.7, refine_strength: float = 1.0,
             prefix: str = "ltx25") -> dict:
     """ComfyUI API graph for one LTX-2.5 image-to-video take.
 
     `image` must already be uploaded, and resized so its longest side is
     LTX25_REF_LONG_SIDE. `strength` is the template's stage-1 image strength
-    (0.7) — lower than 2.3's 0.9, because stage 2 re-applies the image at 1.0.
-    `fps` is conditioning, as in 2.3; 48 keeps the comparison with the
-    approved 2.3 takes like-for-like (the template itself uses 24).
+    (0.7); stage 2 re-applies the image at 1.0. `fps` is conditioning: keep the
+    template's 24 with 49 or 97 frames (17 frames at 48 tore faces).
     """
     validate25(width, height, length)
     m = LTX25
@@ -360,10 +359,91 @@ def build25(image: str, prompt: str, *, seed: int = 12345, width: int = PRIMARY[
     }
 
 
+# The template opens every first-and-last-frame prompt with this sentence.
+LTX25_FLF_LEAD = ("Use the provided start image as the first frame and the provided end "
+                  "image as the final frame anchor. ")
+
+
+def build25_flf(first: str, last: str, prompt: str, *, seed: int = 12345,
+                width: int = PRIMARY[0], height: int = PRIMARY[1], length: int = 49,
+                fps: float = 24.0, strength: float = 0.7, prefix: str = "ltx25_flf") -> dict:
+    """LTX-2.5 FIRST-AND-LAST-FRAME: animate from one picture to another.
+
+    A last resort for an action image-to-video keeps refusing, and for
+    KLEIN-GENERATED art only: supply a Klein-rendered END pose and the model only
+    fills in the motion between two pictures it must land on. For hand-drawn
+    art the end pose is a BOXED Klein edit first (only the moving part
+    redrawn), an unboxed one only as the last resort — it re-inks the whole
+    drawing.
+
+    Follows ComfyUI's own video_ltx2_5_flf2v template, which differs from the
+    image-to-video graph: ONE stage at full size (no latent upscale), both
+    images pinned with LTXVAddGuide (frame 0 and frame -1, strength 0.7), and
+    LTXVCropGuides removing those guide frames before decode. Both images must
+    already be uploaded at exactly width x height — the template resizes them
+    to the output size, and the caller does that in Python. The template's
+    prompt enhancer stays off, as in the image-to-video graph.
+    """
+    validate25(width, height, length)
+    m = LTX25
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["text_encoder"], "type": "ltxv", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["vae"]}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": m["audio_vae"]}},
+        "6": {"class_type": "LoadImage", "inputs": {"image": first}},
+        "7": {"class_type": "LoadImage", "inputs": {"image": last}},
+        "8": {"class_type": "LTXVPreprocess", "inputs": {"image": ["6", 0], "img_compression": 18}},
+        "9": {"class_type": "LTXVPreprocess", "inputs": {"image": ["7", 0], "img_compression": 18}},
+        "10": {"class_type": "CLIPTextEncode", "inputs": {"text": LTX25_FLF_LEAD + prompt, "clip": ["2", 0]}},
+        # Inert: both guider cfgs are 1, which discards the negative branch.
+        "11": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["2", 0]}},
+        "12": {"class_type": "LTXVConditioning",
+               "inputs": {"positive": ["10", 0], "negative": ["11", 0], "frame_rate": fps}},
+        "20": {"class_type": "EmptyLTXVLatentVideo",
+               "inputs": {"width": width, "height": height, "length": length, "batch_size": 1}},
+        "21": {"class_type": "LTXVAddGuide",
+               "inputs": {"positive": ["12", 0], "negative": ["12", 1], "vae": ["3", 0],
+                          "latent": ["20", 0], "image": ["8", 0],
+                          "frame_idx": 0, "strength": strength}},
+        "22": {"class_type": "LTXVAddGuide",
+               "inputs": {"positive": ["21", 0], "negative": ["21", 1], "vae": ["3", 0],
+                          "latent": ["21", 2], "image": ["9", 0],
+                          "frame_idx": -1, "strength": strength}},
+        "23": {"class_type": "LTXVEmptyLatentAudio",
+               "inputs": {"frames_number": length, "frame_rate": fps, "batch_size": 1,
+                          "audio_vae": ["4", 0]}},
+        "24": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["22", 2], "audio_latent": ["23", 0]}},
+        "25": {"class_type": "LTXVDualCFGGuider",
+               "inputs": {"model": ["1", 0], "positive": ["22", 0], "negative": ["22", 1],
+                          "video_cfg": 1.0, "audio_cfg": 1.0}},
+        "26": {"class_type": "SamplerEulerAncestral", "inputs": {"eta": 0.0, "s_noise": 1.0}},
+        "27": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "28": {"class_type": "ManualSigmas", "inputs": {"sigmas": LTX25_SIGMAS_1}},
+        "29": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["27", 0], "guider": ["25", 0], "sampler": ["26", 0],
+                          "sigmas": ["28", 0], "latent_image": ["24", 0]}},
+        # The template separates the DENOISED output (index 1) here.
+        "30": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["29", 1]}},
+        "31": {"class_type": "LTXVCropGuides",
+               "inputs": {"positive": ["22", 0], "negative": ["22", 1], "latent": ["30", 0]}},
+        "40": {"class_type": "VAEDecodeTiled",
+               "inputs": {"samples": ["31", 2], "vae": ["3", 0], "tile_size": 512,
+                          "overlap": 64, "temporal_size": 64, "temporal_overlap": 16}},
+        "41": {"class_type": "SaveAnimatedWEBP",
+               "inputs": {"images": ["40", 0], "filename_prefix": prefix, "fps": 24.0,
+                          "lossless": False, "quality": 90, "method": "default"}},
+    }
+
+
 def recipe25(image: str, prompt: str, *, seed: int = 12345, width: int = PRIMARY[0],
-             height: int = PRIMARY[1], length: int = 17, fps: float = 48.0,
-             strength: float = 0.7, refine_strength: float = 1.0, **_ignored) -> dict:
+             height: int = PRIMARY[1], length: int = 49, fps: float = 24.0,
+             strength: float = 0.7, refine_strength: float = 1.0,
+             last_frame: str | None = None, **_ignored) -> dict:
     return {"image": image, "prompt": prompt, "seed": seed, "width": width,
             "height": height, "length": length, "variant": "2.5", "fps": fps,
-            "strength": strength, "refine_strength": refine_strength,
-            "model": LTX25["unet"], "lead": LTX25_LEAD.strip()}
+            "strength": strength, "mode": "first-last" if last_frame else "i2v",
+            "last_frame": last_frame,
+            "refine_strength": None if last_frame else refine_strength,
+            "model": LTX25["unet"],
+            "lead": (LTX25_FLF_LEAD if last_frame else LTX25_LEAD).strip()}

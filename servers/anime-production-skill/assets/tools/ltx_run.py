@@ -9,6 +9,8 @@ Usage:
   python ltx_run.py --image panel.png --out takes \
       --prompt "The camera holds locked off. She lowers her sword slowly. ..."
   python ltx_run.py --image panel.png --out takes --len 97 --seed 2 --prompt "..."
+  # first-and-last-frame: panel -> a Klein-made END pose (boxed edit for hand-drawn art)
+  python ltx_run.py --image panel.png --last end_pose.png --out takes --prompt "..."
 
 Needs a ComfyUI of v0.32+ with LTX-2.5's official files (see ltx-setup.md and
 fetch-ltx.sh). This project runs it on the same v0.41 ComfyUI as FLUX 3 Klein,
@@ -62,6 +64,15 @@ def pick_size(w, h, target=2_200_000, align=64, max_dim=1920):
     if not best:
         raise SystemExit(f"no size within 1% of the art's aspect {aspect:.3f}; pass --w/--h")
     return best
+
+
+def fit(img, w, h):
+    """Cover-fit to exactly w x h, centered — first-and-last-frame pins both
+    pictures at the render size."""
+    s = max(w / img.width, h / img.height)
+    r = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
+    x, y = (r.width - w) // 2, (r.height - h) // 2
+    return r.crop((x, y, x + w, y + h))
 
 
 def busy(url):
@@ -142,6 +153,65 @@ def build(image, prompt, seed, w, h, length, fps, strength, prefix):
     }
 
 
+FLF_LEAD = ("Use the provided start image as the first frame and the provided end "
+            "image as the final frame anchor. ")
+
+
+def build_flf(first, last, prompt, seed, width, height, length, fps, strength, prefix):
+    # FIRST-AND-LAST-FRAME, ComfyUI's video_ltx2_5_flf2v template: one stage at
+    # full size, both pictures pinned with LTXVAddGuide (frame 0 and -1), and
+    # LTXVCropGuides removing those guide frames before decode. Identical to the
+    # MCP server's lw.build25_flf.
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": MODEL, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": TEXT_ENCODER, "type": "ltxv", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": VAE}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": AUDIO_VAE}},
+        "6": {"class_type": "LoadImage", "inputs": {"image": first}},
+        "7": {"class_type": "LoadImage", "inputs": {"image": last}},
+        "8": {"class_type": "LTXVPreprocess", "inputs": {"image": ["6", 0], "img_compression": 18}},
+        "9": {"class_type": "LTXVPreprocess", "inputs": {"image": ["7", 0], "img_compression": 18}},
+        "10": {"class_type": "CLIPTextEncode", "inputs": {"text": FLF_LEAD + prompt, "clip": ["2", 0]}},
+        # Inert: both guider cfgs are 1, which discards the negative branch.
+        "11": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["2", 0]}},
+        "12": {"class_type": "LTXVConditioning",
+               "inputs": {"positive": ["10", 0], "negative": ["11", 0], "frame_rate": fps}},
+        "20": {"class_type": "EmptyLTXVLatentVideo",
+               "inputs": {"width": width, "height": height, "length": length, "batch_size": 1}},
+        "21": {"class_type": "LTXVAddGuide",
+               "inputs": {"positive": ["12", 0], "negative": ["12", 1], "vae": ["3", 0],
+                          "latent": ["20", 0], "image": ["8", 0],
+                          "frame_idx": 0, "strength": strength}},
+        "22": {"class_type": "LTXVAddGuide",
+               "inputs": {"positive": ["21", 0], "negative": ["21", 1], "vae": ["3", 0],
+                          "latent": ["21", 2], "image": ["9", 0],
+                          "frame_idx": -1, "strength": strength}},
+        "23": {"class_type": "LTXVEmptyLatentAudio",
+               "inputs": {"frames_number": length, "frame_rate": fps, "batch_size": 1,
+                          "audio_vae": ["4", 0]}},
+        "24": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["22", 2], "audio_latent": ["23", 0]}},
+        "25": {"class_type": "LTXVDualCFGGuider",
+               "inputs": {"model": ["1", 0], "positive": ["22", 0], "negative": ["22", 1],
+                          "video_cfg": 1.0, "audio_cfg": 1.0}},
+        "26": {"class_type": "SamplerEulerAncestral", "inputs": {"eta": 0.0, "s_noise": 1.0}},
+        "27": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "28": {"class_type": "ManualSigmas", "inputs": {"sigmas": SIGMAS_1}},
+        "29": {"class_type": "SamplerCustomAdvanced",
+               "inputs": {"noise": ["27", 0], "guider": ["25", 0], "sampler": ["26", 0],
+                          "sigmas": ["28", 0], "latent_image": ["24", 0]}},
+        # The template separates the DENOISED output (index 1) here.
+        "30": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["29", 1]}},
+        "31": {"class_type": "LTXVCropGuides",
+               "inputs": {"positive": ["22", 0], "negative": ["22", 1], "latent": ["30", 0]}},
+        "40": {"class_type": "VAEDecodeTiled",
+               "inputs": {"samples": ["31", 2], "vae": ["3", 0], "tile_size": 512,
+                          "overlap": 64, "temporal_size": 64, "temporal_overlap": 16}},
+        "41": {"class_type": "SaveAnimatedWEBP",
+               "inputs": {"images": ["40", 0], "filename_prefix": prefix, "fps": 24.0,
+                          "lossless": False, "quality": 90, "method": "default"}},
+    }
+
+
 def run(host, graph, timeout=3600):
     req = urllib.request.Request(host + "/prompt", data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})
@@ -186,6 +256,7 @@ def main():
     p.add_argument("--fps", type=float, default=24.0)
     p.add_argument("--w", type=int, help="override the size; must keep the art's aspect, /64")
     p.add_argument("--h", type=int)
+    p.add_argument("--last", help="the picture the shot should END on (first-and-last-frame mode)")
     p.add_argument("--host", default=os.environ.get("LTX_URL", "http://127.0.0.1:8189"))
     p.add_argument("--other-url", default="http://127.0.0.1:8188",
                    help="the other ComfyUI on this card, checked and unloaded first")
@@ -206,9 +277,15 @@ def main():
     w, h = (a.w, a.h) if a.w and a.h else pick_size(*src.size)
     if w % 64 or h % 64:
         sys.exit(f"{w}x{h}: both sides must divide by 64 (stage 1 renders at half size)")
-    s = REF_LONG_SIDE / max(src.size)
-    ref = src.resize((round(src.width * s), round(src.height * s)), Image.LANCZOS) if s < 1 else src
-    uploaded = upload(a.host, ref)
+    if a.last:
+        end = Image.open(a.last).convert("RGB")
+        if abs(src.width / src.height - end.width / end.height) / (src.width / src.height) > 0.02:
+            sys.exit("the end frame's shape does not match the panel's; one would be cropped")
+        first_up, last_up = upload(a.host, fit(src, w, h)), upload(a.host, fit(end, w, h))
+    else:
+        s = REF_LONG_SIDE / max(src.size)
+        ref = src.resize((round(src.width * s), round(src.height * s)), Image.LANCZOS) if s < 1 else src
+        uploaded = upload(a.host, ref)
 
     os.makedirs(a.out, exist_ok=True)
     stem = f"{os.path.splitext(os.path.basename(a.image))[0]}_s{a.seed}"
@@ -216,8 +293,10 @@ def main():
     t0 = time.time()
     raw = os.path.join(a.out, stem + ".webp")
     with open(raw, "wb") as f:
-        f.write(run(a.host, build(uploaded, a.prompt, a.seed, w, h, a.length, a.fps,
-                                  a.strength, "ltx25_" + stem)))
+        g = (build_flf(first_up, last_up, a.prompt, a.seed, w, h, a.length, a.fps,
+                       a.strength, "ltx25_" + stem) if a.last else
+             build(uploaded, a.prompt, a.seed, w, h, a.length, a.fps, a.strength, "ltx25_" + stem))
+        f.write(run(a.host, g))
     n = preview(raw, os.path.join(a.out, stem + "_12fps.webp"), step=max(1, round(a.fps / 12)))
     print(f"  {time.time() - t0:.0f}s -> {raw} (+ {n}-frame 12 fps preview)")
 

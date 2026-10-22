@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.1.0 — 2026-10-22
+
+**First-and-last-frame mode: `animate_shot(last_frame_path=...)`.** Give the
+picture a shot should END on, and LTX-2.5 only fills in the motion between two
+pictures it must land on. A last resort for an action image-to-video keeps
+refusing, with the end pose made by Klein. `lw.build25_flf()` follows ComfyUI's own `video_ltx2_5_flf2v` template:
+one stage at full size, both pictures pinned with `LTXVAddGuide` at frame 0 and
+the last frame (strength 0.7), `LTXVCropGuides` before decode, the prompt
+enhancer off. Both pictures are fitted to the render size in Python; an end
+frame of a different shape is refused rather than silently cropped. The
+skill's `ltx_run.py` gains `--last`, building the identical graph.
+
+**The workflow is written down** (README and SKILL.md): image-to-video for
+every shot, generated or hand-drawn; reword before anything else when a shot
+fails; and only then, for Klein-generated art, a Klein-rendered end pose with
+first-and-last-frame. No one draws extra poses: for hand-drawn art Klein makes
+the end pose with a BOXED edit first (only the moving part redrawn), and edits
+the whole panel only as the last resort, since that re-inks the drawing. No
+shot is left as a still — a still is a failed shot. Seedance stays a separate
+paid option outside this chain.
+
+**Docs stop presenting 2.3 findings as current.** The README's works/fails
+table, the "feature-scale motion only arrives as a passenger" note (README,
+server, SKILL.md) and the 17-frame retime example now say what 2.5 changed.
+Recorded too: the 2.3 takes those findings came from were 25 frames at
+0.5–0.8 MP in one pass, against 2.5's 49–97 frames at ~1.8 MP refined, so the
+gain between them is part model, part settings, never separated.
+
+Also: `build25`/`recipe25` default to 49 frames at 24 fps (they still said 17
+at 48), and the recipe records the mode and end frame.
+
+Tested once on a real shot, a top-down panel of one figure landing on another:
+the graph ran end to end (~7 min, 49 frames) and landed on the end frame, but
+the take was rejected for its START frame, which Klein drew with extra boots
+and a deformed face. Klein also could not move the pose: told "falling toward
+him", "a gap between their bodies" or "kneeling", with the panel as reference,
+it redrew the panel's own pose on all seven seeds. The shot was made instead by
+animating the figure pushing up off the other and playing it backward at 2x.
+Show any Klein-made frame to the artist before animating from it.
+
 ## 3.0.0 — 2026-10-22
 
 **LTX-2.3 is removed; `animate_shot` runs LTX-2.5 only.** On an eight-scene

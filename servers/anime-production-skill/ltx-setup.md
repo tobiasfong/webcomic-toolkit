@@ -85,9 +85,14 @@ specific, repeated failure (a combat-motion LoRA if fights keep failing).
 
 ## First and last frame
 
-2.5 can interpolate between a start and an end drawing (ComfyUI's
-`video_ltx2_5_flf2v` template) — the natural fix for an action it refuses, by
-drawing the end pose. Not yet wired into `ltx_run.py` or the server.
+2.5 can animate from one picture to another (ComfyUI's `video_ltx2_5_flf2v`
+template) — the fix for an action image-to-video refuses: supply the END pose and
+it only fills in the motion. `ltx_run.py --last end.png`, or the server's
+`animate_shot(last_frame_path=...)`. It renders in one stage at full size, so it
+is slower than image-to-video. A last resort, with the end pose made by Klein:
+for generated art an edit of the whole panel; for hand-drawn art a BOXED edit
+that redraws just the moving part first, and the whole panel only if that fails
+(it re-inks the whole drawing). See SKILL.md, "The workflow".
 
 ## Output → the pipeline
 

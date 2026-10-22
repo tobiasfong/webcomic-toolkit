@@ -113,7 +113,7 @@ Skip any step that's already satisfied. Windows-tested; adapt paths elsewhere.
   this is the difference between "graded" and "hazy".
 - **Beat detection can pick an octave.** Sanity-check the reported BPM against
   the median inter-onset interval before trusting cut timings; alignment
-  percentages must be normalised for grid density (a denser grid catches more
+  percentages must be normalized for grid density (a denser grid catches more
   onsets by chance) or you'll pick double-tempo.
 
 ## Usage
@@ -293,6 +293,43 @@ Run ~3 seeds per shot and judge the 12 fps preview by eye — seeds differ a lot
 For an action no seed will do, the MCP server's `animate_shot_cloud` (Seedance
 2.0, paid per take) is the fallback.
 
+### The workflow: Klein-generated art and hand-drawn art
+
+**1. Image-to-video for every shot, whatever made the picture.** 49 or 97 frames
+at 24 fps, ~3 seeds, motion-only prompts: the camera, the motion, then what
+stays still. On an eight-scene teaser of hand-drawn panels this alone did a
+punch toward the viewer, a waltz turn, a prayer pose and two people talking.
+
+**2. If a shot fails, reword before anything else.** Wording fixed both
+failures met so far: "blink" closed the eyes for good, while "her eyes close,
+then open wide, then close again" blinked; a profile head turned to the camera
+until the prompt said it stays in profile. Then try more seeds.
+
+**3. Only if it still fails** — and the route depends on where the picture came
+from:
+
+- **Klein-generated art: first-and-last-frame.** Render the END pose with Klein
+  (`edit_frame` on the panel itself, e.g. "her raised leg fully extended in a
+  kick toward his chest", keeps the composition), then animate between the two
+  with `last_frame_path` (or `ltx_run.py --last`).
+- **Hand-drawn art: no one draws extra poses, and Klein makes the end pose in
+  two steps, gentlest first.**
+  1. A BOXED edit (`edit_frame` with `box` around only the part that moves):
+     Klein redraws that region and every pixel outside it stays the original
+     drawing. Watch the redrawn part for inking that stands out.
+  2. If the box doesn't work, an UNBOXED edit of the whole panel — the last
+     resort. ⚠ Klein then redraws the WHOLE picture: even a boxed edit changes
+     the rest of the frame by a mean of ~18.5 before the paste-back, and unboxed
+     that all stays, so expect the drawing re-inked in Klein's style.
+
+No shot is left as a still: a still is a failed shot, with no reason to be in an
+animation. (Seedance, `animate_shot_cloud`, is a separate paid option outside
+this chain.)
+
+**4. Review as video, not contact sheets.** Approve, trim a tail that runs too
+far, add drawn effects, then assemble — every scene plays once, with no loops
+and no holds on the last frame.
+
 ### Is LTX worth it for this shot?
 
 The same 15-panel scene, run twice. **v1** at 832x576 with one-sentence prompts:
@@ -323,12 +360,18 @@ Everything below follows from that one line:
 | Camera drift | **Foreshortening** — a punch toward the viewer needs knuckles redrawn at a new angle |
 
 (Measured on 2.3. 2.5 moved the line: it threw a punch toward the viewer, made
-two people talk, and blinked on one seed in three. Growing ice still failed.)
+two people talk, and blinked on one seed in three. Growing ice still failed. So
+every shot goes to image-to-video first; the right column is where a shot goes
+after rewording and more seeds fail. Nor is the column a fair verdict on 2.3:
+its takes were 25 frames at 0.5–0.8 MP in one pass, against 2.5's 49–97 frames
+at ~1.8 MP refined, and 2.5 at 17 frames tore faces too. Model and settings
+were never separated.)
 
 - **Ask for the LARGEST motion that reads, and put it FIRST in the prompt.** The
   leading request gets the motion budget. "Blinks slowly" froze on 4 seeds;
   the same shot with "turns her head gently" moved — and the eyes closed *along
-  with it*. Feature-scale motion only ever arrives as a passenger.
+  with it*. On 2.3 feature-scale motion only arrived as a passenger; on 2.5 it
+  can lead when described rather than named (see the blink below).
 - **Then run ~3 seeds and keep the best — roughly 1 in 3 lands.** Seed variance
   is real, but ONLY when the request is achievable; an impossible ask freezes on
   every seed, so re-rolling it is wasted time. Change the WORDING first: on 2.5

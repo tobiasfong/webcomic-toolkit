@@ -21,6 +21,19 @@ Verified on a 6 GB RTX 3060 Laptop.
 | **Fire** — existing pixels churning | **Growing crystals** — new geometry |
 | Camera drift | **Foreshortening** — a punch toward the viewer needs knuckles redrawn at a new angle |
 
+⚠ **This table was measured on LTX-2.3, and 2.5 moved the line.** On 2.5 a
+punch came toward the viewer, two people talked, and a blink landed on one seed
+in three once the prompt described it (see the workflow section). Growing ice
+still failed. So on 2.5 every shot goes to `animate_shot` first, eyes and mouths
+included; the right column below is now where a shot goes after rewording and
+more seeds have failed, not where it starts.
+
+The 2.3 column is also not a fair verdict on 2.3. Every 2.3 take behind it was
+25 frames at 0.5–0.8 MP (832x576, later 768x1088), one pass; the 2.5 takes that
+beat it were 49–97 frames at ~1.8 MP, half size then refined. On 2.5, 17 frames
+alone tore faces. How much of the gain is the model and how much is the settings
+was never separated — 2.3 was removed before it was run at 2.5's settings.
+
 Everything about this server follows from that line, and choosing the wrong tool
 is what wastes GPU-hours:
 
@@ -236,13 +249,16 @@ count for *selected* takes, not for all takes.
 - **Ask for the largest motion that reads, and put it FIRST.** The leading
   request gets the motion budget. "Blinks slowly" froze on four seeds; the same
   shot asked to "turn her head gently" moved — and the eyes closed along with it.
-  Feature-scale motion only ever arrives as a passenger.
+  On 2.3, feature-scale motion only ever arrived as a passenger. On 2.5 it can
+  lead when it is described rather than named: "blink" closed the eyes for good,
+  "her eyes close, then open wide, then close again" blinked.
 - **Negative instructions are ignored by both models.** "Do not close her eyes"
   closed them; "without turning" turned. Phrase everything positively.
 - **Seeds do not transfer across configs.** Change `length` or the prompt and the
   space reshuffles. Re-hunt after any parameter change.
-- **Retime before judging.** ComfyUI writes at 24 fps, so a 17-frame take plays
-  in 0.7 s and reads as "nothing happened". `animate_shot` does this for you.
+- **Judge the 12 fps preview.** The take is 24 fps real-time motion; the
+  preview keeps every other frame, so it plays at true speed on twos, the way
+  the cut will. `animate_shot` writes it for you.
 - **The motion score is not quality, and it is wrong more often than it looks.**
   It measures *change*. A take whose faces dissolve scores very high; a take that
   barely moves scores low even when it is the only clean one. In a config
@@ -276,6 +292,43 @@ count for *selected* takes, not for all takes.
   against the soft LTX frames around it. FLUX.1 Kontext before it did no
   better: its best takes were bases the artist still drew on. Run a repair only
   as a base, while there is other work to do in the meantime.
+
+## The workflow: Klein-generated art and hand-drawn art
+
+**1. Image-to-video for every shot, whatever made the picture.** 49 or 97 frames
+at 24 fps, ~3 seeds, motion-only prompts: the camera, the motion, then what
+stays still. On an eight-scene teaser of hand-drawn panels this alone did a
+punch toward the viewer, a waltz turn, a prayer pose and two people talking.
+
+**2. If a shot fails, reword before anything else.** Wording fixed both
+failures met so far: "blink" closed the eyes for good, while "her eyes close,
+then open wide, then close again" blinked; a profile head turned to the camera
+until the prompt said it stays in profile. Then try more seeds.
+
+**3. Only if it still fails** — and the route depends on where the picture came
+from:
+
+- **Klein-generated art: first-and-last-frame.** Render the END pose with Klein
+  (`edit_frame` on the panel itself, e.g. "her raised leg fully extended in a
+  kick toward his chest", keeps the composition), then animate between the two
+  with `last_frame_path` (or `ltx_run.py --last`).
+- **Hand-drawn art: no one draws extra poses, and Klein makes the end pose in
+  two steps, gentlest first.**
+  1. A BOXED edit (`edit_frame` with `box` around only the part that moves):
+     Klein redraws that region and every pixel outside it stays the original
+     drawing. Watch the redrawn part for inking that stands out.
+  2. If the box doesn't work, an UNBOXED edit of the whole panel — the last
+     resort. ⚠ Klein then redraws the WHOLE picture: even a boxed edit changes
+     the rest of the frame by a mean of ~18.5 before the paste-back, and unboxed
+     that all stays, so expect the drawing re-inked in Klein's style.
+
+No shot is left as a still: a still is a failed shot, with no reason to be in an
+animation. (Seedance, `animate_shot_cloud`, is a separate paid option outside
+this chain.)
+
+**4. Review as video, not contact sheets.** Approve, trim a tail that runs too
+far, add drawn effects, then assemble — every scene plays once, with no loops
+and no holds on the last frame.
 
 ## Install
 
