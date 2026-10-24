@@ -149,7 +149,9 @@ def engine(project):
             kit.setdefault(norm(g["name"]), set()).add(
                 (g.get("power", 0), g.get("pp")))
         up = t.get("upgraded", {})
-        for g in up.get("grants", []):
+        # "tier3" is a further tier unlocked by its own item; its grants are
+        # new techniques exactly like the upgraded tier's.
+        for g in up.get("grants", []) + t.get("tier3", {}).get("grants", []):
             by_key[g["key"]] = g["name"]
             kit.setdefault(norm(g["name"]), set()).add(
                 (g.get("power", 0), g.get("pp")))
@@ -185,7 +187,10 @@ def engine(project):
 HP_EACH = re.compile(r"^(.+?)\s*\(\d+\),\s*each with\s*(\d+)\s*HP", re.I)
 HP_ONE = re.compile(r"^(.+?),\s*(\d+)\s*HP\b", re.I)
 HP_HAS = re.compile(r"^(.+?)\s+has\s+(\d+)\s*HP\b", re.I)
-NAMED = re.compile(r"^([A-Z][\w'’#\- ]{1,34}?)\s*\(([^)]*)\)")
+# Move names run past 40 characters (a clan prefix plus a long technique
+# name); a tighter cap made a long name's stats line fall back to the name
+# above it and report a false mismatch.
+NAMED = re.compile(r"^([A-Z][\w'’#\- ]{1,60}?)\s*\(([^)]*)\)")
 BARE = re.compile(r"^\(([^)]*)\)\s*$")
 PP_ONLY = re.compile(r"^(\d+)\s*PP\s*$", re.I)
 DMG_ONLY = re.compile(r"^(\d+)\s*damage\b", re.I)
@@ -203,7 +208,7 @@ PCTS = (
     (re.compile(r"reflects\s*(\d+)\s*damage", re.I),
      "reflect", lambda v: v),
 )
-NAMEY = re.compile(r"^[A-Z][A-Za-z'’#\- ]{1,34}$")
+NAMEY = re.compile(r"^[A-Z][A-Za-z'’#\- ]{1,60}$")   # see NAMED
 
 
 def _stats(inside):
@@ -223,10 +228,16 @@ def claims(docx_path, patterns):
     found, unread = [], []
     owner = PLAYER
     for n, (i, whole) in enumerate(spec):
+        # A name and its stats can share one paragraph across a line break;
+        # the name above in the SAME paragraph wins over _name_above, which
+        # only looks at earlier paragraphs.
+        label = None
         for line in [l.strip() for l in whole.splitlines() if l.strip()]:
             if not re.search(r"\d", line):
                 # A bare name line re-owns nothing, but it is the move label
                 # the PP/damage lines below refer to.
+                if NAMEY.match(line):
+                    label = line
                 continue
             m = HP_EACH.match(line) or HP_HAS.match(line) or HP_ONE.match(line)
             if m and "damage" not in line.lower() and "PP" not in line:
@@ -256,7 +267,7 @@ def claims(docx_path, patterns):
                     continue
             m = BARE.match(line)
             if m:
-                nm = _name_above(spec, n)
+                nm = label or _name_above(spec, n)
                 dmg, pp = _stats(m.group(1))
                 if nm and (dmg is not None or pp is not None):
                     found.append(("move", (owner, nm), (dmg, pp), i))
@@ -265,7 +276,7 @@ def claims(docx_path, patterns):
                 continue
             m = PP_ONLY.match(line)
             if m:
-                nm = _name_above(spec, n)
+                nm = label or _name_above(spec, n)
                 dmg = _damage_below(spec, n)
                 if nm:
                     found.append(("move", (owner, nm), (dmg, int(m.group(1))), i))
