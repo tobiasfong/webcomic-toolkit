@@ -23,8 +23,9 @@ Verified on a 6 GB RTX 3060 Laptop.
 
 ⚠ **This table was measured on LTX-2.3, and 2.5 moved the line.** On 2.5 a
 punch came toward the viewer, two people talked, and a blink landed on one seed
-in three once the prompt described it (see the workflow section). Growing ice
-still failed. So on 2.5 every shot goes to `animate_shot` first, eyes and mouths
+in three once the prompt described it (see the workflow section), and ice grew
+from a raised hand — visible in the video, though easy to miss in still frames.
+So on 2.5 every shot goes to `animate_shot` first, eyes and mouths
 included; the right column below is now where a shot goes after rewording and
 more seeds have failed, not where it starts.
 

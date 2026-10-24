@@ -20,8 +20,8 @@ server is shaped the way it is:
          exist) · growing crystals (new geometry) · foreshortening (a punch
          toward the viewer needs knuckles redrawn at a new angle)
   (That column was measured on LTX-2.3. 2.5 moved it: it threw a punch toward
-  the viewer, two people talked, and one seed in three blinked. Growing ice
-  still failed.)
+  the viewer, two people talked, one seed in three blinked, and ice grew from
+  a raised hand — judge that as video; still frames hide it.)
 
 Everything follows from that line. `animate_shot` is for the left column.
 `edit_frame` + `composite_patch` cover eye- and mouth-scale features. The

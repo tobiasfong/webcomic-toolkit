@@ -360,7 +360,8 @@ Everything below follows from that one line:
 | Camera drift | **Foreshortening** — a punch toward the viewer needs knuckles redrawn at a new angle |
 
 (Measured on 2.3. 2.5 moved the line: it threw a punch toward the viewer, made
-two people talk, and blinked on one seed in three. Growing ice still failed. So
+two people talk, blinked on one seed in three, and grew ice from a raised hand
+(visible as video, easy to miss in still frames). So
 every shot goes to image-to-video first; the right column is where a shot goes
 after rewording and more seeds fail. Nor is the column a fair verdict on 2.3:
 its takes were 25 frames at 0.5–0.8 MP in one pass, against 2.5's 49–97 frames
@@ -459,7 +460,8 @@ were never separated.)
   Kontext and Klein alike, handed the model the whole frame. For "this region
   is destroyed", inpainting is the textbook technique: mask the hand and
   generate into the hole with the surrounding arm as context.
-- **Anything that must APPEAR** (growing ice, shooting stars, speed lines) →
+- **Anything that must APPEAR and `animate_shot` won't produce** (shooting
+  stars, speed lines; growing ice needed this on 2.3, but grew on 2.5) →
   draw it. Deterministic, retimeable onto musical beats, and it can't smear a
   face. `impact_preview.py` previews the speed-line/flash/shake kit.
 - **Negative instructions are ignored by BOTH models.** "Do not close her eyes"
