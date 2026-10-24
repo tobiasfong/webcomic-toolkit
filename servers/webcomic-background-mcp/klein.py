@@ -106,6 +106,24 @@ def is_up(timeout: float = 2.0) -> bool:
         return False
 
 
+def port_in_use(timeout: float = 1.0) -> bool:
+    """Something is LISTENING on the Klein port, whether or not it answers HTTP.
+
+    A ComfyUI deep in an LTX render on this RAM-starved laptop can take longer
+    than is_up()'s 2 s to answer /system_stats. Taking that as "not running"
+    launched a SECOND ComfyUI mid-render (2026-10-24): it pinned ~13 GB of RAM
+    before dying on the database lock, and the render it starved took 3 h 12 min
+    instead of ~4. Never launch over an occupied port.
+    """
+    import socket
+    host = KLEIN_URL.split("://", 1)[-1].split(":", 1)[0]
+    try:
+        with socket.create_connection((host, int(KLEIN_PORT)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def ensure_running() -> None:
     """Start the Klein ComfyUI if it is not up.
 
@@ -116,6 +134,15 @@ def ensure_running() -> None:
     """
     if is_up():
         return
+    if port_in_use():
+        # Busy, not down: wait for it to answer instead of starting a second one.
+        t0 = time.time()
+        while time.time() - t0 < LAUNCH_TIMEOUT:
+            if is_up(timeout=15.0):
+                return
+            time.sleep(5.0)
+        raise KleinError(f"Something holds port {KLEIN_PORT} but has not answered for {LAUNCH_TIMEOUT}s; "
+                         "not launching a second ComfyUI over it.")
     if not AUTOLAUNCH:
         raise KleinError(f"Klein ComfyUI is not running at {KLEIN_URL} and autolaunch is off.")
     py = os.path.join(KLEIN_DIR, "python_embeded", "python.exe")
