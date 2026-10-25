@@ -7,15 +7,16 @@ pipeline: the anime-production skill has always *played* an mp3 but never made
 one, and the mp3 came from Suno — a paid cloud service, the exact dependency
 this ecosystem exists to avoid (ARCHITECTURE.md §7a).
 
-Runs on the same 6 GB RTX 3060 Laptop as the other GPU servers. No custom
-ComfyUI nodes are required: ACE-Step 1.0 and 1.5 are both in ComfyUI core as of
-0.25. Contrast the LTX install, which needed third-party GGUF loaders.
+Runs on the same 6 GB RTX 3060 Laptop as the other GPU servers. Generation needs
+no custom ComfyUI nodes: ACE-Step 1.0 and 1.5 are both in ComfyUI core as of
+0.25. Only extend_track needs one, this repo's own comfy_nodes/ace_extend, because
+ComfyUI's port never connects ACE 1.5's repaint inputs.
 
 Scope guard (§7a): generation and beat analysis ONLY. Mixing, mastering and stem
 separation are a different product — if those appear, stop and split.
 
-Exposes: generate_track, generate_variations, list_tracks, get_track,
-extract_beats, check_status.
+Exposes: generate_track, generate_variations, extend_track, list_tracks,
+get_track, extract_beats, check_status.
 
 Usage discipline, taught here because the §8a lesson says the server must teach
 it rather than let it be discovered the hard way:
@@ -138,6 +139,95 @@ def generate_variations(track_id: str, n: int = 3, seed_step: int = 1000) -> lis
         params = dict(base, seed=base_seed + i * seed_step)
         out.append(_generate(rec["project"], rec["title"], params))
     return out
+
+
+def _splice_original(src_path: str, files: dict, keep: float, xfade: float = 0.25) -> bool:
+    """Put the ORIGINAL recording back over the kept stretch, crossfading into the new part.
+
+    The model's output holds the kept frames to the source in LATENT space, so they come back through one more
+    VAE round trip: measured on a real track, 0.979 correlation with the original, close but not the
+    recording. Splicing the source's own samples back in makes the kept stretch exact; the crossfade sits
+    where the two already agree, just before the seam."""
+    import numpy as np
+    import soundfile as sf
+    src, sr = sf.read(src_path, always_2d=True)
+    new, sr2 = sf.read(files["flac"], always_2d=True)
+    if sr != sr2 or src.shape[1] != new.shape[1]:
+        return False
+    k = min(int(keep * sr), len(src), len(new))
+    x = min(int(xfade * sr), k)
+    out = new.copy()
+    out[:k - x] = src[:k - x]
+    t = np.linspace(0.0, 1.0, x)[:, None]
+    out[k - x:k] = src[k - x:k] * (1 - t) + new[k - x:k] * t
+    sf.write(files["flac"], out, sr, format="FLAC")
+    if "mp3" in files:
+        sf.write(files["mp3"], out, sr, format="MP3")
+    return True
+
+
+@mcp.tool()
+def extend_track(
+    track_id: str,
+    lyrics: str,
+    duration: float = 240.0,
+    keep_seconds: float | None = None,
+    title: str | None = None,
+    seed: int | None = None,
+    tags: str | None = None,
+    blend_seconds: float = 0.4,
+) -> dict:
+    """Make a longer version of an existing track: keep its opening, let ACE-Step write the rest.
+
+    Uses ACE-Step 1.5's own repaint/extend inputs (the source as `src_latents`, a mask over the new
+    section), so the model continues THIS recording in view of it; a plain longer generation would
+    re-plan the whole song from scratch. The kept stretch is the original recording, spliced back in
+    with a short crossfade into the new part.
+
+    Needs the comfy_nodes/ace_extend add-on in ComfyUI (tools/install_comfy_nodes.py, then restart
+    ComfyUI); check_status reports whether it is loaded. 1.5 tracks only.
+
+    lyrics: the WHOLE song's lyrics, the kept part first as originally sung, then the new sections.
+      Same rules as generate_track (section markers, song-length lines).
+    duration: total length in seconds (max 240).
+    keep_seconds: how much of the source to keep. Defaults to the whole source. Set it earlier (e.g.
+      just before the old outro) so the extension carries on from the body of the song instead of
+      after an ending.
+    seed / tags: default to the source's, so the new part keeps its sound. Changing tags re-rolls it.
+    """
+    rec = tk.get(track_id)
+    if rec is None:
+        raise ValueError(f"No such track: {track_id}. Use list_tracks.")
+    r = rec["recipe"]
+    if str(r.get("variant", "1.5")) != "1.5":
+        raise ValueError("extend_track needs a variant 1.5 source; ACE 1.0 has no repaint inputs.")
+    comfy.ensure_comfy_running()          # it may be down; the add-on check below needs it up
+    if not comfy.has_node("AceStep15ExtendSetup"):
+        raise comfy.ComfyUIError(
+            "The running ComfyUI lacks the ace_extend add-on. Run tools/install_comfy_nodes.py, "
+            "restart ComfyUI, then retry.")
+    src = rec["files"].get("flac") or rec["files"].get("mp3")
+    source_len = float(r.get("duration", 0)) or None
+    keep = float(keep_seconds) if keep_seconds is not None else (source_len or 0.0)
+    params = dict(
+        mode="extend", parent=track_id, keep_seconds=keep, blend_seconds=blend_seconds,
+        tags=tags or r["tags"], lyrics=lyrics, duration=duration,
+        seed=int(r.get("seed", 0)) if seed is None else int(seed),
+        bpm=r.get("bpm", 120), language=r.get("language", "en"),
+        keyscale=r.get("keyscale", "C major"), timesignature=str(r.get("timesignature", "4")),
+        variant="1.5",
+    )
+    title = title or f"{rec['title']} (extended)"
+    new_id = tk.new_track_id(rec["project"], title)
+    graph = aw.build_extend_graph(
+        source_audio=comfy.upload_audio(src), keep_seconds=keep, tags=params["tags"], lyrics=lyrics,
+        duration=duration, seed=params["seed"], bpm=params["bpm"], language=params["language"],
+        keyscale=params["keyscale"], timesignature=params["timesignature"],
+        blend_seconds=blend_seconds, filename_prefix=f"audio/{new_id}")
+    outs = comfy.submit_and_wait(graph)
+    files = _fetch_outputs(outs, rec["project"], new_id)
+    params["spliced_original"] = bool(rec["files"].get("flac")) and _splice_original(rec["files"]["flac"], files, keep)
+    return tk.record(rec["project"], new_id, title, aw.recipe(**params), files)
 
 
 @mcp.tool()
@@ -314,6 +404,10 @@ def check_status() -> dict:
                 "missing": [] if v10["checkpoint"] in present["checkpoints"]
                            else [v10["checkpoint"]]},
     }
+    status["extend_addon_loaded"] = comfy.has_node("AceStep15ExtendSetup")
+    if not status["extend_addon_loaded"]:
+        status["extend_hint"] = ("extend_track needs the ace_extend add-on: run "
+                                 "tools/install_comfy_nodes.py, then restart ComfyUI.")
     if missing_15:
         status["hint"] = ("Missing model files. NOTE: ComfyUI caches some folder "
                           "listings at startup — if you just downloaded these, "

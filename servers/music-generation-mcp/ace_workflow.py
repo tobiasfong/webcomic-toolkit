@@ -243,6 +243,75 @@ def build_graph(
     return g
 
 
+def build_extend_graph(
+    *,
+    source_audio: str,
+    keep_seconds: float,
+    tags: str,
+    lyrics: str,
+    duration: float,
+    seed: int = 0,
+    bpm: int = 120,
+    language: str = "en",
+    keyscale: str = "C major",
+    timesignature: str = "4",
+    blend_seconds: float = 0.4,
+    steps: int | None = None,
+    cfg: float | None = None,
+    sampler: str | None = None,
+    scheduler: str | None = None,
+    filename_prefix: str = "audio/music_mcp",
+    mp3_quality: str = "320k",
+) -> dict:
+    """The 1.5 graph for an EXTENSION: keep the source's first `keep_seconds`, write on to `duration`.
+
+    Uses ACE-Step 1.5's own repaint inputs (src_latents + chunk_masks) through the comfy_nodes/ace_extend
+    add-on, so the new section is composed with the old one in view, not generated as a separate song.
+    `source_audio` is the ComfyUI-side name of an uploaded file (comfy.upload_audio). `lyrics` are the WHOLE
+    song's: the model reads the full structure, and the kept stretch is held to the recording whatever the
+    lyric says there. The audio-code LLM is off: in repaint mode the source, not LLM hints, carries the music,
+    so it would cost a pass for nothing.
+    """
+    _check("1.5", duration, language, keyscale, str(timesignature))
+    if not 1.0 <= keep_seconds < duration:
+        raise WorkflowError(f"keep_seconds must be 1..duration ({duration}), got {keep_seconds}")
+    v = VARIANTS["1.5"]
+    steps = v["steps"] if steps is None else steps
+    cfg = v["cfg"] if cfg is None else cfg
+    sampler = v["sampler"] if sampler is None else sampler
+    scheduler = v["scheduler"] if scheduler is None else scheduler
+
+    def encode(node_tags: str, node_lyrics: str) -> dict:
+        return {"class_type": "TextEncodeAceStepAudio1.5", "inputs": {
+            "clip": ["2", 0], "tags": node_tags, "lyrics": node_lyrics, "seed": seed, "bpm": int(bpm),
+            "duration": float(duration), "timesignature": str(timesignature), "language": language,
+            "keyscale": keyscale, "generate_audio_codes": False, "cfg_scale": 2.0,
+            "temperature": 0.85, "top_p": 0.9, "top_k": 0, "min_p": 0.0}}
+
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": v["unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "DualCLIPLoader",
+              "inputs": {"clip_name1": v["clip1"], "clip_name2": v["clip2"], "type": "ace"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": v["vae"]}},
+        "4": encode(tags, lyrics),
+        "5": encode("", ""),
+        "10": {"class_type": "LoadAudio", "inputs": {"audio": source_audio}},
+        "11": {"class_type": "VAEEncodeAudio", "inputs": {"audio": ["10", 0], "vae": ["3", 0]}},
+        "12": {"class_type": "AceStep15ExtendSetup", "inputs": {
+            "positive": ["4", 0], "negative": ["5", 0], "source": ["11", 0],
+            "keep_seconds": float(keep_seconds), "total_seconds": float(duration),
+            "blend_seconds": float(blend_seconds)}},
+        "7": {"class_type": "KSampler", "inputs": {
+            "model": ["1", 0], "seed": int(seed), "steps": int(steps), "cfg": float(cfg),
+            "sampler_name": sampler, "scheduler": scheduler,
+            "positive": ["12", 0], "negative": ["12", 1], "latent_image": ["12", 2], "denoise": 1.0}},
+        "8": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
+        "9": {"class_type": "SaveAudio", "inputs": {"audio": ["8", 0], "filename_prefix": filename_prefix}},
+        "13": {"class_type": "SaveAudioMP3",
+               "inputs": {"audio": ["8", 0], "filename_prefix": filename_prefix, "quality": mp3_quality}},
+    }
+
+
 def recipe(**kwargs) -> dict:
     """The reproducible record of one generation, stored beside the audio.
 

@@ -101,12 +101,34 @@ Register with your harness (stdio):
 |---|---|
 | `generate_track` | One track. Blocking, minutes on a 6 GB card. |
 | `generate_variations` | Re-run a track's recipe under new seeds — the audition loop. |
+| `extend_track` | A longer version of an existing track: keep its opening, ACE-Step writes on from there (needs the add-on below). |
 | `list_tracks` | Terse listing (id, title, duration, mp3 path). |
 | `get_track` | One track's full recipe and file paths. |
 | `approve_track` | Lock a take as canon and publish it as `FINAL_<slug>.*`. |
 | `forget_track` | Delete a take. Refuses the approved one. |
 | `extract_beats` | Beat grid + energy envelope, so video cuts land on downbeats. |
 | `check_status` | ComfyUI reachable? VRAM? Which model files are missing? |
+
+### Extending a track
+
+Asking for a longer duration does not lengthen a song: ACE-Step plans the whole piece for the length it is
+given, so a 240 s request is a different song. `extend_track` uses ACE-Step 1.5's own repaint inputs instead
+(the source as `src_latents`, a mask over the new section), so the model writes the new part with the old one
+in view: same key, tempo, voice and sound. Pass the whole song's lyrics (the original lines first, then the new
+sections), a total `duration` up to 240 s, and optionally `keep_seconds`; cutting before the old ending lets
+the song carry on from its body instead of after a fade-out. The kept stretch is the original recording,
+spliced back in with a 0.25 s crossfade (through the VAE alone it measured 0.979 correlation, not exact).
+
+ComfyUI's ACE-Step port has those inputs but never connects them, so this needs a small add-on, installed once:
+
+```bash
+.venv/Scripts/python.exe tools/install_comfy_nodes.py     # copies comfy_nodes/ace_extend into ComfyUI
+```
+
+Restart ComfyUI afterward; `check_status` reports `extend_addon_loaded`. The add-on replaces ComfyUI's ACE-Step
+1.5 `forward` with a copy that accepts the two inputs, and refuses to load if a ComfyUI update has changed that
+function. Tested on the turbo model: the kept stretch matched the source exactly after splicing, and the new
+stretch played at full level (judge the music by ear). `tools/test_extend_live.py <track_id>` reruns that check.
 
 ### Approving a take
 

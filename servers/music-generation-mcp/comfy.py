@@ -117,6 +117,15 @@ def list_models(folder: str) -> list[str]:
         raise ComfyUIError(f"Could not list {folder}: {e}") from e
 
 
+def has_node(node: str) -> bool:
+    """Is a node class loaded in the running ComfyUI? (Custom nodes only load at startup.)"""
+    try:
+        r = requests.get(f"{COMFY_URL}/object_info/{node}", timeout=15)
+        return r.status_code == 200 and node in r.json()
+    except Exception:
+        return False
+
+
 def upload_audio(path: str) -> str:
     """Upload a local audio file into ComfyUI's input folder, returning the name
     LoadAudio expects. Used by the 1.5 reference-timbre path."""

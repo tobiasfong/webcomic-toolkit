@@ -1,5 +1,16 @@
 # Changelog — music-generation-mcp
 
+## v0.4.0 — 2026-10-25
+
+### `extend_track`: lengthen a song without re-composing it
+
+ACE-Step 1.5's repaint inputs (`src_latents`, `chunk_masks`) wired up through a ComfyUI add-on
+(`comfy_nodes/ace_extend`, installed by `tools/install_comfy_nodes.py`), because ComfyUI's port sets them to
+fixed values. The new section is written with the source in view; the kept stretch is the original recording,
+spliced back in. `check_status` reports whether the add-on is loaded. Live check on a 110 s turbo track
+extended to 130 s: kept stretch 1.0 correlation with the source after splicing (0.979 through the VAE alone),
+new stretch at 1.25x the kept stretch's level.
+
 ## v0.3.1 — 2026-08-10
 
 ### `extract_beats` no longer trusts either tempo source alone
