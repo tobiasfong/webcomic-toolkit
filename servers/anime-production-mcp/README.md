@@ -296,6 +296,23 @@ count for *selected* takes, not for all takes.
 
 ## The workflow: Klein-generated art and hand-drawn art
 
+**0. Lock every first frame before animating any of them.** Generated pictures
+are not yet "existing art" -- they are candidates. Render all the first frames,
+send each to the author at full size, reroll or repair whatever he flags, and
+animate only the frames he has locked, in one pass at the end. Hands nearly
+always need a repair. Do it with a boxed edit, but ERASE the box first
+(`klein_workflow.edit_region(..., erase=True)` in the character server;
+`edit_frame` has no erase option): Klein builds on whatever is already inside a
+box, and an unerased edit asked to shrink an oversized machine returned the
+same machine at the same size.
+
+Learned 2026-10-25 on a 51-shot short, where a batch was started on unreviewed
+frames. Its first take was rejected for the FRAME, not the motion (the city read
+as present-day), and that frame then went through seven revisions: flying cars
+out, a tower moved twice, rails rerouted, a machine shrunk, a billboard
+replaced. Each revision would have thrown away an animated take. A frame costs
+~50 s and a take 4-20 min, so fix the cheap thing first.
+
 **1. Image-to-video for every shot, whatever made the picture.** 49 or 97 frames
 at 24 fps, ~3 seeds, motion-only prompts: the camera, the motion, then what
 stays still. On an eight-scene teaser of hand-drawn panels this alone did a
@@ -364,7 +381,10 @@ Face first). INT8 is the build for an RTX 30-series card:
 
 About 40 GB, against 32 GB of RAM on the machine it was built on: ComfyUI drops
 the text encoder after reading the prompt, and takes ran ~3.5 min (49 frames)
-and ~7 min (97 frames) on a 6 GB card. Run it at 24 fps and 49 or 97 frames,
+on a 6 GB card. ⚠ A 97-frame take is about SIX times slower, not twice: two at
+1920x1088 ran 21 and 23 min (2026-10-25), where 49 frames at the same size took
+3.6. An earlier "~7 min a 97" here did not hold at that size.
+Run it at 24 fps and 49 or 97 frames,
 never 17 — see the CHANGELOG.
 
 LTX-2.3 (GGUF, on the main ComfyUI with city96's ComfyUI-GGUF) was this

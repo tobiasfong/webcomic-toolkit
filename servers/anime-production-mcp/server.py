@@ -160,7 +160,9 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
 
     length: 49 (2 s) or 97 (4 s). NOT 17 — at 17 frames 2.5 has only three
     latent frames: every take sat still to frame 8, lurched at frame 9 and tore
-    faces. ~3.5 min a 49-frame take on the 6 GB card, ~7 min a 97.
+    faces. ~3.5 min a 49-frame take on the 6 GB card at 1920x1088. A 97 is NOT
+    twice that: two 97-frame takes at 1920x1088 ran 21 and 23 min (2026-10-25).
+    Default to 49 and slow a shot in the edit if it must run longer.
 
     LEAVE width/height UNSET. They are derived from the artwork by
     `lw.pick_size`, which matches the source's own aspect and then maximizes

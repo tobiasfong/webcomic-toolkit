@@ -236,7 +236,7 @@ python assets/tools/ltx_run.py --image panel.png --out takes --len 49 --seed 1 \
 ```
 
 **Verified on a 6 GB RTX 3060 Laptop with 32 GB RAM** — ~3.5 min a 49-frame
-take, ~7 min a 97 — on an eight-scene teaser of hand-drawn panels. LTX-2.3 was
+take; a 97-frame take at 1920x1088 ran 21–23 min, about six times slower — on an eight-scene teaser of hand-drawn panels. LTX-2.3 was
 used here until 2026-10-22; 2.5 was judged much better on the same panels.
 
 **Match the ARTWORK'S OWN ASPECT, and size from the art, not from a default.**
@@ -294,6 +294,23 @@ For an action no seed will do, the MCP server's `animate_shot_cloud` (Seedance
 2.0, paid per take) is the fallback.
 
 ### The workflow: Klein-generated art and hand-drawn art
+
+**0. Lock every first frame before animating any of them.** Generated pictures
+are not yet "existing art" -- they are candidates. Render all the first frames,
+send each to the author at full size, reroll or repair whatever he flags, and
+animate only the frames he has locked, in one pass at the end. Hands nearly
+always need a repair. Do it with a boxed edit, but ERASE the box first
+(`klein_workflow.edit_region(..., erase=True)` in the character server;
+`edit_frame` has no erase option): Klein builds on whatever is already inside a
+box, and an unerased edit asked to shrink an oversized machine returned the
+same machine at the same size.
+
+Learned 2026-10-25 on a 51-shot short, where a batch was started on unreviewed
+frames. Its first take was rejected for the FRAME, not the motion (the city read
+as present-day), and that frame then went through seven revisions: flying cars
+out, a tower moved twice, rails rerouted, a machine shrunk, a billboard
+replaced. Each revision would have thrown away an animated take. A frame costs
+~50 s and a take 4-20 min, so fix the cheap thing first.
 
 **1. Image-to-video for every shot, whatever made the picture.** 49 or 97 frames
 at 24 fps, ~3 seeds, motion-only prompts: the camera, the motion, then what
