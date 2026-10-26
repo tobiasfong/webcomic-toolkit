@@ -380,6 +380,99 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
                  "estimate; the console at console.higgsfield.ai has the real bill."),
     }
 
+@mcp.tool()
+def edit_shot_cloud(project: str, name: str, clip_path: str, prompt: str, model: str,
+                    ref_images: list[str] | None = None, takes: int = 1,
+                    resolution: str = "720p", fit: str = "slow",
+                    max_usd: float | None = None, estimate_only: bool = False,
+                    view_fps: int = 12) -> dict:
+    """Redo an existing take on a paid Higgsfield video-edit model — BILLED PER TAKE.
+
+    For an LTX take whose MOTION is right but whose faces or hands smear: the
+    model gets the take itself and redraws it, keeping the motion and camera.
+    When the motion itself is wrong, animate_shot_cloud from the panel instead.
+
+    model: REQUIRED — seedance-2.5-edit or kling-o3-edit.
+    clip_path: the take, at its full frame rate (the shot's own .webp or .mp4,
+        not the 12 fps preview), so the model sees every drawing.
+    ref_images: the panel the take was made from, and any character sheet, so
+        the redrawn faces stay on model (Kling takes 4, Seedance 30).
+    fit: LTX takes run ~2 s, under both models' minimum (Kling 3 s, Seedance
+        4 s). "slow" sends the same frames at a lower rate; "pad" holds the last
+        frame. The result is put back to the take's own length either way.
+    resolution: Seedance only.
+
+    ⚠ EACH TAKE IS BILLED, with no seed. One take by default, at most 3.
+    Priced by Higgsfield before submitting; max_usd and estimate_only work as
+    in animate_shot_cloud. ⚠ The take and the reference images are uploaded.
+
+    Prompt what to KEEP first (the same motion, camera and composition), then
+    what to redraw (his face and both hands clear and on model in every frame).
+    """
+    if not os.path.isfile(clip_path):
+        raise FileNotFoundError(f"Clip not found: {clip_path}")
+    for r in ref_images or []:
+        if not os.path.isfile(r):
+            raise FileNotFoundError(f"Image not found: {r}")
+    if not 1 <= takes <= 3:
+        raise ValueError("Run 1-3 takes per call; each one is billed.")
+    # Everything that can fail locally fails before a byte is uploaded.
+    dummy = "https://example.com/x"
+    cv.edit_payload(model, prompt, dummy, [dummy] * len(ref_images or []), resolution)
+    ffmpeg = asm.find_ffmpeg()
+
+    stem = f"{sh.slugify(name)}_{sh.slugify(model)}_{time.strftime('%Y%m%d_%H%M%S')}"
+    # The clip as sent lives beside the first take, for comparing the two.
+    src = cv.edit_source(clip_path, os.path.join(sh.shot_dir(project, stem + "1"),
+                                                 stem + "_sent.mp4"), model, fit)
+    video_url = cv.upload(src["mp4"])
+    image_urls = [cv.upload(r) for r in ref_images or []]
+    body = cv.edit_payload(model, prompt, video_url, image_urls, resolution)
+    per_take = cv.estimate_usd(model, body)
+    total = round(per_take * takes, 4) if per_take is not None else None
+    if estimate_only:
+        return {"model": model, "est_usd_per_take": per_take, "est_usd_total": total,
+                "takes": takes, "sent": src, "next": "Nothing was generated or billed."}
+    if max_usd is not None and (total is None or total > max_usd):
+        raise ValueError(f"Estimated ${total} for {takes} take(s) of {model}; over the "
+                         f"max_usd of ${max_usd}. Nothing was submitted.")
+
+    results = []
+    for take in range(1, takes + 1):
+        t0 = time.time()
+        handle = cv.submit(model, body)
+        rec = cv.wait(handle)
+        shot_id = f"{stem}{take}"
+        d = sh.shot_dir(project, shot_id)
+        raw = cv.download(rec["video"]["url"], os.path.join(d, f"{shot_id}.mp4"))
+        view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
+        last_png = os.path.join(d, f"{shot_id}_last.png")
+        cv.to_view(raw, view, ffmpeg, fps=view_fps, last_png=last_png,
+                   speed=src["speed"], max_seconds=src["source_seconds"])
+        files = {"mp4": raw, "retimed": view, "last_frame": last_png}
+        m = motion.measure(view)
+        sh.record(project, shot_id, name,
+                  {"provider": "higgsfield", "model": model,
+                   "endpoint": cv.model_spec(model)["endpoint"], "prompt": prompt,
+                   "source_clip": os.path.basename(clip_path), "fit": fit,
+                   "sent_seconds": src["sent_seconds"], "speed": src["speed"],
+                   "refs": [os.path.basename(r) for r in ref_images or []],
+                   "resolution": body.get("resolution"),
+                   "request_id": handle.get("request_id"), "est_usd": per_take},
+                  files,
+                  {"maxdev": m["maxdev"], "span": m["span"],
+                   "peak_frame": m["peak_frame"], "reading": m["reading"]})
+        results.append({"shot_id": shot_id, "take": take, "view": view, "mp4": raw,
+                        "est_usd": per_take, "seconds": round(time.time() - t0),
+                        "maxdev": m["maxdev"], "reading": m["reading"]})
+
+    return {
+        "project": project, "name": name, "model": model, "takes": results, "sent": src,
+        "est_usd_total": round(per_take * len(results), 4) if per_take is not None else None,
+        "next": ("LOOK at each `view` beside the source take before approve_shot. The "
+                 "cost is Higgsfield's estimate; the console has the real bill."),
+    }
+
 
 @mcp.tool()
 def edit_frame(image_path: str, edit: str, out_dir: str,

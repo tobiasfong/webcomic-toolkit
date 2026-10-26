@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.3.0 — 2026-10-26
+
+**New tool: `edit_shot_cloud`, paid video edit on Higgsfield.** For a take
+whose motion is right but whose faces or hands smear: the take itself goes to
+`seedance-2.5-edit` or `kling-o3-edit` with a prompt, and the panel as a
+reference image, and comes back redrawn with the same motion and camera.
+
+- LTX takes run about 2 s; Kling's edit needs 3 s and Seedance's 4 s.
+  `fit="slow"` sends the same frames at a lower rate (the model sees the whole
+  motion, slowed), `fit="pad"` holds the last frame; either way the result is
+  put back to the take's own length. Tested end to end on a 49-frame clip.
+- The clip as sent is kept beside the first take, for comparison.
+- Same safeguards as `animate_shot_cloud`: model required, priced first,
+  `max_usd`, `estimate_only`, one take by default, sound off.
+
 ## 3.2.0 — 2026-10-26
 
 **`animate_shot_cloud` moves from BytePlus to Higgsfield.** One account now

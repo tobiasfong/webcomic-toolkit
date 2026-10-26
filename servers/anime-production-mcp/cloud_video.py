@@ -18,8 +18,15 @@ cannot be reproduced and "run three seeds" means "pay for three takes". The
 server defaults to ONE take per call. Failed and moderated (nsfw) requests are
 not charged.
 
-⚠ THE PANEL LEAVES THE MACHINE. Each image is uploaded to Higgsfield's storage
-(tagged temporary) and passed to the model by its public URL.
+⚠ THE PANEL LEAVES THE MACHINE. Each image (or clip, for an edit) is uploaded
+to Higgsfield's storage (tagged temporary) and passed to the model by its public
+URL.
+
+Two kinds of request:
+    image-to-video (MODELS)       animate a panel, optionally toward an end pose
+    video edit (EDIT_MODELS)      redo an existing take from a prompt, keeping
+                                  its motion: the route for an LTX take whose
+                                  motion is right but whose faces or hands smear
 
 API (docs.higgsfield.ai, 2026-10):
     auth      Authorization: Key {HF_API_KEY_ID}:{HF_API_KEY_SECRET}
@@ -96,6 +103,28 @@ MODELS: dict[str, dict] = {
     },
 }
 
+# Video edit: the take goes in, a redone take comes out with its timing.
+#   video        the source clip field; a list field takes exactly one URL
+#   seconds      (min, max) source length the endpoint accepts. Seedance pads a
+#                shorter clip to 4 s itself; stretching it here first keeps
+#                that padding under our control (see edit_source)
+#   max_images   reference images (the panel, to keep faces on model)
+EDIT_MODELS: dict[str, dict] = {
+    "seedance-2.5-edit": {
+        "endpoint": "bytedance/seedance-2.5/video-edit",
+        "video": "video_url", "video_is_list": False, "seconds": (4, 30),
+        "max_images": 30, "resolutions": ("480p", "720p", "1080p"),
+        "audio": ("generate_audio", False), "fixed": {"bitrate_mode": "high"},
+    },
+    # Duration is derived from the clip; the endpoint takes 3-15.5 s, 200 MB.
+    "kling-o3-edit": {
+        "endpoint": "kling-video/o3/video-edit",
+        "video": "video_urls", "video_is_list": True, "seconds": (3, 15.5),
+        "max_images": 4, "resolutions": None, "audio": None, "fixed": {"mode": "pro"},
+    },
+}
+EDIT_MAX_BYTES = 200 * 1024 * 1024
+
 UPLOAD_TYPES = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
 TERMINAL = ("completed", "failed", "nsfw", "canceled")
 
@@ -128,9 +157,10 @@ def _headers() -> dict:
 
 
 def model_spec(model: str) -> dict:
-    if model not in MODELS:
-        raise ValueError(f"Unknown model {model!r}; one of {sorted(MODELS)}.")
-    return MODELS[model]
+    spec = MODELS.get(model) or EDIT_MODELS.get(model)
+    if spec is None:
+        raise ValueError(f"Unknown model {model!r}; one of {sorted(MODELS) + sorted(EDIT_MODELS)}.")
+    return spec
 
 
 def payload(model: str, prompt: str, first_url: str, last_url: str | None = None,
@@ -140,7 +170,9 @@ def payload(model: str, prompt: str, first_url: str, last_url: str | None = None
     No network; testable on its own. `resolution` is ignored by models without
     the field (Kling), and refused when a model has the field but not the value.
     """
-    spec = model_spec(model)
+    if model not in MODELS:
+        raise ValueError(f"{model!r} is not an image-to-video model; one of {sorted(MODELS)}.")
+    spec = MODELS[model]
     if not prompt or not prompt.strip():
         # Kling requires one, and an unprompted take is money spent on a guess.
         raise ValueError("Give a prompt: camera first, the motion, then what stays still.")
@@ -162,10 +194,81 @@ def payload(model: str, prompt: str, first_url: str, last_url: str | None = None
     return body
 
 
+def edit_payload(model: str, prompt: str, video_url: str, image_urls: list[str] | None = None,
+                 resolution: str | None = "720p") -> dict:
+    """The request body for one video-edit take. No network; testable on its own."""
+    if model not in EDIT_MODELS:
+        raise ValueError(f"{model!r} is not a video-edit model; one of {sorted(EDIT_MODELS)}.")
+    spec = EDIT_MODELS[model]
+    if not prompt or not prompt.strip():
+        raise ValueError("Give a prompt: what to keep (the motion, the camera), then what to redo.")
+    if not video_url:
+        raise ValueError("A source clip is required.")
+    image_urls = list(image_urls or [])
+    if len(image_urls) > spec["max_images"]:
+        raise ValueError(f"{model} takes at most {spec['max_images']} reference images.")
+    body = {"prompt": prompt, spec["video"]: [video_url] if spec["video_is_list"] else video_url}
+    if image_urls:
+        body["image_urls"] = image_urls
+    if spec["resolutions"] is not None and resolution is not None:
+        if resolution not in spec["resolutions"]:
+            raise ValueError(f"{model} resolution must be one of {spec['resolutions']}.")
+        body["resolution"] = resolution
+    if spec["audio"]:
+        field, off = spec["audio"]
+        body[field] = off
+    body.update(spec["fixed"])
+    return body
+
+
+def edit_source(clip_path: str, out_mp4: str, model: str, fit: str = "slow") -> dict:
+    """Write the take as the mp4 an edit endpoint will accept.
+
+    LTX takes run about 2 s, under both endpoints' minimum. fit "slow" plays the
+    same frames at a lower rate until the clip is long enough, so the model sees
+    the whole motion, slowed; fit "pad" holds the last frame instead. Either way
+    the result is put back to the take's own length by to_view(speed=,
+    max_seconds=); the returned dict carries both values.
+    """
+    from tools import repair   # the clip reader and writer the repair tools use
+
+    if fit not in ("slow", "pad"):
+        raise ValueError('fit must be "slow" or "pad".')
+    lo, hi = EDIT_MODELS[model]["seconds"]
+    frames, fps = repair.read_clip(clip_path)
+    if not frames:
+        raise ValueError(f"No frames in {clip_path}")
+    seconds = len(frames) / fps
+    if seconds > hi:
+        raise ValueError(f"{os.path.basename(clip_path)} runs {seconds:.1f} s; {model} takes at "
+                         f"most {hi} s. Cut it first.")
+    # A small margin, so rounding in the encoder never lands under the minimum.
+    target = lo + 0.25
+    speed, out_fps = 1.0, fps
+    if seconds < target:
+        if fit == "slow":
+            out_fps = len(frames) / target
+            speed = fps / out_fps
+        else:
+            frames = frames + [frames[-1]] * (int(target * fps + 0.999) - len(frames))
+    # libx264 needs even sides.
+    w, h = frames[0].size
+    if w % 2 or h % 2:
+        frames = [f.crop((0, 0, w - w % 2, h - h % 2)) for f in frames]
+    repair.write_clip(frames, out_fps, out_mp4)
+    if os.path.getsize(out_mp4) > EDIT_MAX_BYTES:
+        raise ValueError(f"{out_mp4} is over {EDIT_MAX_BYTES >> 20} MB.")
+    return {"mp4": out_mp4, "source_seconds": round(seconds, 3),
+            "sent_seconds": round(len(frames) / out_fps, 3), "speed": speed, "fit": fit}
+
+
 def upload(path: str) -> str:
-    """Upload one image to Higgsfield storage; returns its public URL."""
+    """Upload one image or mp4 to Higgsfield storage; returns its public URL."""
     if not os.path.isfile(path):
-        raise FileNotFoundError(f"Image not found: {path}")
+        raise FileNotFoundError(f"File not found: {path}")
+    if path.lower().endswith(".mp4"):
+        with open(path, "rb") as f:
+            return _put(f.read(), "video/mp4")
     with Image.open(path) as im:
         ctype = UPLOAD_TYPES.get(im.format or "")
         if ctype:
@@ -176,6 +279,10 @@ def upload(path: str) -> str:
             buf = io.BytesIO()
             im.convert("RGB").save(buf, "PNG")
             ctype, data = "image/png", buf.getvalue()
+    return _put(data, ctype)
+
+
+def _put(data: bytes, ctype: str) -> str:
     r = requests.post(f"{API_URL}/files/generate-upload-url", json={"content_type": ctype},
                       headers=_headers(), timeout=60)
     if r.status_code != 200:
@@ -279,7 +386,8 @@ def _probe_fps(mp4: str, ffmpeg: str) -> float:
 
 
 def to_view(mp4: str, dst: str, ffmpeg: str, fps: int = 12,
-            last_png: str | None = None) -> dict:
+            last_png: str | None = None, speed: float = 1.0,
+            max_seconds: float | None = None) -> dict:
     """Resample the mp4 to an animated webp at `fps`, the pipeline's clip format.
 
     The shot library, contact sheets, effects and the assembler all read
@@ -287,17 +395,22 @@ def to_view(mp4: str, dst: str, ffmpeg: str, fps: int = 12,
     here and is then indistinguishable from an LTX take downstream.
     `last_png` also saves the clip's final frame at full rate — a ready-made
     first frame for the next shot.
+    `speed` plays the clip that many times faster and `max_seconds` keeps only
+    that much of the result: how an edit sent slowed or padded (edit_source)
+    gets its own timing back.
 
     Resampled in Python, not with ffmpeg's fps filter: the ffmpeg this machine
     uses is Remotion's slimmed build, which ships without it.
     """
-    src_fps = _probe_fps(mp4, ffmpeg)
+    src_fps = _probe_fps(mp4, ffmpeg) * speed
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run([ffmpeg, "-v", "error", "-i", mp4,
                         os.path.join(tmp, "f%05d.png")], check=True)
         names = sorted(n for n in os.listdir(tmp) if n.endswith(".png"))
         if not names:
             raise CloudError(f"ffmpeg extracted no frames from {mp4}")
+        if max_seconds is not None:
+            names = names[:max(1, int(round(max_seconds * src_fps)))]
         if last_png:
             Image.open(os.path.join(tmp, names[-1])).convert("RGB").save(last_png)
         n_out = max(1, int(round(len(names) * fps / src_fps)))

@@ -232,6 +232,22 @@ def main() -> int:
                     os.environ[k] = v
     check("no key: refuses before any request", no_key_no_call)
 
+    def edit_fields():
+        b = cv.edit_payload("kling-o3-edit", "Keep the motion.", first, [last])
+        # Kling's source is a ONE-item list; Seedance's is a plain string.
+        assert b["video_urls"] == [first] and b["image_urls"] == [last], b
+        assert "resolution" not in b and "duration" not in b, b
+        b = cv.edit_payload("seedance-2.5-edit", "Keep the motion.", first, None, "1080p")
+        assert b["video_url"] == first and b["generate_audio"] is False, b
+        assert "image_urls" not in b, "an empty list is below the schema's minimum of 1"
+        for model, refs in (("kling-o3-edit", [last] * 5), ("seedance-2.5", [])):
+            try:
+                cv.edit_payload(model, "x", first, refs)
+            except ValueError:
+                continue
+            raise AssertionError(f"accepted {model} with {len(refs)} refs")
+    check("edit payload: each model's source field, ref limits", edit_fields)
+
     try:
         ff = assemble.find_ffmpeg()
     except FileNotFoundError:
@@ -260,6 +276,26 @@ def main() -> int:
             red = Image.open(last_png).getpixel((10, 10))[0]
             assert abs(red - 235) < 12, red
         check("cloud mp4 -> 12 fps webp keeps every frame, saves the last", mp4_to_view)
+
+        def edit_round_trip():
+            # A 2 s take, 49 frames at 24 fps like LTX's, sent slowed to clear
+            # Seedance's 4 s minimum, must come back as 2 s again.
+            take = os.path.join(tmp, "take.webp")
+            frames = [Image.new("RGB", (640, 360), (i * 5, 90, 160)) for i in range(49)]
+            frames[0].save(take, save_all=True, append_images=frames[1:], duration=41, loop=0)
+            for fit in ("slow", "pad"):
+                src = cv.edit_source(take, os.path.join(tmp, f"sent_{fit}.mp4"),
+                                     "seedance-2.5-edit", fit)
+                assert src["sent_seconds"] >= 4.0, src
+                assert abs(src["source_seconds"] - 2.01) < 0.05, src
+                # Pretend the model returned exactly what it was sent.
+                r = cv.to_view(src["mp4"], os.path.join(tmp, f"back_{fit}.webp"), ff, fps=12,
+                               last_png=os.path.join(tmp, f"back_{fit}.png"),
+                               speed=src["speed"], max_seconds=src["source_seconds"])
+                assert abs(r["frames"] - 24) <= 1, (fit, r)
+                red = Image.open(os.path.join(tmp, f"back_{fit}.png")).getpixel((10, 10))[0]
+                assert abs(red - 240) < 12, (fit, red)
+        check("edit: a 2 s take sent long comes back 2 s", edit_round_trip)
 
     print("framing")
     if not frame:
