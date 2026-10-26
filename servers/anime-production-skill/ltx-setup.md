@@ -102,6 +102,6 @@ the preview straight in.
 
 ## When LTX is not enough
 
-The MCP server's `animate_shot_cloud` sends a shot to Seedance 2.0 on BytePlus —
-paid per take, the panel leaves the machine — for actions a local model will
-not do.
+The MCP server's `animate_shot_cloud` sends a shot to a Seedance or Kling model
+on Higgsfield — paid per take, the panel leaves the machine — for actions a
+local model will not do.

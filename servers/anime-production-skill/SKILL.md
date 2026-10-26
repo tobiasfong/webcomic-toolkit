@@ -291,7 +291,7 @@ STAYS STILL. Positive phrasing throughout — negatives are ignored.
 
 Run ~3 seeds per shot and judge the 12 fps preview by eye — seeds differ a lot.
 For an action no seed will do, the MCP server's `animate_shot_cloud` (Seedance
-2.0, paid per take) is the fallback.
+or Kling on Higgsfield, paid per take) is the fallback.
 
 ### The workflow: Klein-generated art and hand-drawn art
 
@@ -340,8 +340,8 @@ from:
      that all stays, so expect the drawing re-inked in Klein's style.
 
 No shot is left as a still: a still is a failed shot, with no reason to be in an
-animation. (Seedance, `animate_shot_cloud`, is a separate paid option outside
-this chain.)
+animation. (`animate_shot_cloud`, paid models on Higgsfield, is a separate
+option outside this chain.)
 
 **4. Review as video, not contact sheets.** Approve, trim a tail that runs too
 far, add drawn effects, then assemble — every scene plays once, with no loops

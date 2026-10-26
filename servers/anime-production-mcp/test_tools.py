@@ -180,33 +180,57 @@ def main() -> int:
     print("cloud (no network)")
     import cloud_video as cv
     from PIL import Image
-    panel = os.path.join(tmp, "panel.png")
-    Image.new("RGB", (640, 360), (40, 90, 160)).save(panel)
+    first, last = "https://example.com/a.png", "https://example.com/b.png"
 
-    def payload_shape():
-        b = cv.payload("The camera holds locked off.", first_frame=panel,
-                       last_frame=panel, duration=5, resolution="720p")
-        roles = [c.get("role") for c in b["content"] if c["type"] == "image_url"]
-        assert roles == ["first_frame", "last_frame"], roles
-        assert b["content"][0] == {"type": "text", "text": "The camera holds locked off."}
-        # The API turns audio ON unless told; the soundtrack comes from elsewhere.
-        assert b["generate_audio"] is False and b["watermark"] is False, b
-        assert b["ratio"] == "adaptive", "a fixed ratio would stretch the panel"
-        assert "seed" not in b, "Seedance 2.0 takes no seed"
-        assert b["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
-    check("payload: roles, no audio, adaptive ratio, no seed", payload_shape)
+    def payload_fields():
+        # Each model spells its frame fields its own way; one wrong name and
+        # the end pose is silently dropped while the take is still billed.
+        want = {"seedance-2.5": ("image_url", "end_image_url"),
+                "seedance-2.0": ("image_url", "end_image_url"),
+                "kling-3.0-std": ("image_url", "last_image_url"),
+                "kling-3.0-pro": ("image_url", "last_image_url"),
+                "kling-o3": ("first_frame_url", "last_frame_url")}
+        assert set(want) == set(cv.MODELS), "a model was added without a test row"
+        for model, (f, l) in want.items():
+            b = cv.payload(model, "The camera holds locked off.", first, last, 5, "720p")
+            assert b[f] == first and b[l] == last, (model, b)
+            # Sound defaults ON on most of these; the soundtrack comes from elsewhere.
+            assert b.get("generate_audio") is False or b.get("sound") == "off", (model, b)
+            assert "seed" not in b, "none of these takes a seed"
+            # Kling has no resolution field; sending one would be rejected.
+            assert ("resolution" in b) == model.startswith("seedance"), (model, b)
+    check("payload: each model's frame fields, sound off, no seed", payload_fields)
 
     def payload_refuses():
-        for kw in ({"first_frame": panel, "refs": [panel]},      # mixed modes
-                   {"first_frame": panel, "duration": 3},        # under 4 s
-                   {"first_frame": panel, "resolution": "4k"},   # not offered here
-                   {"last_frame": panel}):                       # no first frame
+        for model, kw in (("seedance-2.0", {"duration": 3}),        # under 4 s
+                          ("seedance-2.0", {"duration": 16}),       # over 15 s
+                          ("seedance-2.5", {"resolution": "4k"}),   # not offered on 2.5
+                          ("kling-3.0-pro", {"prompt": " "}),       # Kling needs a prompt
+                          ("veo", {})):                             # not a curated model
+            args = {"prompt": "x", "duration": 5, "resolution": "720p", **kw}
             try:
-                cv.payload("x", **kw)
+                cv.payload(model, args["prompt"], first, None, args["duration"], args["resolution"])
             except ValueError:
                 continue
-            raise AssertionError(f"accepted {kw}")
-    check("payload refuses mixed modes and out-of-range values", payload_refuses)
+            raise AssertionError(f"accepted {model} {kw}")
+    check("payload refuses out-of-range values and unknown models", payload_refuses)
+
+    def no_key_no_call():
+        saved = {k: os.environ.pop(k, None)
+                 for k in (cv.KEY_ID_ENV, cv.KEY_SECRET_ENV, cv.KEY_PAIR_ENV)}
+        try:
+            assert not cv.has_key()
+            try:
+                cv._headers()
+            except cv.CloudError:
+                pass
+            else:
+                raise AssertionError("headers built with no key")
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+    check("no key: refuses before any request", no_key_no_call)
 
     try:
         ff = assemble.find_ffmpeg()
@@ -226,11 +250,16 @@ def main() -> int:
             subprocess.run([ff, "-v", "error", "-framerate", "24", "-i",
                             os.path.join(src, "f%03d.png"), "-pix_fmt", "yuv420p",
                             mp4], check=True)
-            r = cv.to_view(mp4, os.path.join(tmp, "cloud_12fps.webp"), ff, fps=12)
+            last_png = os.path.join(tmp, "cloud_last.png")
+            r = cv.to_view(mp4, os.path.join(tmp, "cloud_12fps.webp"), ff, fps=12,
+                           last_png=last_png)
             # 2 s at 12 fps; and the webp must keep every frame, not merge any.
             assert r["frames"] == 24, r
             assert len(motion.read_frames(r["path"])) == 24, "frames lost in the webp"
-        check("cloud mp4 -> 12 fps webp keeps every frame", mp4_to_view)
+            # The last frame is the clip's FINAL one (red 235), not the first.
+            red = Image.open(last_png).getpixel((10, 10))[0]
+            assert abs(red - 235) < 12, red
+        check("cloud mp4 -> 12 fps webp keeps every frame, saves the last", mp4_to_view)
 
     print("framing")
     if not frame:

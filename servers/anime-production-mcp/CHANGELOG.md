@@ -1,5 +1,44 @@
 # Changelog
 
+## 3.2.0 — 2026-10-26
+
+**`animate_shot_cloud` moves from BytePlus to Higgsfield.** One account now
+reaches several paid video models through one request lifecycle, instead of
+Seedance alone. The BytePlus client is gone; `cloud_video.py` is the
+Higgsfield client.
+
+- **The model is a required argument**, so a paid run always names what it
+  spends on: `seedance-2.5`, `seedance-2.0`, `kling-3.0-std`, `kling-3.0-pro`,
+  `kling-o3`. Each is mapped from its own documented schema, since the
+  first- and last-frame fields are spelled differently per model (Kling O3's
+  `first_frame_url` against Kling 3.0's `image_url`, Seedance's
+  `end_image_url` against Kling's `last_image_url`).
+- **Priced before submitting.** Higgsfield quotes the exact request
+  (`/estimate`); `max_usd` refuses a run over budget, and `estimate_only`
+  returns the price and spends nothing. The old third-party price table is
+  gone.
+- Local checks (prompt, duration, resolution, ffmpeg) run before anything is
+  uploaded. A lost or 5xx submission is retried with the same
+  Idempotency-Key, so a retry is never billed as a second take. Polling never
+  cancels a request.
+- Sound is switched off on every model (most default it on). The last frame
+  is cut from the clip itself, since these endpoints return none.
+- Keys come from `HF_API_KEY_ID` / `HF_API_KEY_SECRET` (or
+  `HF_CREDENTIALS`); `check_status` reports whether they are set, never their
+  values. The presigned upload URL never receives them.
+
+**Not yet verified against the live API**: no key existed when this was
+written. The request formats follow docs.higgsfield.ai as of 2026-10-26.
+
+**New tools: `inspect_moment` and `repair_frames`.** Name a shot and a time;
+`inspect_moment` returns a slowed clip of that moment with each frame's
+number burned in, and borders red the drawings that dip against their
+neighbors (a smear or a flash frame). `repair_frames` then replaces the
+named frames with a hold of the clean frame before them. The red border is a hint,
+not a verdict: measured on the OP1 cut, it cannot tell fast motion from a
+smear. `mode="interp"` (in-betweens by RIFE) needs `rife-ncnn-vulkan`, which
+is not installed.
+
 ## 3.1.0 — 2026-10-22
 
 **First-and-last-frame mode: `animate_shot(last_frame_path=...)`.** Give the

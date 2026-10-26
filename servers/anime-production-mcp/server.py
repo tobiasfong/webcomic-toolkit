@@ -284,81 +284,100 @@ def animate_shot(project: str, name: str, image_path: str, prompt: str,
 
 @mcp.tool()
 def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
-                       takes: int = 1, last_frame_path: str | None = None,
+                       model: str, takes: int = 1, last_frame_path: str | None = None,
                        duration: int = 5, resolution: str = "720p",
+                       max_usd: float | None = None, estimate_only: bool = False,
                        measure_box: list[int] | None = None,
                        view_fps: int = 12) -> dict:
-    """Animate one illustration with Seedance 2.0 on BytePlus — PAID, per take.
+    """Animate one illustration on a paid Higgsfield video model — BILLED PER TAKE.
 
     For the shots LTX cannot do: an action that must actually happen (a full
-    kick, a thrust) and hands that must survive it. Everything else — hair,
-    cloth, small gestures, camera drift — stays on the free `animate_shot`.
+    kick, a thrust, a sprint) and faces and hands that must survive it.
+    Everything else — hair, cloth, small gestures, camera drift — stays on the
+    free `animate_shot`.
 
-    ⚠ EACH TAKE IS BILLED, and Seedance 2.0 takes no seed, so a take cannot be
-    reproduced. Defaults to ONE take; at most 3 per call. The result carries a
-    cost ESTIMATE; the ModelArk console has the real bill.
+    model: REQUIRED, so a paid run always names its model — one of
+        seedance-2.5, seedance-2.0, kling-3.0-std, kling-3.0-pro, kling-o3
+        (cloud_video.MODELS has each one's limits).
 
-    ⚠ The panel is uploaded to BytePlus (ByteDance) for every take.
+    ⚠ EACH TAKE IS BILLED, and none of these models takes a seed, so a take
+    cannot be reproduced. Defaults to ONE take; at most 3 per call. Higgsfield
+    prices the exact request before anything is submitted; `max_usd` refuses
+    the run if the total would exceed it, and `estimate_only=True` returns the
+    price and spends nothing. Failed and moderated takes are not charged.
+
+    ⚠ The panel (and the end pose, if given) is uploaded to Higgsfield — even
+    for estimate_only, since the price is quoted on the real request.
 
     last_frame_path: the pose the action should END on. Interpolating between
-        two drawings is the mode for actions LTX refuses — render the end pose
-        with the character server, then let this fill in the motion.
-    duration: 4-15 s. resolution: 480p / 720p / 1080p. The clip takes its
-        aspect from the panel, so nothing is stretched.
+        two drawings is the mode for actions a model refuses — render the end
+        pose with Klein, then let this fill in the motion.
+    duration: seconds, within the model's range (Seedance 4-15 or 4-30, Kling
+        3-15). resolution: Seedance only (480p / 720p / 1080p; 2.0 also 4k);
+        Kling's tier is in the model name. The clip follows the panel's framing.
 
     Takes land in the same shot library as LTX takes, as an mp4 plus a 12 fps
-    webp, so contact_sheet, approve_shot and assemble_video treat them alike.
-    Prompt the same way as for LTX: camera first, the motion, then what stays
-    still — but ask for the FULL action; that is what is being paid for.
+    webp and the last frame as a png, so contact_sheet, approve_shot and
+    assemble_video treat them alike. Prompt the same way as for LTX: camera
+    first, the motion, then what stays still — but ask for the FULL action;
+    that is what is being paid for.
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
+    if last_frame_path and not os.path.isfile(last_frame_path):
+        raise FileNotFoundError(f"Image not found: {last_frame_path}")
     if not 1 <= takes <= 3:
         raise ValueError("Run 1-3 takes per call; each one is billed.")
-    body = cv.payload(prompt, first_frame=image_path, last_frame=last_frame_path,
-                      duration=duration, resolution=resolution)
-    ffmpeg = asm.find_ffmpeg()   # fail before paying, not after
+    # Everything that can fail locally fails before a byte is uploaded.
+    dummy = "https://example.com/panel.png"
+    cv.payload(model, prompt, dummy, dummy if last_frame_path else None, duration, resolution)
+    ffmpeg = asm.find_ffmpeg()
+
+    first_url = cv.upload(image_path)
+    last_url = cv.upload(last_frame_path) if last_frame_path else None
+    body = cv.payload(model, prompt, first_url, last_url, duration, resolution)
+    per_take = cv.estimate_usd(model, body)
+    total = round(per_take * takes, 4) if per_take is not None else None
+    if estimate_only:
+        return {"model": model, "est_usd_per_take": per_take, "est_usd_total": total,
+                "takes": takes, "next": "Nothing was generated or billed."}
+    if max_usd is not None and (total is None or total > max_usd):
+        raise ValueError(f"Estimated ${total} for {takes} take(s) of {model}; over the "
+                         f"max_usd of ${max_usd}. Nothing was submitted.")
 
     results = []
     for take in range(1, takes + 1):
         t0 = time.time()
-        task_id = cv.create(body)
-        task = cv.wait(task_id)
-        shot_id = f"{sh.slugify(name)}_cloud{take}_{time.strftime('%Y%m%d_%H%M%S')}"
+        handle = cv.submit(model, body)
+        rec = cv.wait(handle)
+        shot_id = f"{sh.slugify(name)}_{sh.slugify(model)}{take}_{time.strftime('%Y%m%d_%H%M%S')}"
         d = sh.shot_dir(project, shot_id)
-        content = task.get("content") or {}
-        raw = cv.download(content["video_url"], os.path.join(d, f"{shot_id}.mp4"))
-        files = {"mp4": raw}
-        if content.get("last_frame_url"):
-            files["last_frame"] = cv.download(content["last_frame_url"],
-                                              os.path.join(d, f"{shot_id}_last.jpg"))
+        raw = cv.download(rec["video"]["url"], os.path.join(d, f"{shot_id}.mp4"))
         view = os.path.join(d, f"{shot_id}_{view_fps}fps.webp")
-        cv.to_view(raw, view, ffmpeg, fps=view_fps)
-        files["retimed"] = view
+        last_png = os.path.join(d, f"{shot_id}_last.png")
+        cv.to_view(raw, view, ffmpeg, fps=view_fps, last_png=last_png)
+        files = {"mp4": raw, "retimed": view, "last_frame": last_png}
         m = motion.measure(view, tuple(measure_box) if measure_box else None)
-        est = cv.estimate_usd(duration, resolution)
         sh.record(project, shot_id, name,
-                  {"provider": "byteplus", "model": task.get("model") or cv.MODEL,
+                  {"provider": "higgsfield", "model": model,
+                   "endpoint": cv.model_spec(model)["endpoint"],
                    "prompt": prompt, "image": os.path.basename(image_path),
                    "last_frame": os.path.basename(last_frame_path) if last_frame_path else None,
-                   "duration": duration, "resolution": resolution,
-                   "task_id": task_id, "seed": task.get("seed"),
-                   "tokens": (task.get("usage") or {}).get("total_tokens"),
-                   "est_usd": est},
+                   "duration": duration, "resolution": body.get("resolution"),
+                   "request_id": handle.get("request_id"), "est_usd": per_take},
                   files,
                   {"maxdev": m["maxdev"], "span": m["span"],
                    "peak_frame": m["peak_frame"], "reading": m["reading"]})
         results.append({"shot_id": shot_id, "take": take, "view": view, "mp4": raw,
-                        "last_frame": files.get("last_frame"), "est_usd": est,
+                        "last_frame": last_png, "est_usd": per_take,
                         "seconds": round(time.time() - t0), "maxdev": m["maxdev"],
                         "reading": m["reading"]})
 
-    known = [r["est_usd"] for r in results if r["est_usd"] is not None]
     return {
-        "project": project, "name": name, "model": cv.MODEL, "takes": results,
-        "est_usd_total": round(sum(known), 2) if known else None,
-        "next": ("LOOK at each `view` (or contact_sheet it) before approve_shot. The cost "
-                 "is an estimate; the ModelArk console has the real bill."),
+        "project": project, "name": name, "model": model, "takes": results,
+        "est_usd_total": round(per_take * len(results), 4) if per_take is not None else None,
+        "next": ("LOOK at each `view` before approve_shot. The cost is Higgsfield's "
+                 "estimate; the console at console.higgsfield.ai has the real bill."),
     }
 
 
@@ -610,6 +629,41 @@ def scan_artifacts(clip_path: str, box: list[int] | None = None,
 
 
 @mcp.tool()
+def inspect_moment(clip_path: str, center_s: float, window_s: float = 1.0, slow: int = 4,
+                   threshold: float = 0.7) -> dict:
+    """Step one of fixing a smear: a slow-motion clip of a ROUGH moment, every frame numbered.
+
+    For when someone has seen a smear but cannot name the frame ("around 0:57"). Cuts
+    [center_s - window_s, center_s + window_s] out of a take (12 fps webp) or a finished video (mp4),
+    plays it `slow` times slower, and burns each frame's number in large; they read off the bad
+    numbers while it plays and pass them to repair_frames. Frames the detector suspects get a red
+    border: a HINT. It cannot tell fast motion from damage (measured: a real smear 0.62-0.69, clean
+    drawings in the same push-in 0.65-0.75), so it narrows where to look and nothing more. Send the
+    clip as video.
+    """
+    from tools import repair as rp
+    return rp.inspect(clip_path, center_s, window_s, slow, threshold=threshold)
+
+
+@mcp.tool()
+def repair_frames(clip_path: str, bad_frames: list[int], mode: str = "hold",
+                  out_path: str | None = None) -> dict:
+    """Step two: replace the frames someone named from inspect_moment's numbers.
+
+    mode "hold" repeats the nearest clean frame before the run: an ordinary anime hold at 12 fps, but it
+    reads as a stutter during a camera move. mode "interp" redraws the run as in-betweens of the clean
+    frames on both sides with RIFE (needs WEBCOMIC_ANIME_RIFE pointing at rife-ncnn-vulkan). Exact
+    doubles of a bad frame (a 24 fps video's copy of a 12 fps drawing) are replaced too. Writes
+    `<name>_repaired` beside the source unless `out_path` is given, never over it; a video keeps its
+    audio. Show the result as video before using it.
+    """
+    from tools import repair as rp
+    if mode not in ("hold", "interp"):
+        raise ValueError("mode must be 'hold' or 'interp'")
+    return rp.repair(clip_path, bad_frames, mode, out_path)
+
+
+@mcp.tool()
 def measure_frame_slot(frame_path: str) -> dict:
     """Find the transparent slot in a drawn frame.
 
@@ -741,8 +795,9 @@ def check_status() -> dict:
     status["ltx25"] = {"missing": [f"{lw.LTX25_FOLDERS[k]}/{n}" for k, n in lw.LTX25.items()
                                    if not os.path.isfile(os.path.join(root25, lw.LTX25_FOLDERS[k], n))]}
     status["main_comfy"] = {"url": comfy.COMFY_URL, "running": comfy.comfy_is_up()}
-    status["cloud"] = {"provider": "byteplus", "model": cv.MODEL,
-                       "key_set": cv.has_key(), "key_env": cv.API_KEY_ENV}
+    status["cloud"] = {"provider": "higgsfield", "models": sorted(cv.MODELS),
+                       "key_set": cv.has_key(),
+                       "key_env": [cv.KEY_ID_ENV, cv.KEY_SECRET_ENV]}
     try:
         status["ffmpeg"] = asm.find_ffmpeg()
     except FileNotFoundError as e:

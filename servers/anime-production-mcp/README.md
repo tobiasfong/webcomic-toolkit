@@ -341,8 +341,8 @@ from:
      that all stays, so expect the drawing re-inked in Klein's style.
 
 No shot is left as a still: a still is a failed shot, with no reason to be in an
-animation. (Seedance, `animate_shot_cloud`, is a separate paid option outside
-this chain.)
+animation. (`animate_shot_cloud`, paid models on Higgsfield, is a separate
+option outside this chain.)
 
 **4. Review as video, not contact sheets.** Approve, trim a tail that runs too
 far, add drawn effects, then assemble — every scene plays once, with no loops
@@ -423,18 +423,22 @@ FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 | `WEBCOMIC_ANIME_KLEIN_URL` | `http://127.0.0.1:8189` |
 | `WEBCOMIC_ANIME_KLEIN_DIR` | `C:\AI\ComfyUI_flux3` |
 | `WEBCOMIC_ANIME_KLEIN_AUTOLAUNCH` | `1` |
-| `ARK_API_KEY` | unset — only `animate_shot_cloud` needs it; a BytePlus ModelArk key |
-| `WEBCOMIC_ANIME_ARK_MODEL` | `dreamina-seedance-2-0-260128` — copy the exact ID from the ModelArk console |
-| `WEBCOMIC_ANIME_ARK_URL` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
+| `HF_API_KEY_ID`, `HF_API_KEY_SECRET` | unset — only `animate_shot_cloud` needs them; a Higgsfield API key pair from console.higgsfield.ai (or both as `HF_CREDENTIALS=id:secret`) |
+| `WEBCOMIC_ANIME_HF_URL` | `https://api.higgsfield.ai` |
 
 ## Tools
 
 **Generate** — `animate_shot` (the seed hunt: N takes, retimed, scored, recorded)
-· `animate_shot_cloud` (PAID: Seedance 2.0 on BytePlus, one take per call by
-default, for actions LTX refuses) · `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
+· `animate_shot_cloud` (PAID: Seedance or Kling on Higgsfield, the model named
+on every call, priced before submitting, one take per call by default, for
+actions LTX refuses) · `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
 the region only)
 
 **Judge** — `measure_motion` · `retime_clip` · `contact_sheet`
+
+**Repair** — `inspect_moment` (a slowed clip with frame numbers burned in,
+suspect frames bordered red) · `repair_frames` (replace named frames with a
+hold of the clean frame before them)
 
 **Draw** — `add_impact` · `grow_layer` · `add_streaks` · `add_water`
 
