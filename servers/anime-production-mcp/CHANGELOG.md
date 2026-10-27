@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.4.0 — 2026-10-27
+
+**Character references: `animate_shot_cloud(ref_images=...)` and the
+`kling-o3-ref` model** (Kling O3 image reference). The panel goes in as the
+first frame and the characters' sprites as reference images, so a character
+the panel shows small, or one who enters the shot, is drawn from their own
+design. It is the only workflow here that takes a first frame and references
+together. A model without a reference field refuses sprites instead of
+dropping them while the take is still billed.
+
 ## 3.3.0 — 2026-10-26
 
 **New tool: `edit_shot_cloud`, paid video edit on Higgsfield.** For a take

@@ -189,7 +189,8 @@ def main() -> int:
                 "seedance-2.0": ("image_url", "end_image_url"),
                 "kling-3.0-std": ("image_url", "last_image_url"),
                 "kling-3.0-pro": ("image_url", "last_image_url"),
-                "kling-o3": ("first_frame_url", "last_frame_url")}
+                "kling-o3": ("first_frame_url", "last_frame_url"),
+                "kling-o3-ref": ("first_frame_url", "last_frame_url")}
         assert set(want) == set(cv.MODELS), "a model was added without a test row"
         for model, (f, l) in want.items():
             b = cv.payload(model, "The camera holds locked off.", first, last, 5, "720p")
@@ -200,6 +201,17 @@ def main() -> int:
             # Kling has no resolution field; sending one would be rejected.
             assert ("resolution" in b) == model.startswith("seedance"), (model, b)
     check("payload: each model's frame fields, sound off, no seed", payload_fields)
+
+    def payload_refs():
+        b = cv.payload("kling-o3-ref", "x", first, None, 5, None, [last, last])
+        assert b["image_urls"] == [last, last] and b["multi_shots"] is False, b
+        # A model with no reference field must refuse, not silently drop them.
+        try:
+            cv.payload("seedance-2.5", "x", first, None, 5, "720p", [last])
+        except ValueError:
+            return
+        raise AssertionError("seedance-2.5 accepted reference images")
+    check("payload: character refs on kling-o3-ref only", payload_refs)
 
     def payload_refuses():
         for model, kw in (("seedance-2.0", {"duration": 3}),        # under 4 s

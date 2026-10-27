@@ -287,6 +287,7 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
                        model: str, takes: int = 1, last_frame_path: str | None = None,
                        duration: int = 5, resolution: str = "720p",
                        max_usd: float | None = None, estimate_only: bool = False,
+                       ref_images: list[str] | None = None,
                        measure_box: list[int] | None = None,
                        view_fps: int = 12) -> dict:
     """Animate one illustration on a paid Higgsfield video model — BILLED PER TAKE.
@@ -297,8 +298,11 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
     free `animate_shot`.
 
     model: REQUIRED, so a paid run always names its model — one of
-        seedance-2.5, seedance-2.0, kling-3.0-std, kling-3.0-pro, kling-o3
-        (cloud_video.MODELS has each one's limits).
+        seedance-2.5, seedance-2.0, kling-3.0-std, kling-3.0-pro, kling-o3,
+        kling-o3-ref (cloud_video.MODELS has each one's limits).
+    ref_images: the characters' sprites, so the model draws them from their
+        own designs, including a character who enters the shot. Only
+        kling-o3-ref takes them; any other model refuses rather than drop them.
 
     ⚠ EACH TAKE IS BILLED, and none of these models takes a seed, so a take
     cannot be reproduced. Defaults to ONE take; at most 3 per call. Higgsfield
@@ -324,18 +328,21 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
     """
     if not os.path.isfile(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
-    if last_frame_path and not os.path.isfile(last_frame_path):
-        raise FileNotFoundError(f"Image not found: {last_frame_path}")
+    for p in [last_frame_path] + list(ref_images or []):
+        if p and not os.path.isfile(p):
+            raise FileNotFoundError(f"Image not found: {p}")
     if not 1 <= takes <= 3:
         raise ValueError("Run 1-3 takes per call; each one is billed.")
     # Everything that can fail locally fails before a byte is uploaded.
     dummy = "https://example.com/panel.png"
-    cv.payload(model, prompt, dummy, dummy if last_frame_path else None, duration, resolution)
+    cv.payload(model, prompt, dummy, dummy if last_frame_path else None, duration, resolution,
+               [dummy] * len(ref_images or []))
     ffmpeg = asm.find_ffmpeg()
 
     first_url = cv.upload(image_path)
     last_url = cv.upload(last_frame_path) if last_frame_path else None
-    body = cv.payload(model, prompt, first_url, last_url, duration, resolution)
+    ref_urls = [cv.upload(p) for p in ref_images or []]
+    body = cv.payload(model, prompt, first_url, last_url, duration, resolution, ref_urls)
     per_take = cv.estimate_usd(model, body)
     total = round(per_take * takes, 4) if per_take is not None else None
     if estimate_only:
@@ -363,6 +370,7 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
                    "endpoint": cv.model_spec(model)["endpoint"],
                    "prompt": prompt, "image": os.path.basename(image_path),
                    "last_frame": os.path.basename(last_frame_path) if last_frame_path else None,
+                   "refs": [os.path.basename(p) for p in ref_images or []],
                    "duration": duration, "resolution": body.get("resolution"),
                    "request_id": handle.get("request_id"), "est_usd": per_take},
                   files,

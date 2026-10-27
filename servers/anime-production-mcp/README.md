@@ -431,7 +431,8 @@ FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 **Generate** — `animate_shot` (the seed hunt: N takes, retimed, scored, recorded)
 · `animate_shot_cloud` (PAID: Seedance or Kling on Higgsfield, the model named
 on every call, priced before submitting, one take per call by default, for
-actions LTX refuses) · `edit_shot_cloud` (PAID: hands an existing take to a
+actions LTX refuses; `kling-o3-ref` also takes the characters' sprites as
+references) · `edit_shot_cloud` (PAID: hands an existing take to a
 video-edit model to redraw, keeping its motion — for a take whose motion is
 right but whose faces or hands smear) · `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
 the region only)

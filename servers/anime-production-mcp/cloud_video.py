@@ -101,6 +101,17 @@ MODELS: dict[str, dict] = {
         "first": "first_frame_url", "last": "last_frame_url", "durations": (3, 15),
         "resolutions": None, "audio": ("sound", "off"), "fixed": {"mode": "pro"},
     },
+    # Kling O3 with character references: the panel as the first frame, plus the
+    # characters' sprites (`refs`), so a character the panel does not show, or
+    # shows small, is drawn from their own design. The only workflow here that
+    # takes a first frame AND references; Seedance's reference mode has no
+    # first frame, and Soul ID references work only with Soul image models.
+    "kling-o3-ref": {
+        "endpoint": "kling-video/o3/image-reference",
+        "first": "first_frame_url", "last": "last_frame_url", "refs": "image_urls",
+        "durations": (3, 15), "resolutions": None, "audio": ("sound", "off"),
+        "fixed": {"mode": "pro", "multi_shots": False},
+    },
 }
 
 # Video edit: the take goes in, a redone take comes out with its timing.
@@ -164,11 +175,14 @@ def model_spec(model: str) -> dict:
 
 
 def payload(model: str, prompt: str, first_url: str, last_url: str | None = None,
-            duration: int = 5, resolution: str | None = "720p") -> dict:
+            duration: int = 5, resolution: str | None = "720p",
+            ref_urls: list[str] | None = None) -> dict:
     """The request body for one take, from already-uploaded image URLs.
 
     No network; testable on its own. `resolution` is ignored by models without
     the field (Kling), and refused when a model has the field but not the value.
+    `ref_urls` (character sprites) are refused by a model that cannot take them,
+    rather than dropped while the take is still billed.
     """
     if model not in MODELS:
         raise ValueError(f"{model!r} is not an image-to-video model; one of {sorted(MODELS)}.")
@@ -184,6 +198,10 @@ def payload(model: str, prompt: str, first_url: str, last_url: str | None = None
     body = {"prompt": prompt, spec["first"]: first_url, "duration": int(duration)}
     if last_url:
         body[spec["last"]] = last_url
+    if ref_urls:
+        if "refs" not in spec:
+            raise ValueError(f"{model} takes no reference images; kling-o3-ref does.")
+        body[spec["refs"]] = list(ref_urls)
     if spec["resolutions"] is not None and resolution is not None:
         if resolution not in spec["resolutions"]:
             raise ValueError(f"{model} resolution must be one of {spec['resolutions']}.")
