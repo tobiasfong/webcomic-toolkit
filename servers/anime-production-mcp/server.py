@@ -298,11 +298,12 @@ def animate_shot_cloud(project: str, name: str, image_path: str, prompt: str,
     free `animate_shot`.
 
     model: REQUIRED, so a paid run always names its model — one of
-        seedance-2.5, seedance-2.0, kling-3.0-std, kling-3.0-pro, kling-o3,
-        kling-o3-ref (cloud_video.MODELS has each one's limits).
-    ref_images: the characters' sprites, so the model draws them from their
-        own designs, including a character who enters the shot. Only
-        kling-o3-ref takes them; any other model refuses rather than drop them.
+        seedance-2.5, seedance-2.0, kling-3.0-std, kling-3.0-pro, kling-4.0
+        (cloud_video.MODELS has each one's limits).
+    ref_images: the characters' sprites, for a model whose first-frame mode
+        takes references. None does since Kling O3 was replaced by Kling 4.0
+        (whose extra images are middle keyframes), so any model refuses them
+        rather than drop them while the take is still billed.
 
     ⚠ EACH TAKE IS BILLED, and none of these models takes a seed, so a take
     cannot be reproduced. Defaults to ONE take; at most 3 per call. Higgsfield
@@ -400,15 +401,15 @@ def edit_shot_cloud(project: str, name: str, clip_path: str, prompt: str, model:
     model gets the take itself and redraws it, keeping the motion and camera.
     When the motion itself is wrong, animate_shot_cloud from the panel instead.
 
-    model: REQUIRED — seedance-2.5-edit or kling-o3-edit.
+    model: REQUIRED — seedance-2.5-edit or kling-4.0-edit.
     clip_path: the take, at its full frame rate (the shot's own .webp or .mp4,
         not the 12 fps preview), so the model sees every drawing.
     ref_images: the panel the take was made from, and any character sheet, so
-        the redrawn faces stay on model (Kling takes 4, Seedance 30).
+        the redrawn faces stay on model (Kling takes 10, Seedance 30).
     fit: LTX takes run ~2 s, under both models' minimum (Kling 3 s, Seedance
         4 s). "slow" sends the same frames at a lower rate; "pad" holds the last
         frame. The result is put back to the take's own length either way.
-    resolution: Seedance only.
+    resolution: 720p or 1080p (Seedance also 480p).
 
     ⚠ EACH TAKE IS BILLED, with no seed. One take by default, at most 3.
     Priced by Higgsfield before submitting; max_usd and estimate_only work as
@@ -435,7 +436,7 @@ def edit_shot_cloud(project: str, name: str, clip_path: str, prompt: str, model:
                                                  stem + "_sent.mp4"), model, fit)
     video_url = cv.upload(src["mp4"])
     image_urls = [cv.upload(r) for r in ref_images or []]
-    body = cv.edit_payload(model, prompt, video_url, image_urls, resolution)
+    body = cv.edit_payload(model, prompt, video_url, image_urls, resolution, src["sent_seconds"])
     per_take = cv.estimate_usd(model, body)
     total = round(per_take * takes, 4) if per_take is not None else None
     if estimate_only:

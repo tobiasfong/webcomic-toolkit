@@ -43,6 +43,7 @@ downloaded as soon as it completes.
 from __future__ import annotations
 
 import io
+import math
 import os
 import random
 import re
@@ -94,25 +95,17 @@ MODELS: dict[str, dict] = {
         "first": "image_url", "last": "last_image_url", "durations": (3, 15),
         "resolutions": None, "audio": ("sound", "off"), "fixed": {},
     },
-    # Kling O3's first-and-last-frame workflow. Its own field names differ from
-    # Kling 3.0's (first_frame_url, not image_url), and its tier is a field.
-    "kling-o3": {
-        "endpoint": "kling-video/o3/first-last-frame",
-        "first": "first_frame_url", "last": "last_frame_url", "durations": (3, 15),
-        "resolutions": None, "audio": ("sound", "off"), "fixed": {"mode": "pro"},
-    },
-    # Kling O3 with character references: the panel as the first frame, plus the
-    # characters' sprites (`refs`), so a character the panel does not show, or
-    # shows small, is drawn from their own design. The only workflow here that
-    # takes a first frame AND references; Seedance's reference mode has no
-    # first frame, and Soul ID references work only with Soul image models.
-    "kling-o3-ref": {
-        "endpoint": "kling-video/o3/image-reference",
-        "first": "first_frame_url", "last": "last_frame_url", "refs": "image_urls",
-        "durations": (3, 15), "resolutions": None, "audio": ("sound", "off"),
-        "fixed": {"mode": "pro", "multi_shots": False},
+    # Kling 4.0 (replaced Kling O3 on 2026-10-30). Its image_urls are
+    # MIDDLE keyframes, not character references, so no "refs" here; its
+    # reference mode has no first frame. No sound field is documented.
+    "kling-4.0": {
+        "endpoint": "kling-video/v4.0/image-to-video",
+        "first": "image_url", "last": "end_image_url", "durations": (3, 30),
+        "resolutions": ("720p", "1080p"), "audio": None, "fixed": {},
     },
 }
+# A model with "refs" (the field for the characters' sprites) would take them;
+# none here does since Kling O3 left, so ref_images are refused, never dropped.
 
 # Video edit: the take goes in, a redone take comes out with its timing.
 #   video        the source clip field; a list field takes exactly one URL
@@ -127,11 +120,13 @@ EDIT_MODELS: dict[str, dict] = {
         "max_images": 30, "resolutions": ("480p", "720p", "1080p"),
         "audio": ("generate_audio", False), "fixed": {"bitrate_mode": "high"},
     },
-    # Duration is derived from the clip; the endpoint takes 3-15.5 s, 200 MB.
-    "kling-o3-edit": {
-        "endpoint": "kling-video/o3/video-edit",
-        "video": "video_urls", "video_is_list": True, "seconds": (3, 15.5),
-        "max_images": 4, "resolutions": None, "audio": None, "fixed": {"mode": "pro"},
+    # Kling 4.0 does NOT copy the length from the clip: "duration" must be sent,
+    # whole seconds, 3-30 (set from the clip as sent; the tail is cut on return).
+    "kling-4.0-edit": {
+        "endpoint": "kling-video/v4.0/video-edit",
+        "video": "video_url", "video_is_list": False, "seconds": (3, 30),
+        "max_images": 10, "resolutions": ("720p", "1080p"), "audio": None,
+        "sets_duration": True, "fixed": {},
     },
 }
 EDIT_MAX_BYTES = 200 * 1024 * 1024
@@ -200,20 +195,21 @@ def payload(model: str, prompt: str, first_url: str, last_url: str | None = None
         body[spec["last"]] = last_url
     if ref_urls:
         if "refs" not in spec:
-            raise ValueError(f"{model} takes no reference images; kling-o3-ref does.")
+            raise ValueError(f"{model} takes no reference images.")
         body[spec["refs"]] = list(ref_urls)
     if spec["resolutions"] is not None and resolution is not None:
         if resolution not in spec["resolutions"]:
             raise ValueError(f"{model} resolution must be one of {spec['resolutions']}.")
         body["resolution"] = resolution
-    field, off = spec["audio"]
-    body[field] = off
+    if spec["audio"]:
+        field, off = spec["audio"]
+        body[field] = off
     body.update(spec["fixed"])
     return body
 
 
 def edit_payload(model: str, prompt: str, video_url: str, image_urls: list[str] | None = None,
-                 resolution: str | None = "720p") -> dict:
+                 resolution: str | None = "720p", seconds: float | None = None) -> dict:
     """The request body for one video-edit take. No network; testable on its own."""
     if model not in EDIT_MODELS:
         raise ValueError(f"{model!r} is not a video-edit model; one of {sorted(EDIT_MODELS)}.")
@@ -235,6 +231,10 @@ def edit_payload(model: str, prompt: str, video_url: str, image_urls: list[str] 
     if spec["audio"]:
         field, off = spec["audio"]
         body[field] = off
+    if spec.get("sets_duration"):
+        # `seconds` is the clip as sent; whole seconds, rounded up so none of it is lost.
+        lo, hi = spec["seconds"]
+        body["duration"] = max(lo, min(hi, math.ceil(seconds or lo)))
     body.update(spec["fixed"])
     return body
 
@@ -273,6 +273,8 @@ def edit_source(clip_path: str, out_mp4: str, model: str, fit: str = "slow") -> 
     w, h = frames[0].size
     if w % 2 or h % 2:
         frames = [f.crop((0, 0, w - w % 2, h - h % 2)) for f in frames]
+    # The take folder may not exist yet (the edit's first take creates it); ffmpeg will not.
+    os.makedirs(os.path.dirname(os.path.abspath(out_mp4)), exist_ok=True)
     repair.write_clip(frames, out_fps, out_mp4)
     if os.path.getsize(out_mp4) > EDIT_MAX_BYTES:
         raise ValueError(f"{out_mp4} is over {EDIT_MAX_BYTES >> 20} MB.")
@@ -320,7 +322,16 @@ def estimate_usd(model: str, body: dict) -> float | None:
                       headers=_headers(), timeout=60)
     if r.status_code != 200:
         raise CloudError(f"Estimate refused ({r.status_code}): {r.text[:400]}")
-    usd = r.json().get("usd")
+    data = r.json()
+    usd = data.get("usd")
+    if usd is None and data.get("type") == "description":
+        # Seedance prices by the second and answers with a rate sheet ("... $0.4622 at 720p ...") instead
+        # of a figure. Rate x duration, at the list price (before discounts), so a cap set from it is safe.
+        res = body.get("resolution", "720p")
+        m = re.search(r"\$([\d.]+)(?: per second of generated video)? at " + re.escape(res),
+                      data.get("pricing_description", ""))
+        if m and body.get("duration"):
+            usd = float(m.group(1)) * float(body["duration"])
     return round(float(usd), 4) if usd is not None else None
 
 

@@ -189,29 +189,32 @@ def main() -> int:
                 "seedance-2.0": ("image_url", "end_image_url"),
                 "kling-3.0-std": ("image_url", "last_image_url"),
                 "kling-3.0-pro": ("image_url", "last_image_url"),
-                "kling-o3": ("first_frame_url", "last_frame_url"),
-                "kling-o3-ref": ("first_frame_url", "last_frame_url")}
+                "kling-4.0": ("image_url", "end_image_url")}
         assert set(want) == set(cv.MODELS), "a model was added without a test row"
         for model, (f, l) in want.items():
             b = cv.payload(model, "The camera holds locked off.", first, last, 5, "720p")
             assert b[f] == first and b[l] == last, (model, b)
             # Sound defaults ON on most of these; the soundtrack comes from elsewhere.
-            assert b.get("generate_audio") is False or b.get("sound") == "off", (model, b)
+            # (Kling 4.0 documents no sound field, so nothing is sent for it.)
+            if cv.MODELS[model]["audio"]:
+                assert b.get("generate_audio") is False or b.get("sound") == "off", (model, b)
             assert "seed" not in b, "none of these takes a seed"
-            # Kling has no resolution field; sending one would be rejected.
-            assert ("resolution" in b) == model.startswith("seedance"), (model, b)
+            # Kling 3.0 has no resolution field; sending one would be rejected.
+            assert ("resolution" in b) == (cv.MODELS[model]["resolutions"] is not None), (model, b)
     check("payload: each model's frame fields, sound off, no seed", payload_fields)
 
     def payload_refs():
-        b = cv.payload("kling-o3-ref", "x", first, None, 5, None, [last, last])
-        assert b["image_urls"] == [last, last] and b["multi_shots"] is False, b
-        # A model with no reference field must refuse, not silently drop them.
-        try:
-            cv.payload("seedance-2.5", "x", first, None, 5, "720p", [last])
-        except ValueError:
-            return
-        raise AssertionError("seedance-2.5 accepted reference images")
-    check("payload: character refs on kling-o3-ref only", payload_refs)
+        # A model with no reference field must refuse, not silently drop them
+        # (Kling 4.0's image_urls are middle keyframes, not references).
+        for model in cv.MODELS:
+            if "refs" in cv.MODELS[model]:
+                continue
+            try:
+                cv.payload(model, "x", first, None, 5, "720p", [last])
+            except ValueError:
+                continue
+            raise AssertionError(f"{model} accepted reference images")
+    check("payload: character refs refused where there is no field", payload_refs)
 
     def payload_refuses():
         for model, kw in (("seedance-2.0", {"duration": 3}),        # under 4 s
@@ -245,14 +248,14 @@ def main() -> int:
     check("no key: refuses before any request", no_key_no_call)
 
     def edit_fields():
-        b = cv.edit_payload("kling-o3-edit", "Keep the motion.", first, [last])
-        # Kling's source is a ONE-item list; Seedance's is a plain string.
-        assert b["video_urls"] == [first] and b["image_urls"] == [last], b
-        assert "resolution" not in b and "duration" not in b, b
+        b = cv.edit_payload("kling-4.0-edit", "Keep the motion.", first, [last], "720p", 3.25)
+        # Kling 4.0 does not take the length from the clip: whole seconds, rounded up.
+        assert b["video_url"] == first and b["image_urls"] == [last], b
+        assert b["duration"] == 4 and b["resolution"] == "720p", b
         b = cv.edit_payload("seedance-2.5-edit", "Keep the motion.", first, None, "1080p")
         assert b["video_url"] == first and b["generate_audio"] is False, b
         assert "image_urls" not in b, "an empty list is below the schema's minimum of 1"
-        for model, refs in (("kling-o3-edit", [last] * 5), ("seedance-2.5", [])):
+        for model, refs in (("kling-4.0-edit", [last] * 11), ("seedance-2.5", [])):
             try:
                 cv.edit_payload(model, "x", first, refs)
             except ValueError:

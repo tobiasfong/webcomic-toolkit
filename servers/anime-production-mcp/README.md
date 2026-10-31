@@ -8,6 +8,13 @@ the track and its beat grid, this one animates the artwork and cuts to it.
 
 Verified on a 6 GB RTX 3060 Laptop.
 
+**Paid upgrade (optional).** If LTX-2.5 cannot give you a shot — an action
+that has to actually happen, or faces and hands that have to survive the
+motion — `animate_shot_cloud` and `edit_shot_cloud` send it to Seedance or
+Kling on Higgsfield instead. Each take is billed to your own Higgsfield
+account and priced before it is submitted. Without a Higgsfield key nothing
+changes: the free local chain never calls them, and they refuse to run.
+
 ---
 
 ## The rule that decides whether a shot will work at all
@@ -431,8 +438,7 @@ FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 **Generate** — `animate_shot` (the seed hunt: N takes, retimed, scored, recorded)
 · `animate_shot_cloud` (PAID: Seedance or Kling on Higgsfield, the model named
 on every call, priced before submitting, one take per call by default, for
-actions LTX refuses; `kling-o3-ref` also takes the characters' sprites as
-references) · `edit_shot_cloud` (PAID: hands an existing take to a
+actions LTX refuses; `kling-4.0` for Kling) · `edit_shot_cloud` (PAID: hands an existing take to a
 video-edit model to redraw, keeping its motion — for a take whose motion is
 right but whose faces or hands smear) · `edit_frame` (Klein keyframe or boxed edit) · `composite_patch` (bring back
 the region only)

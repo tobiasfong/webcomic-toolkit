@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.5.0 — 2026-10-31
+
+**Kling 4.0 replaces Kling O3** on both paid tools: `kling-4.0` for
+`animate_shot_cloud` (3-30 s, 720p or 1080p, an optional end frame) and
+`kling-4.0-edit` for `edit_shot_cloud` (up to 10 reference images).
+
+- `kling-o3-ref` is gone with it. Kling 4.0's extra images are middle
+  keyframes, not character references, so `ref_images` is now refused by every
+  model rather than dropped while the take is still billed.
+- Kling 4.0's edit does not take its length from the clip: the duration is
+  sent, in whole seconds rounded up from the clip as sent.
+- Seedance answers a price estimate with a per-second rate sheet, not a dollar
+  figure; the price is now worked out from it (list price, before discounts),
+  so the confirm-before-paying step shows a real number for Seedance too.
+- A first edit take no longer fails when its take folder does not exist yet.
+- The README says up front that the paid route is optional.
+
 ## 3.4.0 — 2026-10-27
 
 **Character references: `animate_shot_cloud(ref_images=...)` and the
