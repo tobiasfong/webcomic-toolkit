@@ -899,7 +899,7 @@ def check_status() -> dict:
     status["main_comfy"] = {"url": comfy.COMFY_URL, "running": comfy.comfy_is_up()}
     status["cloud"] = {"provider": "higgsfield", "models": sorted(cv.MODELS),
                        "key_set": cv.has_key(),
-                       "key_env": [cv.KEY_ID_ENV, cv.KEY_SECRET_ENV]}
+                       "key_env": [cv.KEY_ID_ENV, cv.KEY_SECRET_ENV, cv.KEY_PAIR_ENV]}
     try:
         status["ffmpeg"] = asm.find_ffmpeg()
     except FileNotFoundError as e:

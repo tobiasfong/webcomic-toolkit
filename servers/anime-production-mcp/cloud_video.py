@@ -139,11 +139,29 @@ class CloudError(RuntimeError):
     pass
 
 
+def _user_env(name: str) -> str:
+    """A Windows user variable read from the registry. An MCP server is started with only a short list of
+    inherited variables plus its config's env, so a key saved as a user variable never reaches its process
+    (2026-11-01). Reading it here keeps the key out of the MCP config file."""
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+            return str(winreg.QueryValueEx(k, name)[0])
+    except OSError:
+        return ""
+
+
+def _env(name: str) -> str:
+    return os.environ.get(name) or _user_env(name)
+
+
 def _credentials() -> tuple[str, str] | None:
-    kid, secret = os.environ.get(KEY_ID_ENV), os.environ.get(KEY_SECRET_ENV)
+    kid, secret = _env(KEY_ID_ENV), _env(KEY_SECRET_ENV)
     if kid and secret:
         return kid, secret
-    pair = os.environ.get(KEY_PAIR_ENV, "")
+    pair = _env(KEY_PAIR_ENV)
     if ":" in pair:
         kid, secret = pair.split(":", 1)
         return kid, secret
@@ -158,7 +176,7 @@ def _headers() -> dict:
     cred = _credentials()
     if not cred:
         raise CloudError(f"No Higgsfield key. Create one at console.higgsfield.ai and set "
-                         f"{KEY_ID_ENV} and {KEY_SECRET_ENV} for this server.")
+                         f"{KEY_ID_ENV} and {KEY_SECRET_ENV} (or {KEY_PAIR_ENV} as id:secret) for this server.")
     return {"Authorization": f"Key {cred[0]}:{cred[1]}", "Content-Type": "application/json"}
 
 

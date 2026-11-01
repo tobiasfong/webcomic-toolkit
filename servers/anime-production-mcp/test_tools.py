@@ -233,6 +233,7 @@ def main() -> int:
     def no_key_no_call():
         saved = {k: os.environ.pop(k, None)
                  for k in (cv.KEY_ID_ENV, cv.KEY_SECRET_ENV, cv.KEY_PAIR_ENV)}
+        user_env, cv._user_env = cv._user_env, lambda name: ""   # nor a saved user variable
         try:
             assert not cv.has_key()
             try:
@@ -242,10 +243,25 @@ def main() -> int:
             else:
                 raise AssertionError("headers built with no key")
         finally:
+            cv._user_env = user_env
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
     check("no key: refuses before any request", no_key_no_call)
+
+    def key_from_user_variable():
+        saved = {k: os.environ.pop(k, None)
+                 for k in (cv.KEY_ID_ENV, cv.KEY_SECRET_ENV, cv.KEY_PAIR_ENV)}
+        user_env = cv._user_env
+        cv._user_env = lambda name: "kid:secret" if name == cv.KEY_PAIR_ENV else ""
+        try:
+            assert cv._credentials() == ("kid", "secret"), "user variable not read"
+        finally:
+            cv._user_env = user_env
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+    check("key saved only as a user variable is found", key_from_user_variable)
 
     def edit_fields():
         b = cv.edit_payload("kling-4.0-edit", "Keep the motion.", first, [last], "720p", 3.25)
