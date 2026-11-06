@@ -66,6 +66,13 @@ detail):
 - **`generate_expression`** — an expression as a WHOLE new body, rendered from
   scratch on a different seed from its base and matted. The body moves with the
   mood; a face is never pasted onto the base.
+- **`fix_hands`** / **`apply_hand_fix`** — bad hands in one step: each hand cropped
+  with its sleeve, enlarged 4x, redrawn in a box sized to a natural hand, four
+  candidates per hand on one sheet labeled by side both ways; then one pick per
+  hand is pasted in and matted. A hand is ~50 px in a full-body render, too small
+  for fingers; at 4x it is ~200 px.
+- **`touch_up`** — one small defect (a dented outline, a stray line) redrawn at 6x
+  in a tight box, built on what is there.
 - **`generate_scene`** — several registered characters in one render.
 - **`edit_character_image`** — re-pose or re-frame from an image (no box), or redraw
   one region of it (with a box).

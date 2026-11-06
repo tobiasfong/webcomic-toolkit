@@ -93,9 +93,15 @@ where something genuinely cannot be generated together.
 6. **Erasing to a flat color before redrawing cuts both ways.** On a pale floor
    it produced a clean new hand. On a dark textured floor the flat patch was
    read as the new hand's SILHOUETTE and filled as a paper cutout.
-7. **Hands are still the weak point, and rerolling beats patching.** Six
-   region repairs produced one clean hand; three fresh seeds of the full
-   render produced one with both hands right. Reroll first.
+7. **Hands are still the weak point -- use `fix_hands`, first.** A hand is
+   ~50 px in a full-body render, too small for fingers. `fix_hands` (character
+   server) redraws each hand at 4x in a box sized to a natural hand and puts
+   four candidates per hand on one sheet; `apply_hand_fix` pastes the picks;
+   `touch_up` fixes one leftover dent at 6x. Measured 2026-11-07: about two
+   hours went to boxed redraws at full size, whole-figure rerolls, a hand
+   drawing as a reference, a transplant and code patches of hand pixels; the
+   4x route got usable hands in one or two sheets. Never patch hand pixels in
+   code -- every such patch made a new defect.
 8. **Color words are taken literally.** "Cheeks flushed deep red with fever"
    came back looking like heavy makeup. The author's own sentence — "sick with
    a fever, sleeping, perspiring and breathing heavily" — gave a believable

@@ -8,6 +8,37 @@ This server lives in the [`webcomic-toolkit`](https://github.com/tobiasfong/webc
 monorepo (`servers/character-panel-mcp`) alongside its sibling servers from day one;
 releases are tagged `character-panel-mcp@vX.Y.Z`.
 
+## [2.1.0] — 2026-11-07 — hands in one step
+
+Fixing two hands on one sprite took about two hours, almost all of it on routes
+that cannot work at a hand's real size (~50 px in a full-body render): boxed
+redraws, whole-figure rerolls, a hand drawing as a second reference, a
+transplant from another sprite, and code patches of hand pixels, each of which
+made a new defect. The one route that worked is now a tool.
+
+### Added
+
+- **`fix_hands`** (`tools/hand_fix.py`) — finds both hands by the face's own skin
+  tone below the chest (or takes boxes), crops each with its sleeve, enlarges it
+  4x, redraws it in a box sized to about the face's height (a layout box sets
+  size) that starts a quarter of its height up INSIDE the sleeve, so the cuff,
+  hem and wrist are drawn together; shrinks it back and pastes the box with a
+  fade over the sleeve's plain cloth. Four seeds per hand
+  on ONE sheet, each hand labeled "viewer's left (their right)" or the reverse.
+  ~2.5 minutes a sheet on the 6 GB card.
+  - Splitting the redraw at the hem failed both ways, and both are recorded so
+    nobody retries them: a straight edge at the wrist cut a diagonal hem and
+    redrew the sleeve out of line; an edge following the hem column by column
+    kept bits of the old wrist where the new hand was drawn differently.
+  - No erase before the redraw: a flat erase patch comes back as a flat pale hand.
+  - Pasting only the detected hand shape was tried and reverted: it cut pale
+    fingertips and left the old fingers as ghosts.
+- **`apply_hand_fix`** — pastes one picked candidate per hand (exactly the pixels
+  that candidate changed) and mattes the result.
+- **`touch_up`** — one small defect redrawn at 6x in a tight box, built on what
+  is there. Fixed a dented finger outline first try where three code edits of the
+  same spot each made it worse.
+
 ## [2.0.0] — 2026-10-17 — FLUX 3 Klein only; FLUX.1 removed
 
 FLUX 3 Image Klein became the default for every rendering tool on 2026-10-17

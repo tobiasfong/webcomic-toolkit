@@ -1092,6 +1092,89 @@ def compose_panel(
 
 
 @mcp.tool()
+def fix_hands(
+    image_path: str,
+    seeds: int = 4,
+    hand_boxes: list[list[int]] | None = None,
+    seed_base: int = 0,
+    prompt: str = "",
+) -> str:
+    """Bad hands on a sprite: candidates for EVERY hand on ONE sheet, to pick from.
+
+    The one route that fixes hands (measured 2026-11-07, after two hours of
+    routes that do not): in a full-body render a hand is ~50 px, too small for
+    fingers, so each hand is cropped WITH its sleeve, enlarged 4x, redrawn in a
+    box sized to a natural hand that starts INSIDE the sleeve (so the cuff, hem
+    and wrist are drawn together), shrunk back, and pasted with a fade over the
+    sleeve's plain cloth. No code patching of hand pixels, no erasing first (a
+    flat erase patch comes back as a flat pale hand). Then call apply_hand_fix
+    with one seed per hand, and touch_up for any small dent left.
+
+    image_path: the RAW render (RGB, on its backdrop), not the matted cutout.
+    seeds: how many candidates per hand (4 is one sheet's worth).
+    hand_boxes: [[x0, y0, x1, y1], ...] to override detection: from the wrist
+        down to the fingertips you want (its size is the size the hand comes
+        back at); it is extended up into the sleeve automatically. Detection finds the face's skin tone below the chest and grows
+        each hand to about the face's height.
+    seed_base: added to 1..seeds, so a second sheet does not repeat the first.
+    prompt: replaces the default wording -- add the ANGLE only for a failure
+        seen ("hanging straight down at the side, fingers pointing to the ground").
+    """
+    from tools import hand_fix
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(image_path)),
+                           "hands_" + os.path.splitext(os.path.basename(image_path))[0])
+    try:
+        sheet, man = hand_fix.fix_hands(image_path, out_dir, seeds=tuple(range(1, seeds + 1)),
+                                        boxes=hand_boxes, seed_base=seed_base,
+                                        text=prompt or hand_fix.TEXT)
+    except (ValueError, klein_workflow.KleinError) as e:
+        return f"fix_hands failed: {e}"
+    W = __import__("PIL.Image", fromlist=["Image"]).open(image_path).size[0]
+    sides = "; ".join(f"hand {i} {hand_fix._side(b, W)} box {list(b)}" for i, b in enumerate(man["boxes"]))
+    return (f"Sheet: {sheet}\n  {sides}\n  seeds {man['seeds']}\n"
+            f"Send the sheet to the author; then apply_hand_fix(\"{out_dir}\", {{hand: seed, ...}}).")
+
+
+@mcp.tool()
+def apply_hand_fix(hands_dir: str, picks: dict[str, int], matte: bool = True) -> str:
+    """Paste the picked hand candidates from a fix_hands run into the raw picture.
+
+    hands_dir: the folder fix_hands reported (it holds the manifest).
+    picks: {"0": seed, "1": seed} -- one seed per hand; a hand left out keeps
+        its current drawing.
+    matte: also cut the result out (RGBA), ready to install.
+    """
+    from tools import hand_fix
+    try:
+        fixed = hand_fix.apply_hand_fix(hands_dir, picks)
+    except (OSError, KeyError, ValueError) as e:
+        return f"apply_hand_fix failed: {e}"
+    if not matte:
+        return f"Hands applied: {fixed}"
+    cut, note = _matte_or_note(fixed)
+    return f"Hands applied: {fixed}\n  matted: {cut}{note}"
+
+
+@mcp.tool()
+def touch_up(image_path: str, box: list[int], instruction: str = "", seed: int = 1) -> str:
+    """One SMALL defect -- a dent in an outline, a stray line, a smear -- redrawn
+    at 6x inside a tight box, built on what is there. Only the box changes.
+
+    Use it after a hand is otherwise right; for a wrong hand use fix_hands.
+    Measured: a finger's dented outline was fixed first try this way, where
+    three code edits of the same spot each made it worse.
+    box: [x0, y0, x1, y1] around just the defect.
+    """
+    from tools import hand_fix
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(image_path)), "touchups")
+    try:
+        p = hand_fix.touch_up(image_path, box, out_dir, seed=seed, text=instruction or hand_fix.TOUCH_TEXT)
+    except klein_workflow.KleinError as e:
+        return f"touch_up failed: {e}"
+    return f"Touched up: {p}"
+
+
+@mcp.tool()
 def check_status() -> str:
     """Check whether both ComfyUIs are reachable: Klein's (rendering) and the
     main one (matting). The bible and compose_panel work without either."""
