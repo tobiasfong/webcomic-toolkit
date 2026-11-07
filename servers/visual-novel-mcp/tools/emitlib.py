@@ -261,7 +261,9 @@ def bind(speakers):
         # are markup this pipeline produced, and doubling those prints "{i}"
         # to the player instead of slanting the line.
         s = s.replace("\\", "\\\\").replace('"', '\\"').replace("[", "[[") \
-             .replace("{", "{{")
+             .replace("{", "{{").replace("%", "%%")
+        # A literal % is a format code to Ren'Py (a line reading "50%, or"
+        # lints as the unknown code '%,'); doubled, it prints as one.
         return s.replace("{{i}", "{i}").replace("{{/i}", "{/i}")
 
     def say(t, indent="    ", var=None):
