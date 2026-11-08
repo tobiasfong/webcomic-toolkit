@@ -242,7 +242,12 @@ def step_overlap(project, docx):
     return "%d pair(s) at or above 30%%; top: %s (report only)" % (len(rows), top)
 
 
-AMBIENT = ("snow", "fog", "rain", "ember", "dust", "petal", "aura", "mist", "glow")
+## "barrier" (2026-11-09): a standing ward seen as scenery -- faded in, held
+## behind the cast for a whole passage -- is set dressing, not a hit. A
+## barrier raised IN a fight takes its sound from the fight's PLATE_SFX, which
+## the second half of this step checks separately.
+AMBIENT = ("snow", "fog", "rain", "ember", "dust", "petal", "aura", "mist", "glow",
+           "barrier")
 
 
 def step_sound(project, docx):

@@ -25,16 +25,16 @@ sprites.json:
   "characters": {
     "<character_id>": {
       "tag": "pc",                       # the Ren'Py image tag
-      "body": "images/sprites/<character_id>/body.png",   # relative to game_dir
+      "body": "images/sprites/<character_id>/body.webp",   # relative to game_dir
       "target_height": 0.85,               # body height as fraction of screen
       "mirror_ok": true,                   # false when costume detail is asymmetric
       "notes": "...",
       "expressions": {
-        "worried": {"patch": "images/sprites/.../expr_worried.png",
+        "worried": {"patch": "images/sprites/.../expr_worried.webp",
                     "offset": [412, 188]}   # top-left px of patch on body canvas
       },
       "bodies": {                          # FULL-BODY variants, see below
-        "anger": {"body": "images/sprites/.../body_anger.png", "size": [360, 894]}
+        "anger": {"body": "images/sprites/.../body_anger.webp", "size": [360, 894]}
       }
     }
   }
@@ -97,14 +97,50 @@ def png_size(path: str) -> tuple[int, int]:
     return w, h
 
 
+## ⚠ ART IN THE GAME TREE IS WebP (2026-11-09). Installed art is a COPY; the
+## approved masters stay PNG wherever they were made. WebP at quality 90 cut
+## one project's images from 253 MB to 39 MB with no difference the author
+## could see side by side, and the web host caps a browser game at 500 MB.
+## Everything that writes art into game/ goes through save_game_image().
+GAME_IMAGE_EXT = ".webp"
+WEBP_QUALITY = 90
+
+
+def game_image_bytes(im) -> bytes:
+    """Encode an image the way every installed game image is encoded.
+    Deterministic for the same pixels, so a re-install compares equal."""
+    import io
+    buf = io.BytesIO()
+    im.save(buf, "WEBP", quality=WEBP_QUALITY, method=4)
+    return buf.getvalue()
+
+
+def save_game_image(im, dest: str) -> None:
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "wb") as f:
+        f.write(game_image_bytes(im))
+
+
+def image_size(path: str) -> tuple[int, int]:
+    """Width/height of any image file (masters may be PNG or WebP)."""
+    from PIL import Image
+    with Image.open(path) as im:
+        return im.size
+
+
 def _copy_into_game(src: str, game_dir: str, rel_dest: str) -> str:
-    """Copy an asset into the game tree (Ren'Py loads only from there).
-    Refuses to clobber a different existing file."""
+    """Install an image into the game tree (Ren'Py loads only from there),
+    encoded as WebP whatever the source format. Refuses to clobber a
+    different existing file."""
+    from PIL import Image
+    if not rel_dest.endswith(GAME_IMAGE_EXT):
+        rel_dest = os.path.splitext(rel_dest)[0] + GAME_IMAGE_EXT
     dest = os.path.join(game_dir, rel_dest)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.path.abspath(src) != os.path.abspath(dest):
-        with open(src, "rb") as f:
-            blob = f.read()
+        with Image.open(src) as im:
+            im.load()
+            blob = game_image_bytes(im)
         if os.path.isfile(dest):
             with open(dest, "rb") as f:
                 if f.read() != blob:
@@ -125,8 +161,8 @@ def register_character(manifest: dict, game_dir: str, character: str, body_path:
                        height_cm: float | None = None) -> dict:
     if not os.path.isfile(body_path):
         raise SpriteError(f"Body PNG not found: {body_path}")
-    w, h = png_size(body_path)
-    rel = _copy_into_game(body_path, game_dir, f"images/sprites/{character}/body.png")
+    w, h = image_size(body_path)
+    rel = _copy_into_game(body_path, game_dir, f"images/sprites/{character}/body{GAME_IMAGE_EXT}")
     entry = manifest["characters"].setdefault(character, {"expressions": {}})
     entry.update({
         "tag": tag or entry.get("tag") or character.split("_")[0],
@@ -156,7 +192,7 @@ def register_expression(manifest: dict, game_dir: str, character: str,
     if not os.path.isfile(patch_path):
         raise SpriteError(f"Patch PNG not found: {patch_path}")
     entry = manifest["characters"][character]
-    pw, ph = png_size(patch_path)
+    pw, ph = image_size(patch_path)
     bw, bh = entry["body_size"]
     if offset_x < 0 or offset_y < 0 or offset_x + pw > bw or offset_y + ph > bh:
         raise SpriteError(
@@ -164,7 +200,7 @@ def register_expression(manifest: dict, game_dir: str, character: str,
             f"the {bw}x{bh} body canvas."
         )
     rel = _copy_into_game(
-        patch_path, game_dir, f"images/sprites/{character}/expr_{expression}.png"
+        patch_path, game_dir, f"images/sprites/{character}/expr_{expression}{GAME_IMAGE_EXT}"
     )
     entry["expressions"][expression] = {
         "patch": rel, "size": [pw, ph], "offset": [offset_x, offset_y],
@@ -204,17 +240,15 @@ def register_body(manifest: dict, game_dir: str, character: str, name: str,
             old_im = Image.open(fp).convert("RGBA")
             wide = Image.new("RGBA", (w, bh), (0, 0, 0, 0))
             wide.paste(old_im, ((w - old_im.width) // 2, 0))
-            wide.save(fp)
+            save_game_image(wide, fp)
         for b in (entry.get("bodies") or {}).values():
             b["size"] = [w, bh]
         entry["body_size"] = [w, bh]
         bw = w
     canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
     canvas.paste(im, ((bw - w) // 2, 0))
-    rel = f"images/sprites/{character}/body_{name}.png"
-    dst = os.path.join(game_dir, rel)
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    canvas.save(dst)
+    rel = f"images/sprites/{character}/body_{name}{GAME_IMAGE_EXT}"
+    save_game_image(canvas, os.path.join(game_dir, rel))
     entry.setdefault("bodies", {})[name] = {"body": rel, "size": [bw, bh]}
     return entry["bodies"][name]
 
@@ -225,13 +259,11 @@ def _pad_patch(game_dir: str, character: str, expression: str,
     layer). Idempotent: rewrites only when inputs changed is not tracked —
     the write is cheap and deterministic."""
     from PIL import Image
-    out_rel = f"images/sprites/{character}/_gen/{expression}_full.png"
-    out = os.path.join(game_dir, out_rel)
-    os.makedirs(os.path.dirname(out), exist_ok=True)
+    out_rel = f"images/sprites/{character}/_gen/{expression}_full{GAME_IMAGE_EXT}"
     patch = Image.open(os.path.join(game_dir, patch_rel)).convert("RGBA")
     canvas = Image.new("RGBA", tuple(body_size), (0, 0, 0, 0))
     canvas.paste(patch, tuple(offset))
-    canvas.save(out)
+    save_game_image(canvas, os.path.join(game_dir, out_rel))
     return out_rel
 
 

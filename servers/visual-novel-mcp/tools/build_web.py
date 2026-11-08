@@ -465,6 +465,25 @@ def explain(code):
     print("      Stop it and build again.")
 
 
+def warn_png_art(project):
+    """Installed art is WebP (2026-11-09: 253 MB of PNG became 39 MB, and the
+    web host caps a browser game at 500 MB). A PNG under game/images means
+    something installed art without going through install_image.py or
+    register_sprite -- an old one-off script, most likely. Warn, never block:
+    the build still works, it is only larger than it needs to be."""
+    root = os.path.join(project, "game", "images")
+    found = [os.path.join(d, f) for d, _ds, fs in os.walk(root)
+             for f in fs if f.lower().endswith(".png")]
+    if found:
+        mb = sum(os.path.getsize(p) for p in found) / 1048576
+        print("\n!! %d PNG file(s) under game/images (%.1f MB) -- installed art "
+              "should be WebP:" % (len(found), mb))
+        for p in found[:10]:
+            print("     " + os.path.relpath(p, project))
+        print("   Convert with: python tools/convert_images_webp.py \"%s\" --apply\n"
+              % project)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("project", help="the project directory, or its game/ dir")
@@ -488,6 +507,7 @@ def main():
         )
 
     project = project_dir(a.project)
+    warn_png_art(project)
     started = time.time()
     code = build(sdk, project)
     if code != 0:

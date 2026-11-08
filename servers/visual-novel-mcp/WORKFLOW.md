@@ -54,6 +54,34 @@ work, but they are not the default.
 Character appearance still resolves from the character bible, never from
 memory (repo rule). Event CGs use the normal panel pipeline and its rules.
 
+### Art in the game is WebP; the masters stay where they were made
+
+Settled 2026-11-09. Everything under `game/images/` is a COPY, encoded as
+WebP at quality 90; the approved master (PNG, usually) stays in the pipeline
+that made it and is the thing to keep. Measured on one project: 251 images,
+**255.6 MB of PNG -> 39.3 MB of WebP**, and the author could not tell a CG or
+a sprite apart side by side. It matters because a web host caps a browser
+game at 500 MB, and the PNGs alone were half of that with the story a third
+written.
+
+- Sprites and expression bodies: `register_sprite` / `register_body` encode
+  on install. A master can be PNG or WebP.
+- CGs, backgrounds, effect plates: `tools/install_image.py <master>
+  <project> images/cg/<name>`. It refuses to replace different art unless
+  told to.
+- A project still on PNG: `tools/convert_images_webp.py <project> --apply`
+  encodes everything, moves the originals to `<project>/_png_backup/`
+  (classify that folder out of the build -- Ren'Py ships the whole base
+  directory), and repoints every `images/...png` reference in the scripts,
+  the top-level JSON and `progressive_download.txt`.
+- `build_web.py` warns when a PNG appears under `game/images/` again -- an old
+  one-off script writing PNG straight into the game is the likely cause.
+- `game/gui/` stays PNG: small, in the first download, and its names are
+  built at run time (`[prefix_]bar.png`).
+- One encoder for all of it (`sprites.game_image_bytes`), so re-installing
+  the same master compares byte-equal instead of tripping the
+  never-overwrite check.
+
 ## Expressions
 
 The default is FULL BODIES (`register_body`, added 2026-09-19): a second

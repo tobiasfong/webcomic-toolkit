@@ -168,7 +168,12 @@ def _speaks(t):
     return bool(m) and bool(t[m.end():].strip())
 
 
-def normalize(t):
+def normalize(t, speaker=True):
+    """`speaker=False` for a scene line that is ALREADY a character's say
+    statement: its label was converted into the `who` prefix, so a colon
+    left in the text belongs to the line itself. Stripping a speaker shape
+    there cut a "Style Name:" prefix off a named technique in dialogue and
+    reported the line CHANGED (2026-11-09)."""
     # ⚠ TEXT TAGS COME OFF BEFORE ANYTHING ELSE. Emitters carry the author's
     # italics through as {i}...{/i} (see vnrich), so the scene side of this
     # comparison has markup the docx side does not. Stripping the tags here
@@ -187,7 +192,8 @@ def normalize(t):
     # once, for every name.
     for a, b in (("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"')):
         t = t.replace(a, b)
-    t = SPEAKER.sub("", t).strip()
+    if speaker:
+        t = SPEAKER.sub("", t).strip()
     t = ANNOTATION.sub("", t).strip()
     t = t.strip("「」")  # Japanese quotation brackets around written text
     t = t.strip('"')
@@ -457,16 +463,26 @@ def scene_order(scenes_dir):
             % (len(heads), ", ".join(sorted(heads)) or "(none)"))
         return files                           # no single entry point
 
-    # Kahn's algorithm. The queue stays in discovery order rather than being
-    # sorted, so branches emerge in the order the story jumps to them.
-    order, queue, deg = [], list(heads), dict(indeg)
-    while queue:
-        cur = queue.pop(0)
+    # Kahn's algorithm, with the ready set kept as a STACK, not a queue.
+    #
+    # ⚠ A QUEUE INTERLEAVES ROUTES (2026-11-09). With two routes that never
+    # rejoin -- an act split into two routes -- a first-in-first-out queue
+    # took one scene of each in turn, while the author writes one route WHOLE
+    # and then the next. Ready targets are pushed in reverse, so the first
+    # jump is taken first and its chain runs to the end before the second
+    # branch starts. Joins are unaffected: a scene still becomes ready only
+    # once every path into it is placed, so reconverging scenarios still come
+    # out as all branches, then the convergence.
+    order, stack, deg = [], list(reversed(heads)), dict(indeg)
+    while stack:
+        cur = stack.pop()
         order.append(label_of[cur])
+        ready = []
         for t in out_edges.get(cur, []):
             deg[t] -= 1
             if deg[t] == 0:
-                queue.append(t)
+                ready.append(t)
+        stack.extend(reversed(ready))
 
     if len(order) == len(files):
         return order
@@ -499,14 +515,17 @@ def read_scenes(scenes_dir):
             # count drops by one and the paragraph is reported MISSING from
             # the scenes, which is a confusing way to learn that the emitter
             # and this reader disagree about what a say statement looks like.
-            m = re.match(r'^(?:[a-z_][a-z0-9_]* )?"(.*)"(?:\s*\([^)]*\))?$', s)
+            m = re.match(r'^([a-z_][a-z0-9_]* )?"(.*)"(?:\s*\([^)]*\))?$', s)
             if not m:
                 continue
-            t = m.group(1).replace('\\"', '"')
+            # ⚠ UNDO THE ENGINE'S ESCAPES, as the reader of the text would see
+            # it: emitlib.esc() writes a literal % as %% (Ren'Py's own escape),
+            # and without this every line with a percentage reads as CHANGED.
+            t = m.group(2).replace('\\"', '"').replace("%%", "%")
             # Ren'Py text tags are presentation, not prose -- {size=+18} and
             # friends must not read as a difference from the docx.
             t = re.sub(r"\{/?[^{}]*\}", "", t)
-            blocks.append((normalize(t), os.path.basename(f)))
+            blocks.append((normalize(t, speaker=not m.group(1)), os.path.basename(f)))
     return blocks
 
 

@@ -435,7 +435,8 @@ def register_sprite(character: str, body_path: str, tag: str | None = None,
                     target_height: float | None = None, mirror_ok: bool = True,
                     notes: str = "", height_cm: float | None = None,
                     project: str | None = None) -> dict:
-    """Register a character's matted body PNG (copied into the game tree).
+    """Register a character's matted body (installed into the game tree as
+    WebP; the master stays where it is, in whatever format it was made).
     PREFER `height_cm` — relative cast heights then come out right by
     construction, and the first one registered fixes the screen reference.
     `target_height` (fraction of screen) is the fallback for characters with

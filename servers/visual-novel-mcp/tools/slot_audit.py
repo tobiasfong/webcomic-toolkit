@@ -41,6 +41,27 @@ import script_diff  # noqa: E402
 #   screen -- not an image at all; `show screen X` is the screen statement
 NOT_CAST = {"fx", "prop", "screen"}
 
+TAG_ZORDER = re.compile(r"^define\s+config\.tag_zorder\s*=\s*\{(.*?)^\}", re.M | re.S)
+ENTRY = re.compile(r'^\s*"([a-z_0-9]+)"\s*:\s*(-?\d+)', re.M)
+
+
+def below_cast(game_dir):
+    """Tags the GAME ranks below the cast in config.tag_zorder (a negative
+    rank): plates, backdrops and effects that sit behind every figure by
+    construction, so they cannot block anyone. Read from the game, because
+    the engine draws by that table -- a second list kept here would drift.
+    Added 2026-11-09 for a dome effect with its own tag (`fx` holds one image
+    at a time), reported UNPLACED five times though it is a full-frame plate.
+    A later duplicate key wins, as it does in the dict literal."""
+    ranks = {}
+    for f in sorted(os.listdir(game_dir)):
+        if f.endswith(".rpy"):
+            with open(os.path.join(game_dir, f), encoding="utf-8") as fh:
+                for block in TAG_ZORDER.findall(fh.read()):
+                    for tag, z in ENTRY.findall(block):
+                        ranks[tag] = int(z)
+    return {t for t, z in ranks.items() if z < 0}
+
 SHOW = re.compile(r"^\s*show\s+([a-z_0-9]+(?:\s+[a-z_0-9]+)*?)\s*(?:\s+at\s+(.+?))?\s*$")
 HIDE = re.compile(r"^\s*hide\s+([a-z_0-9]+)")
 SCENE = re.compile(r"^\s*scene\b")
@@ -49,6 +70,7 @@ SCENE = re.compile(r"^\s*scene\b")
 def audit(project):
     scenes_dir = os.path.join(project, "game", "scenes")
     order = script_diff.scene_order(scenes_dir)
+    not_cast = NOT_CAST | below_cast(os.path.join(project, "game"))
     stage = {}                      # tag -> (slot, where it was placed)
     problems = []
     read = 0
@@ -102,7 +124,7 @@ def audit(project):
                 flush(pending); pending = {}
                 continue
             tag = m.group(1).split()[0]
-            if tag in NOT_CAST:
+            if tag in not_cast:
                 continue
             slot = (m.group(2) or "").strip()
             ## `at P behind X` is still slot P: the z-order clause is not part
