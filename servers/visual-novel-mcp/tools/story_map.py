@@ -14,7 +14,9 @@ WHAT IT SHOWS
 1. **Affection over the story.** For every meter (a number the story adds to
    and subtracts from -- affection, trust, corruption), a band from its
    lowest to its highest possible value after each choice, as the player
-   could have played it. Hover for exact ranges.
+   could have played it. A marker sits wherever a choice moved a meter,
+   the axis names each choice by its options, and hovering shows that
+   choice, what each option gives, and every meter's exact range after it.
 2. **The timeline.** Every scene in story order, every `menu:` choice with
    its options, and what each option does: meter changes, flags it sets,
    fights it leads to, where it jumps.
@@ -307,9 +309,21 @@ def read_story(project, cfg, meters):
 
 
 def ranges(items, meters):
+    """[(label, {meter: (lo, hi)}, info)] after the start and each change.
+
+    `info` says what the point WAS, for the hover and the axis: a title (the
+    choice's options joined, a menu having no question of its own) and each
+    option with the meter changes it gives -- so the graph reads in the
+    story's own words rather than label names, and each sharp point on a
+    line can be traced to the choice that made it.
+    """
     lo = {m: 0 for m in meters}
     hi = {m: 0 for m in meters}
-    pts = [("Start", {m: (0, 0) for m in meters})]
+    pts = [("Start", {m: (0, 0) for m in meters}, {"title": "Start", "opts": []})]
+
+    def gains(deltas):
+        return [[meters[v], n] for v, n in sorted(deltas.items()) if n and v in meters]
+
     for it in items:
         if it["kind"] == "scene":
             if not it["deltas"]:
@@ -317,15 +331,22 @@ def ranges(items, meters):
             for v, n in it["deltas"].items():
                 lo[v] += n
                 hi[v] += n
+            info = {"title": "Scene: %s" % it["label"], "opts": [{"t": "always", "g": gains(it["deltas"])}]}
         else:
             outs = [o["deltas"] for o in it["options"]] or [{}]
             if not any(outs):
-                continue
+                continue        # a choice that moves no meter is not a point
             for v in meters:
                 vals = [o.get(v, 0) for o in outs]
                 lo[v] += min(vals)
                 hi[v] += max(vals)
-        pts.append((it["label"], {m: (lo[m], hi[m]) for m in meters}))
+            opts = []
+            for o in it["options"]:
+                t = o["text"] if not o.get("cond") else "%s (only if %s)" % (o["text"], o["cond"])
+                opts.append({"t": t[:90] + ("…" if len(t) > 90 else ""), "g": gains(o["deltas"])})
+            title = " or ".join(o["text"].rstrip(".") for o in it["options"])[:80] or it["label"]
+            info = {"title": title, "opts": opts}
+        pts.append((it["label"], {m: (lo[m], hi[m]) for m in meters}, info))
     return pts
 
 
@@ -446,11 +467,14 @@ h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:36px 0 10px}h3{font-si
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}.card.fight{margin:10px 0}
 svg{width:100%;height:auto;display:block;overflow:visible}
 .grid{stroke:var(--rule);stroke-width:1}.tick{fill:var(--ink3);font-size:11px}
+.pt{stroke:var(--panel);stroke-width:1.5}.pt.s1{fill:var(--s1)}.pt.s2{fill:var(--s2)}.pt.s3{fill:var(--s3)}.pt.s4{fill:var(--s4)}.pt.s5{fill:var(--s5)}.pt.lo{opacity:.75}
+.topts{margin:6px 0;font-size:12px}.topt{margin:3px 0;color:var(--ink2)}.tg{white-space:nowrap}.none{color:var(--ink3)}
+.tnow{margin-top:6px;font-size:12px;color:var(--ink3)}
 .line{fill:none;stroke-width:2}.line.lo{stroke-dasharray:4 3;stroke-width:1.5}.band{stroke:none;opacity:.14}
 .s1{stroke:var(--s1);fill:var(--s1)}.s2{stroke:var(--s2);fill:var(--s2)}.s3{stroke:var(--s3);fill:var(--s3)}.s4{stroke:var(--s4);fill:var(--s4)}.s5{stroke:var(--s5);fill:var(--s5)}
 .line.s1,.line.s2,.line.s3,.line.s4,.line.s5{fill:none}.dlabel{fill:var(--ink);font-size:12px}.sw{stroke:none}
 .xh{stroke:var(--ink3);stroke-width:1}.hit{fill:transparent;cursor:crosshair}
-#tip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;min-width:170px}
+#tip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.12);display:none;min-width:200px;max-width:340px}
 table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
 th{color:var(--ink2);font-weight:600}td.n{font-variant-numeric:tabular-nums}
 .flow{position:relative;margin-left:10px;padding-left:22px;border-left:2px solid var(--spine)}
@@ -466,8 +490,8 @@ def chart_svg(pts, meters, vmax):
     W, H, L, Rt, T, B = 760, 300, 44, 130, 16, 56
     pw, ph = W - L - Rt, H - T - B
     n = max(1, len(pts) - 1)
-    lo_all = min([0] + [r[m][0] for _l, r in pts for m in names])
-    hi_all = max([vmax] + [r[m][1] for _l, r in pts for m in names])
+    lo_all = min([0] + [r[m][0] for _l, r, _f in pts for m in names])
+    hi_all = max([vmax] + [r[m][1] for _l, r, _f in pts for m in names])
     # round ticks: the smallest of 1-2-5 x 10^k giving at most six of them
     span, step = max(1, hi_all - lo_all), 1
     for k in range(0, 7):
@@ -488,18 +512,27 @@ def chart_svg(pts, meters, vmax):
         g.append('<line class="grid" x1="%d" x2="%d" y1="%.1f" y2="%.1f"/>' % (L, L + pw, Y(v), Y(v)))
         g.append('<text class="tick" x="%d" y="%.1f" text-anchor="end">%d</text>' % (L - 8, Y(v) + 4, v))
         v += step
-    for i, (lab, _r) in enumerate(pts):
+    # the axis reads in the story's words: each point's title, shortened
+    for i, (lab, _r, info) in enumerate(pts):
+        short = info["title"][:22] + ("…" if len(info["title"]) > 22 else "")
         g.append('<text class="tick" x="%.1f" y="%d" text-anchor="end" transform="rotate(-35 %.1f %d)">%s</text>'
-                 % (X(i), H - B + 16, X(i), H - B + 16, html.escape(lab)))
+                 % (X(i), H - B + 16, X(i), H - B + 16, html.escape(short)))
     ends = []
     for k, m in enumerate(names):
-        hiP = " ".join("%.1f,%.1f" % (X(i), Y(r[m][1])) for i, (_l, r) in enumerate(pts))
-        loP = " ".join("%.1f,%.1f" % (X(i), Y(r[m][0])) for i, (_l, r) in reversed(list(enumerate(pts))))
+        hiP = " ".join("%.1f,%.1f" % (X(i), Y(r[m][1])) for i, (_l, r, _f) in enumerate(pts))
+        loP = " ".join("%.1f,%.1f" % (X(i), Y(r[m][0])) for i, (_l, r, _f) in reversed(list(enumerate(pts))))
         s = (k % 5) + 1
         g.append('<polygon class="band s%d" points="%s %s"/>' % (s, hiP, loP))
         g.append('<polyline class="line s%d" points="%s"/>' % (s, hiP))
         g.append('<polyline class="line lo s%d" points="%s"/>' % (s, " ".join(
-            "%.1f,%.1f" % (X(i), Y(r[m][0])) for i, (_l, r) in enumerate(pts))))
+            "%.1f,%.1f" % (X(i), Y(r[m][0])) for i, (_l, r, _f) in enumerate(pts))))
+        # a marker wherever a choice moved this meter: the "sharp points"
+        for i in range(1, len(pts)):
+            a, b = pts[i - 1][1][m], pts[i][1][m]
+            if a != b:
+                g.append('<circle class="pt s%d" cx="%.1f" cy="%.1f" r="4"/>' % (s, X(i), Y(b[1])))
+                if b[0] != b[1]:
+                    g.append('<circle class="pt lo s%d" cx="%.1f" cy="%.1f" r="3"/>' % (s, X(i), Y(b[0])))
         last = pts[-1][1][m]
         ends.append([Y(last[1]), m, last, s])
     ends.sort()
@@ -569,7 +602,8 @@ def page(cfg, meters, items, pts, problems, combat):
     if combat:
         p.append(combat_html(combat, items, cfg))
     if meters:
-        data = json.dumps([{"at": lab, **{meters[m]: r[m] for m in meters}} for lab, r in pts])
+        data = json.dumps([{"at": info["title"], "opts": info["opts"], **{meters[m]: r[m] for m in meters}}
+                           for lab, r, info in pts])
         p.append("""<div id="tip"></div><script>
 const pts=%s, names=%s;
 const svg=document.getElementById('chart'), hit=svg.querySelector('.hit'), xh=document.getElementById('xh'), tip=document.getElementById('tip');
@@ -577,8 +611,12 @@ function at(ev){const r=svg.getBoundingClientRect(), vb=svg.viewBox.baseVal, x=(
 const L=+hit.getAttribute('x'), w=+hit.getAttribute('width'), n=Math.max(1,pts.length-1);return Math.max(0,Math.min(n,Math.round((x-L)/w*n)));}
 hit.addEventListener('mousemove',ev=>{const i=at(ev),L=+hit.getAttribute('x'),w=+hit.getAttribute('width'),n=Math.max(1,pts.length-1),x=L+w*i/n;
 xh.setAttribute('x1',x);xh.setAttribute('x2',x);xh.setAttribute('visibility','visible');const p=pts[i];
-tip.innerHTML='<b>'+p.at+'</b>'+names.map((h,k)=>'<div><span style="color:var(--s'+(k%%5+1)+')">\\u25a0</span> '+h+': '+(p[h][0]==p[h][1]?p[h][0]:p[h][0]+'\\u2013'+p[h][1])+'</div>').join('');
-tip.style.display='block';tip.style.left=Math.min(ev.clientX+14,innerWidth-200)+'px';tip.style.top=(ev.clientY+14)+'px';});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const col=h=>'var(--s'+(names.indexOf(h)%%5+1)+')';
+// the choice and what each option gives, then where every meter stands after it
+const o=p.opts.map(x=>'<div class="topt">'+esc(x.t)+' <span class="tg">'+(x.g.length?x.g.map(g=>'<span style="color:'+col(g[0])+'">'+esc(g[0])+' '+(g[1]>0?'+':'')+g[1]+'</span>').join(' \\u00b7 '):'<span class="none">no change</span>')+'</span></div>').join('');
+tip.innerHTML='<b>'+esc(p.at)+'</b>'+(o?'<div class="topts">'+o+'</div>':'')+'<div class="tnow">After this:</div>'+names.map((h,k)=>'<div><span style="color:var(--s'+(k%%5+1)+')">\\u25a0</span> '+esc(h)+': <b>'+(p[h][0]==p[h][1]?p[h][0]:p[h][0]+'\\u2013'+p[h][1])+'</b></div>').join('');
+tip.style.display='block';tip.style.left=Math.min(ev.clientX+14,innerWidth-360)+'px';tip.style.top=Math.max(8,Math.min(ev.clientY+14,innerHeight-tip.offsetHeight-8))+'px';});
 hit.addEventListener('mouseleave',()=>{tip.style.display='none';xh.setAttribute('visibility','hidden');});
 </script>""" % (data, json.dumps(list(meters.values()))))
     p.append("</main></body></html>")
