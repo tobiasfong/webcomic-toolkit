@@ -25,9 +25,9 @@ as a composite.
   install the character server uses, started on first use. New module
   `klein.py`; `flux_workflow.py` and `comfy.py` are deleted.
 - **Style comes from a positive style sentence**, not a LoRA: FLUX.1 LoRAs cannot
-  load in Klein (none of `manwha_style`'s 494 layers exist there). On the murim
+  load in Klein (none of `manwha_style`'s 494 layers exist there). On a world
   bible's own prompts it held crisp inked cel shading both at eye level and on
-  the Mount Hua summit vista — the camera that used to pull FLUX.1 photoreal.
+  a mountain summit vista — the camera that used to pull FLUX.1 photoreal.
 - **Composition sketches are a reference image, not ControlNet.** On the 3D
   bike-row sketch every bicycle and the bollard landed where the sketch drew
   them, as real bicycles. Two wording traps were measured and fixed in the
@@ -58,7 +58,7 @@ as a composite.
 - Parameters `model`, `extra_negative`, `controlnet_strength`, `lora`,
   `lora_strength`, `hires` and `location_denoise`. Negatives in particular are
   gone on purpose: they never worked at cfg 1.0, and the one roll that listed
-  "skyscraper, skyline" produced the clearest modern skyline of the murim bible.
+  "skyscraper, skyline" produced the clearest modern skyline in a period setting.
 - The ComfyUI-GGUF and comfyui_controlnet_aux requirements. Klein needs no
   custom nodes.
 - FLUX.1 env vars (`WEBCOMIC_BG_MODEL`, `WEBCOMIC_BG_FLUX_*`, `COMFY_URL`,

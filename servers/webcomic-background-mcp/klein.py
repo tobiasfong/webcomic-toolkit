@@ -16,8 +16,8 @@ What replaced each FLUX.1 part, measured 2026-10-17 on this server's own cases:
   * STYLE. FLUX.1 LoRAs cannot load in Klein (0 of manwha_style's 494 layers
     exist). The look comes from a positive style tail instead -- the same
     sentence the character server uses, so plates and figures match. On the
-    murim bible's own prompts (an Anhui canal lane, the Mount Hua stair) it
-    held crisp inked cel shading at eye level AND on the summit vista, the shot
+    world bible's own prompts (a canal lane, a mountain stair) it held crisp
+    inked cel shading at eye level AND on a summit vista, the shot
     that pulled FLUX.1 photoreal.
 
   * CONTROLNET -> SKETCH AS REFERENCE. There is no Klein ControlNet. The
