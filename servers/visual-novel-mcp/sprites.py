@@ -56,7 +56,6 @@ neutral is refused rather than shifting every existing patch offset.
 
 import os
 import json
-import struct
 
 MANIFEST_FILENAME = "sprites.json"
 GENERATED_RPY = "sprites_generated.rpy"
@@ -85,16 +84,6 @@ def save(state_dir: str, data: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp, path)
-
-
-def png_size(path: str) -> tuple[int, int]:
-    """Width/height from the PNG IHDR — no image library needed."""
-    with open(path, "rb") as f:
-        head = f.read(24)
-    if len(head) < 24 or head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
-        raise SpriteError(f"Not a PNG: {path}")
-    w, h = struct.unpack(">II", head[16:24])
-    return w, h
 
 
 ## ⚠ ART IN THE GAME TREE IS WebP (2026-11-09). Installed art is a COPY; the

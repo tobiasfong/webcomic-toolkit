@@ -11,10 +11,14 @@ the verification sequence, and the web build.
   Phones chapter. The repo's root `AGENTS.md` carries the verification
   sequence and the emitter rules every session must run; read both before
   touching a project.
-- **Run the whole sequence as one command** on every change:
+- **Run the whole sequence as one command** after a MAJOR change (engine or
+  emitter code, or before a build meant to ship) -- not after every small
+  change; the author's rule is to rebuild and let him play those:
   `python tools/verify_all.py <project-dir> "<master.docx>"`. It stops at the
-  first failing step. A green run is the only green worth reporting; the
-  steps run by hand get skipped, reordered or filtered wrong.
+  first failing step, runs everything window-free before the two steps that
+  open the game, and passes a step only on positive evidence. A green run is
+  the only green worth reporting; the steps run by hand get skipped,
+  reordered or filtered wrong.
 - `tools/` holds the emit, diff, lint, audit and build tools; `snippets/`
   holds drop-in Ren'Py files (touch input with two-tap commands, the
   three-state text size with its scaling rules). Every scene file is

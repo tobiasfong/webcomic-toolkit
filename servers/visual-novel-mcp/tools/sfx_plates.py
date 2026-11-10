@@ -218,7 +218,7 @@ def ice_shatter(seed=23):
 
 
 def thunder(seed=31):
-    """A rival's lightning sword art.
+    """A lightning sword technique.
 
     A CRACK and a BODY, in that order and overlapping. The crack is what
     arrives with the plate -- bright, 40 ms, gone. The body is the low
@@ -246,7 +246,7 @@ def frost_bloom(seed=41):
     """The conjured ice ornament: a shimmer, not a hit.
 
     The only sound here with a SLOW attack, because it is the only beat where
-    nothing is struck -- he raises a hand and grows something. High partials
+    nothing is struck -- something is conjured. High partials
     with a gentle rise, a whisper of air under them, and no transient at all.
     Give this one a transient and it becomes an attack.
     """
@@ -265,7 +265,7 @@ def frost_bloom(seed=41):
 
 
 def dark_arc(seed=53):
-    """The yin sword technique: a dark arc, and it must not glitter.
+    """A dark-arc sword technique: it must not glitter.
 
     Every other attack here lives in the high band -- crystal, metal, the
     crack of lightning. This one is deliberately the opposite: the noise is
@@ -321,13 +321,12 @@ def breeze(seed=71):
 
 
 def qi_slash(seed=83):
-    """A master's blade of light. Not a sword sound.
+    """A blade of light. Not a sword sound.
 
-    He is not swinging steel, he is releasing pressure, so
+    Nothing here swings steel; pressure is released, so
     this is deliberately built the opposite way from sword_ring: a low tonal
     core with air over it, rather than metal partials. Metal here would make
-    him a swordsman, and the whole point of the scene is that he is not
-    fighting the protagonist so much as demonstrating a difference in kind.
+    the user a swordsman, and the point is a difference in kind.
     """
     d = 0.7
     n = int(SR * d)
@@ -338,10 +337,10 @@ def qi_slash(seed=83):
 
 
 def qi_burst(seed=89):
-    """Raw pressure arriving -- his ki filling a room.
+    """Raw pressure arriving -- ki filling a room.
 
     A swell rather than a hit. The attack is fast but not instant and the
-    body is low and wide, because what the scene describes is weight, not
+    body is low and wide, because what the effect conveys is weight, not
     impact: it presses on people rather than striking them.
     """
     d = 1.2
@@ -353,7 +352,7 @@ def qi_burst(seed=89):
 
 
 def blast_boom(seed=97):
-    """The yin technique's shockwave: concussive, and brighter than qi.
+    """A dark technique's shockwave: concussive, and brighter than qi.
 
     Told apart from qi_burst by its TRANSIENT. Pressure swells; a shockwave
     starts at full and collapses. Same low body, opposite front.

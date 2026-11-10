@@ -101,7 +101,10 @@ def main(argv):
     config = os.path.join(proj, "sprite_audit.json")
     for p in (scenes_dir, sprites_json, characters_rpy, config):
         if not os.path.exists(p):
-            sys.exit("sprite_audit: missing %s" % p)
+            # exit code 2 and a message verify_all treats as a failure: a
+            # missing input is "could not check", never "nothing found"
+            print("sprite_audit: missing %s -- cannot audit" % p, file=sys.stderr)
+            return 2
 
     tags = load_tags(sprites_json)
     speakers = load_speakers(characters_rpy)
@@ -216,7 +219,7 @@ def main(argv):
               % len(stale))
         for k in stale:
             print("  %s" % k)
-    return len(gaps) + len(stale)
+    return len(gaps) + len(stale) + len(prefixed)
 
 
 if __name__ == "__main__":

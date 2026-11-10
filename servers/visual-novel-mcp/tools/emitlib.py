@@ -36,6 +36,7 @@ from the body whether the docx wrote them straight or curly. Every generated
 scene was byte-identical before and after the consolidation -- that diff is
 the proof, and it is worth re-running any time this file changes.
 """
+import io
 import os
 import re
 
@@ -108,6 +109,52 @@ def row(tag, i, n, behind=None):
             + (" behind %s" % behind if behind else ""))
 
 
+def locate_project(project_dir=None, _depth=1):
+    """Where one project's manuscript, scenes folder and game folder are --
+    and nothing else. No patterns are assigned and no paragraph is read.
+
+        P = emitlib.locate_project()
+        docx.Document(P.docx); P.out; P.game; P.project_dir; P.root
+
+    For the emitters that do their OWN paragraph processing (a different
+    vnrich.rich() mode, no prose mask) and so cannot take load_project's
+    paragraphs, but still must not hard-code a machine's paths. `project_dir`
+    defaults to the CALLING emitter's <project>/tools/ parent. The docx is
+    found as load_project documents: project.json "docx", else the one
+    *.docx beside the project folder, else in servers/visual-novel-mcp/.
+    """
+    import glob, inspect, json, types
+    if project_dir is None:
+        caller = inspect.stack()[_depth].frame.f_globals.get("__file__")
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(caller)))
+    root = os.path.dirname(os.path.dirname(project_dir))
+    docx_path = None
+    cfg = os.path.join(project_dir, "project.json")
+    if os.path.isfile(cfg):
+        with open(cfg, encoding="utf-8") as f:
+            docx_path = json.load(f).get("docx")
+        if docx_path:
+            docx_path = os.path.join(root, docx_path)   # absolute stays absolute
+    if not docx_path:
+        for where in (os.path.dirname(project_dir),
+                      os.path.join(root, "servers", "visual-novel-mcp")):
+            # "~$" files are Word's lock files while the document is open
+            found = [p for p in glob.glob(os.path.join(where, "*.docx"))
+                     if not os.path.basename(p).startswith("~$")]
+            if len(found) > 1:
+                raise SystemExit("load_project: more than one script .docx in %s" % where)
+            if found:
+                docx_path = found[0]
+                break
+        else:
+            raise SystemExit("load_project: no script .docx beside %s or in "
+                             "servers/visual-novel-mcp/" % project_dir)
+    game = os.path.join(project_dir, "game")
+    return types.SimpleNamespace(
+        project_dir=project_dir, root=root, docx=docx_path, game=game,
+        out=os.path.join(game, "scenes"))
+
+
 def load_project(project_dir=None):
     """Paths and the parsed script for ONE emitter, in one call.
 
@@ -133,38 +180,15 @@ def load_project(project_dir=None):
     annotations through script_diff.ANNOTATION, so it must run before any
     line is emitted. Call it once, at the top of main().
     """
-    import glob, inspect, json, types
-    if project_dir is None:
-        caller = inspect.stack()[1].frame.f_globals.get("__file__")
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(caller)))
-    root = os.path.dirname(os.path.dirname(project_dir))
-    docx_path = None
-    cfg = os.path.join(project_dir, "project.json")
-    if os.path.isfile(cfg):
-        with open(cfg, encoding="utf-8") as f:
-            docx_path = json.load(f).get("docx")
-        if docx_path:
-            docx_path = os.path.join(root, docx_path)   # absolute stays absolute
-    if not docx_path:
-        for where in (os.path.dirname(project_dir),
-                      os.path.join(root, "servers", "visual-novel-mcp")):
-            # "~$" files are Word's lock files while the document is open
-            found = [p for p in glob.glob(os.path.join(where, "*.docx"))
-                     if not os.path.basename(p).startswith("~$")]
-            if len(found) > 1:
-                raise SystemExit("load_project: more than one script .docx in %s" % where)
-            if found:
-                docx_path = found[0]
-                break
-        else:
-            raise SystemExit("load_project: no script .docx beside %s or in "
-                             "servers/visual-novel-mcp/" % project_dir)
+    import types
+    L = locate_project(project_dir, _depth=2)
+    project_dir, docx_path = L.project_dir, L.docx
     patterns = os.path.join(project_dir, "game", "patterns.json")
     (script_diff.SPEAKER, script_diff.SPEC_START, script_diff.SPEC_LINE,
      script_diff.ANNOTATION) = script_diff.load_patterns(patterns)
     paras = [vnrich.rich(p) for p in docx.Document(docx_path).paragraphs]
     return types.SimpleNamespace(
-        docx=docx_path, out=os.path.join(project_dir, "game", "scenes"),
+        docx=docx_path, out=L.out,
         patterns=patterns, paras=paras, prose=script_diff.prose_mask(paras))
 
 
@@ -407,3 +431,102 @@ def bind_scene(paras, prose, say, name="emitter", floor=0, clamp=False):
         return out
 
     return find, block
+
+
+# --- Shared staging helpers -------------------------------------------------
+# Each of these was pasted into three or four emitters. They emit the same
+# generic Ren'Py lines everywhere, so there is one copy here.
+
+SFX = "audio/sfx/sfx_%s.wav"      # a sound effect's file, by its short name
+SHAKE = ["    with vpunch"]
+
+
+def sound(name):
+    """The line that plays one sound effect, by its short name."""
+    return ['    play sound "%s"' % (SFX % name)]
+
+
+def flash(plate, sound=None, motion=None, hold=0.06, trailing_blank=False):
+    """One impact flash, Fate/stay night style: the sound, the plate cut in
+    for a beat, then dissolved away.
+
+    A plate that TRAVELS takes `motion`, one of the game's plate transforms,
+    and holds long enough for the move to register: a hit is a still, a wave
+    or a breath moves. `trailing_blank` appends an empty spacer line after
+    the dissolve, for an emitter whose staging lists want one."""
+    out = ['    play sound "%s"' % (SFX % sound)] if sound else []
+    at = " at %s" % motion if motion else ""
+    return out + ["    show fx %s%s" % (plate, at),
+                  "    with Dissolve(0.05)",
+                  "    pause %s" % hold,
+                  "    hide fx %s" % plate,
+                  "    with Dissolve(0.4)"] + ([""] if trailing_blank else [])
+
+
+def sweep(plate, sound, trailing_blank=False):
+    """A flash whose plate sweeps in (a wave, a breath)."""
+    return flash(plate, sound, "fx_sweep_in", 0.24, trailing_blank)
+
+
+def twist(plate, sound, trailing_blank=False):
+    """A flash whose plate twists in."""
+    return flash(plate, sound, "fx_twist_in", 0.32, trailing_blank)
+
+
+def stage(*figs, move=True):
+    """A whole row, left to right: tags seated in an n-slot row."""
+    n = len(figs)
+    out = [row(t, i, n) for i, t in enumerate(figs)]
+    return out + (["    with move"] if move else [])
+
+
+def scene(bg, *figs):
+    """Clear the page, set the background and seat a row of figures."""
+    return (["    nvl clear", "    scene %s" % bg]
+            + stage(*figs, move=False) + ["    with Dissolve(0.8)"])
+
+
+def first_para(paras, needle, name="emitter"):
+    """Index of the first paragraph containing `needle`, searched from the
+    top. Exits with a message naming the emitter and the phrase when the
+    document no longer has it, instead of a bare StopIteration.
+
+    Use it to find a scene's START before bind_scene(), so the scene's other
+    anchors can be searched from there (floor=, clamp=True) rather than from
+    paragraph 0, where a phrase that repeats earlier would capture one."""
+    for k, t in enumerate(paras):
+        if needle in t:
+            return k
+    raise SystemExit("%s: not in docx: %r" % (name, needle))
+
+
+def mark(paras, prefix, lo, name="emitter", hi=None):
+    """Index of the first paragraph at or after `lo` (and before `hi`, when
+    given) that opens with `prefix`. Stops with a message naming the emitter
+    and the prefix when the document no longer has it, instead of a bare
+    StopIteration."""
+    for k in range(lo, len(paras) if hi is None else hi):
+        if paras[k].strip().startswith(prefix):
+            return k
+    raise SystemExit("%s: no paragraph from %d on opens with %r. The "
+                     "document has probably changed there."
+                     % (name, lo, prefix))
+
+
+def mark_eq(paras, text, lo, name="emitter", hi=None):
+    """Like mark(), for a paragraph that IS `text` (compared stripped) -- a
+    marker line such as a combat cue, where a prefix would also match prose
+    that merely begins with it."""
+    for k in range(lo, len(paras) if hi is None else hi):
+        if paras[k].strip() == text:
+            return k
+    raise SystemExit("%s: no paragraph from %d on is exactly %r. The "
+                     "document has probably changed there."
+                     % (name, lo, text))
+
+
+def write(out_dir, name, body):
+    """Write one generated file (LF newlines, utf-8) and log it."""
+    io.open(os.path.join(out_dir, name), "w", encoding="utf-8",
+            newline="\n").write("\n".join(body))
+    print("  wrote %-22s %3d lines" % (name, len(body)))

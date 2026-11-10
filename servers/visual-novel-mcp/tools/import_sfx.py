@@ -66,7 +66,7 @@ MAPPING = [
     ("sfx_blast_boom",      "fire-spell-impact",                  "impact"),
     ("sfx_ward_hum",        "magic-spell-02",                     "sustain"),
     ("sfx_sword_shimmer",   "soumages-magic-spell",               "sustain"),
-    # --- the cave chapter's beasts and ghosts, added 2026-09-05 ---
+    # --- creature attacks (beasts and ghosts), added 2026-09-05 ---
     # A claw rake gets the SECOND violent slice, so it is audibly its own
     # thing rather than a reuse of sfx_dark_arc, which is the first one.
     ("sfx_claw_rake",       "violent-sword-slice-2-393841",       "impact"),
@@ -81,8 +81,7 @@ MAPPING = [
     # downloaded with the first batch and never slotted. sfx_blast_boom is
     # the OTHER fire file ("fire-spell-impact"), which kept its generic name.
     ("sfx_flame",           "elemental-spell-impact-flame",       "impact"),
-    # The water attacks and the water barrier -- the author sourced it from
-    # Pixabay for them, 2026-09-26.
+    # Water attacks and a water barrier -- sourced from Pixabay, 2026-09-26.
     ("sfx_water",           "elemental-spell-impact-water",       "impact"),
 ]
 

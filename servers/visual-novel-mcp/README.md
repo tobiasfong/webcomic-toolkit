@@ -2,7 +2,8 @@
 
 Branching visual-novel production server for Ren'Py projects built from
 webcomic-toolkit assets: a scene database with cross-session continuity, a
-branch-graph validator, and the one-body-plus-face-patch sprite manifest.
+branch-graph validator, and the sprite manifest (one whole body per
+expression; face patches are legacy).
 
 ## Why a server (and why this shape)
 
@@ -65,7 +66,7 @@ deterministic scale normalization), and `mirror_ok` (false for asymmetric
 costume details).
 
 `emit_sprites` generates `sprites_generated.rpy`: one `layeredimage` per
-character, zoom computed from `target_height`, each patch padded onto a
+character, zoom computed from `target_height`, and (for the legacy patch route) each patch padded onto a
 transparent body-sized canvas so every layer is the same size and offsets
 are baked into pixels — the jitter-proof representation.
 `preview_expression` composites body + patch over magenta for the alignment

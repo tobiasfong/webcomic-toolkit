@@ -35,6 +35,10 @@ _JUMP_RE = re.compile(r"^\s*jump\s+(expression\s+)?([\w.]+)")
 # label called `screen`. Two permanent false positives that trained people to
 # ignore the dangling list, which is the one list that must never be ignored.
 _CALL_RE = re.compile(r"^\s*call\s+(?!screen\b)(expression\s+)?([\w.]+)")
+# `python:`, `init python:`, `init -1 python in store:`, `python early:` ...
+# the statement that opens a block of Python (see py_indent in scan_file).
+_PYTHON_BLOCK_RE = re.compile(
+    r"^\s*(?:init\s+(?:-?\d+\s+)?)?python(?:\s+(?:early|hide|in\s+[\w.]+))*\s*:\s*$")
 _MENU_RE = re.compile(r"^(\s*)menu(?:\s+[\w.]+)?\s*:")
 _CHOICE_RE = re.compile(r'^(\s*)"((?:[^"\\]|\\.)*)"\s*(?:if\s+(.+?))?\s*:\s*$')
 _SET_RE = re.compile(r"^\s*\$\s*([A-Za-z_]\w*)\s*(?:=|\+=|-=)\s*")
@@ -107,12 +111,27 @@ def scan_file(path: str) -> FileScan:
         if current_label is not None and last_stmt not in ("return", "jump"):
             scan.fallthrough.append(current_label)
 
+    # Indent of the `python:` / `init python:` statement whose block we are
+    # inside, or None. Its body is Python, not script: a docstring line there
+    # that happens to open with a statement word ("show three boxes under
+    # ...") was read as a `show` of an image that does not exist, and an
+    # `if NAME:` in a function as a story flag.
+    py_indent = None
+
     for lineno, rawline in enumerate(lines, 1):
         line = rawline.rstrip("\n")
         code = line.split("#", 1)[0] if not line.lstrip().startswith("#") else ""
         if not code.strip():
             continue
         indent = len(code) - len(code.lstrip())
+
+        if py_indent is not None:
+            if indent > py_indent:
+                continue
+            py_indent = None
+        if _PYTHON_BLOCK_RE.match(code):
+            py_indent = indent
+            continue
 
         while menu_stack and indent <= menu_stack[-1][0]:
             menu_stack.pop()

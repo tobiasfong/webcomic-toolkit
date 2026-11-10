@@ -500,13 +500,16 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `choice_glyphs.py` | Draw pictogram choice cards: flat symbols, not illustrations |
 | `choice_squad.py` | Build a choice card from registered sprites: a group, on a dark field |
 | `combat_calls.py` | Every combat the document SPECIFIES must be one the player actually fights |
+| `convert_images_webp.py` | Turn a project's installed art into WebP, once: originals to a backup folder, every reference repointed |
 | `convert_scene.py` | Turn a hand-written Ren'Py scene into an emitter that regenerates it from |
 | `decay_overlay.py` | Draw an ADDITIVE decay layer for a background plate: mold, rust, stains, |
 | `draw_ctc.py` | Draw the click-to-continue mark: a right-pointing triangle centered on a line-tall canvas |
 | `emitlib.py` | The helpers every scene emitter needs, defined ONCE |
 | `fight_smoke.py` | Start the game's first fight in a real run, past its checkpoint save |
+| `font_audit.py` | Fail when the installed CJK subset is behind the scripts |
 | `fx_plates.py` | Draw the fight-scene impact plates: convergence bursts, slash beams, and |
 | `import_sfx.py` | Import downloaded sound effects into the game, matched to the beats |
+| `install_image.py` | Put one CG, background or effect plate into a game as WebP; refuses a destination outside `game/images` |
 | `install_renpy.py` | Download and install the Ren'Py SDK, so the harness does the setup |
 | `make_battle_ui.py` | Draw the battle UI panels: the box frame and the selection cursor |
 | `make_nvl_scrim.py` | Draw the NVL scrim: a vertical fade that darkens ONLY the band the text |
@@ -514,14 +517,16 @@ they take the path as an argument (`vnpaths.game_dir`, or `VN_GAME_DIR`).
 | `night_sky.py` | Replace a daytime sky with a drawn night sky, and grade the rest to match |
 | `nvlpage.py` | The NVL page model: which entries share a screen, and how tall it is |
 | `optimize_png.py` | Losslessly shrink every PNG under a Ren'Py project's game folder |
-| `paginate_nvl.py` | Place NVL page breaks by measured height -- Fate-style pagination, at emit time |
+| `paginate_nvl.py` | Place NVL page breaks by measured height -- Fate-style pagination, at emit time. **Experimental, not wired in:** nothing calls it, and height pagination was reverted (see the emitter rules) |
 | `promo_video.py` | Render a promo video from a title screen: the cover, its ambience, a track |
 | `renpy_sdk.py` | Locate the Ren'Py SDK that install_renpy.py put on this machine |
 | `save_compat.py` | Old saves stay loadable: no saved name reused, no class gone, no attribute without a fallback |
+| `screen_smoke.py` | Open every menu screen in a real run of the game and report any crash (opens a window) |
 | `script_diff.py` | Diff an author's docx master against the converted Ren'Py scenes |
 | `serve_web.py` | Serve a Ren'Py web build locally, and keep serving until Ctrl-C |
 | `sfx_plates.py` | Synthesize the battle sound effects, the way fx_plates.py draws the visuals |
 | `slot_audit.py` | Two sprites standing in one slot -- found by walking, not by playing |
+| `speaker_audit.py` | Find dialogue emitted as narration with its speaker label still in it |
 | `spec_check.py` | The author's numbers in the docx against the numbers the game actually uses |
 | `sprite_audit.py` | Report speakers who talk with no sprite on screen |
 | `sprite_overlap.py` | Report sprites that stand on top of each other, and say who is buried |
@@ -573,11 +578,15 @@ last.
 ## Verifying
 
 **Run `tools/verify_all.py <project> "<master.docx>"`.** It runs the whole
-sequence -- emit, diff, lint, sprites, slots, spec, combat, static, overlap,
-sound, story, nvl, pyflakes, skill -- in order and stops at the first failure.
+sequence -- emit, diff, speaker, font, lint, saves, sprites, slots, spec,
+combat, sim, static, overlap, sound, story, nvl, pyflakes, skill, screens,
+fight (twenty steps) -- in order and stops at the first failure. Everything
+that needs no window runs first; `screens` and `fight` open the game, so they
+come last and a static failure never opens one.
 The repo's AGENTS.md documents each step and the bug that put it there. The
-table above is generated from each tool's own docstring (2026-09-14), after a
-hand-kept version listed eight tools of thirty and none of the audits.
+table above is kept by hand, one line from each tool's docstring (it once
+listed eight tools of thirty and none of the audits); add a row when you add
+a tool.
 
 `renpy lint` parses; it does not execute. It passed on the menu that crashed
 the moment it drew. Two checks that do catch things:
@@ -839,9 +848,30 @@ Each step caught a real bug in one week. None substitutes for another.
 servers/visual-novel-mcp/.venv/Scripts/python.exe servers/visual-novel-mcp/tools/verify_all.py vn/<project> "<master.docx>"
 ```
 
-`verify_all.py` (added 2026-09-08) runs every step below in order -- the
-numbering here follows the tool's order exactly -- and stops at the first
-failure with that step's output. It exists because the steps,
+`verify_all.py` (added 2026-09-08) runs the steps in the order of its own
+docstring and stops at the first failure with that step's output. The twenty,
+in that order: `emit`, `diff`, `speaker`, `font`, `lint`, `saves`, `sprites`,
+`slots`, `spec`, `combat`, `sim`, `static`, `overlap`, `sound`, `story`, `nvl`,
+`pyflakes`, `skill`, then the two that open a game window, `screens`
+(screen_smoke) and `fight` (fight_smoke, one fight). The numbered list
+further down explains the older steps and the bug behind each; it is NOT in
+run order and does not number the newer ones (speaker, font, saves, sim,
+screens, fight), whose reasons are in their own tools' headers.
+
+A step passes on POSITIVE EVIDENCE, never on the absence of a complaint. Each
+child is judged on its exit code (non-zero or killed fails, with its output
+shown), then on a traceback in its output (fails even at exit 0), then on the
+one line only a real pass prints: `diff` must END on `in sync`, `lint` needs
+exit 0 and the Statistics footer, `spec` fails when it read zero claims,
+`fight` needs a pass marker from the test run, `sprites` fails on a missing
+input file or a speaker prefix left in narration. A step that could not run
+because something is missing prints `skip` with the reason, never `ok`, and
+the final line names every skipped step. Children are launched with
+PYTHONUTF8 set so manuscript text in a report cannot crash them. The run
+refuses to start if a killed smoke run left a `zz_*smoke*` file in `game/`,
+and names the files to delete. Arguments: `--slug NAME` or `--slug=NAME`;
+an unknown `--skip-<step>` is an error; two positionals given the wrong way
+round (first ends in `.docx`) are swapped, with a note. It exists because the steps,
 run by hand, get skipped, reordered, or filtered wrong — the lint step in
 particular was grepped for `game/x.rpy:42` and reported a clean sheet while
 the game would not compile, since a parse error prints in a different

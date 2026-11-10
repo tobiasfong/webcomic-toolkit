@@ -37,7 +37,16 @@ def main():
     rel = os.path.splitext(a.dest.replace("\\", "/"))[0] + sprites.GAME_IMAGE_EXT
     if not rel.startswith("images/"):
         sys.exit("destination must be under images/ (relative to game/): %s" % a.dest)
-    out = os.path.join(a.project, "game", rel)
+    # ⚠ "images/../../x" starts with images/ and still leaves game/. Normalize
+    # the final path and require it to stay under <project>/game/images.
+    root = os.path.realpath(os.path.join(a.project, "game", "images"))
+    out = os.path.realpath(os.path.join(a.project, "game", rel))
+    try:
+        inside = os.path.commonpath([root, out]) == root and out != root
+    except ValueError:                  # a different drive
+        inside = False
+    if not inside:
+        sys.exit("destination escapes game/images: %s" % a.dest)
     with Image.open(a.master) as im:
         im.load()
         blob = sprites.game_image_bytes(im)

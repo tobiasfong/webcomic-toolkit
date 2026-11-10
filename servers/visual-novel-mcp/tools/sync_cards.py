@@ -1,6 +1,10 @@
 """Generate a choice screen's option data from the author's docx.
 
-    python sync_cards.py <master.docx> <game-dir> [cards.json]
+    python sync_cards.py <master.docx> <game-dir> [cards.json] [--check]
+
+`--check` writes nothing: it prints what it WOULD write and exits 0 when the
+generated file is identical to the one on disk, 1 when it differs or is
+missing.
 
 WHY THIS EXISTS
 ---------------
@@ -113,16 +117,25 @@ def strip_notes(t):
 
 
 def esc(s):
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape card text for a Ren'Py string -- the SAME rules as the emitters'
+    esc() in emitlib.py (which is a closure there, so it cannot be imported):
+    backslash and quote, then [ { % which Ren'Py would otherwise interpolate or
+    read as a format code, with the {i}/{/i} tags the pipeline itself inserts
+    left alone."""
+    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("[", "[[")
+    s = s.replace("{", "{{").replace("%", "%%")
+    return s.replace("{{i}", "{i}").replace("{{/i}", "{/i}")
 
 
 def main():
-    if len(sys.argv) < 3:
+    check = "--check" in sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != "--check"]
+    if len(args) < 2:
         sys.exit("usage: python sync_cards.py <master.docx> <game-dir> "
-                 "[cards.json]\nPaths are deliberately not stored in this "
-                 "repository.")
-    docx_path, game = sys.argv[1], sys.argv[2]
-    cfg_path = sys.argv[3] if len(sys.argv) > 3 else os.path.join(game, "cards.json")
+                 "[cards.json] [--check]\nPaths are deliberately not stored in "
+                 "this repository.")
+    docx_path, game = args[0], args[1]
+    cfg_path = args[2] if len(args) > 2 else os.path.join(game, "cards.json")
     if not os.path.exists(cfg_path):
         sys.exit("No card config at %s -- see the module docstring." % cfg_path)
     cfg = load_cfg(cfg_path)
@@ -168,7 +181,22 @@ def main():
     out += ["]", ""]
 
     dest = os.path.join(game, out_name)
-    io.open(dest, "w", encoding="utf-8", newline="\n").write("\n".join(out))
+    text = "\n".join(out)
+    if check:
+        have = None
+        if os.path.exists(dest):
+            have = io.open(dest, encoding="utf-8", newline="").read()
+        same = have == text
+        print("sync_cards --check: %s would be %s (%d characters generated)"
+              % (dest, "UNCHANGED" if same else
+                 ("CREATED" if have is None else "CHANGED"), len(text)))
+        if not same and have is not None:
+            import difflib
+            for l in list(difflib.unified_diff(have.splitlines(), text.splitlines(),
+                                               "on disk", "generated", lineterm=""))[:40]:
+                print("  " + l)
+        return 0 if same else 1
+    io.open(dest, "w", encoding="utf-8", newline="\n").write(text)
     print("wrote %s" % dest)
     print("  prompt: %s" % prompt)
     for (title, body), spec in zip(rows, want):

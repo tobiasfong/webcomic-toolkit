@@ -19,7 +19,9 @@ game headed and executes a `testcase` block. This writes a throwaway file of
 testcases -- one per screen, each: wait for the main menu, open the screen,
 hold it -- runs them one at a time, and reads `traceback.txt`, which Ren'Py
 writes on any uncaught exception. The file and its compiled twin are ALWAYS
-deleted, crash or not, so nothing temporary can ship in a build.
+deleted, crash or not (a `finally`), so nothing temporary can ship in a
+build. A hard kill of THIS script skips a `finally`; verify_all then refuses
+to start while a `zz_*smoke*` file is in game/, and names the files.
 
 WHICH SCREENS: every `ShowMenu("...")` target in the game's scripts, found by
 reading them, so a new menu is covered the day it is added. `save` is left
@@ -68,26 +70,33 @@ def _run_test(project, testcase, limit=120):
     import time
     log = tempfile.NamedTemporaryFile(delete=False, suffix=".log")
     log.close()
-    with open(log.name, "w", encoding="utf-8") as fh:
-        proc = subprocess.Popen([renpy_sdk.launcher(), project, "test", testcase],
-                                stdout=fh, stderr=subprocess.STDOUT)
-        out = None
-        t0 = time.time()
-        while time.time() - t0 < limit:
-            time.sleep(0.5)
-            text = io.open(log.name, encoding="utf-8", errors="replace").read()
-            if "Status:" in text or proc.poll() is not None:
-                time.sleep(0.5)     # let the traceback finish writing
-                out = io.open(log.name, encoding="utf-8", errors="replace").read()
-                break
-        if proc.poll() is None:
+    proc = None
+    out = None
+    try:
+        with open(log.name, "w", encoding="utf-8") as fh:
+            proc = subprocess.Popen([renpy_sdk.launcher(), project, "test", testcase],
+                                    stdout=fh, stderr=subprocess.STDOUT)
+            t0 = time.time()
+            while time.time() - t0 < limit:
+                time.sleep(0.5)
+                text = io.open(log.name, encoding="utf-8", errors="replace").read()
+                if "Status:" in text or proc.poll() is not None:
+                    time.sleep(0.5)     # let the traceback finish writing
+                    out = io.open(log.name, encoding="utf-8", errors="replace").read()
+                    break
+    finally:
+        # The game is killed and the log removed even if this is interrupted.
+        if proc is not None and proc.poll() is None:
             if sys.platform == "win32":
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                                capture_output=True)
             else:
                 proc.kill()
             proc.wait()
-    os.remove(log.name)
+        try:
+            os.remove(log.name)
+        except OSError:
+            pass
     return out
 
 

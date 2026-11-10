@@ -33,6 +33,16 @@ timeout, which is how a testcase that outlives its advances ends (the fight
 is waiting on the command menu by then -- that is the PASS state, and the
 checkpoint save is behind it). The fight is played with the game's default
 stats, which is the prologue's situation and all the check needs.
+
+A PASS NEEDS POSITIVE EVIDENCE. The run passes only if the log says
+"Status: PASSED", or the only traceback is that runner timeout. A process
+that died, a launch that printed nothing and a log with no verdict were once
+read as "no error, so fine"; they now FAIL, with the tail of the log shown.
+
+The temporary file, its compiled twin, the log and the traceback are removed
+in a `finally`, and the game process is killed there too. A hard kill of THIS
+script skips a `finally`; verify_all refuses to start while a `zz_*smoke*`
+file is still in game/ and names the files to delete.
 """
 import glob
 import io
@@ -77,19 +87,22 @@ def run(project):
                     % (label, TESTCASE, "    advance\n" * ADVANCES))
         if os.path.exists(tb):
             os.remove(tb)
-        with open(log, "w", encoding="utf-8") as fh:
-            proc = subprocess.Popen([renpy_sdk.launcher(), project, "test", TESTCASE],
-                                    stdout=fh, stderr=subprocess.STDOUT)
-            t0 = time.time()
-            status = None
-            while time.time() - t0 < 150:
-                time.sleep(0.5)
-                text = io.open(log, encoding="utf-8", errors="replace").read()
-                if "Status:" in text or os.path.exists(tb) or proc.poll() is not None:
-                    time.sleep(1.0)
-                    status = io.open(log, encoding="utf-8", errors="replace").read()
-                    break
-            if proc.poll() is None:
+        proc = None
+        status = None
+        try:
+            with open(log, "w", encoding="utf-8") as fh:
+                proc = subprocess.Popen([renpy_sdk.launcher(), project, "test", TESTCASE],
+                                        stdout=fh, stderr=subprocess.STDOUT)
+                t0 = time.time()
+                while time.time() - t0 < 150:
+                    time.sleep(0.5)
+                    text = io.open(log, encoding="utf-8", errors="replace").read()
+                    if "Status:" in text or os.path.exists(tb) or proc.poll() is not None:
+                        time.sleep(1.0)
+                        status = io.open(log, encoding="utf-8", errors="replace").read()
+                        break
+        finally:
+            if proc is not None and proc.poll() is None:
                 if sys.platform == "win32":
                     subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                                    capture_output=True)
@@ -97,6 +110,7 @@ def run(project):
                     proc.kill()
                 proc.wait()
         err = ""
+        timed_out = False
         if os.path.exists(tb):
             text = io.open(tb, encoding="utf-8", errors="replace").read()
             lines = [l.strip() for l in text.splitlines() if l.strip()]
@@ -104,6 +118,7 @@ def run(project):
             err = errs[0] if errs else (lines[-1] if lines else "")
             if "RenpyTestTimeoutError" in err:
                 err = ""            # the runner outliving its advances: the pass state
+                timed_out = True
         if status is None:
             print("fight_smoke: %s (%s) gave no result in 150 s" % (label, where))
             return 2
@@ -113,6 +128,12 @@ def run(project):
             print("fight_smoke: CRASH in %s (%s): %s%s"
                   % (label, where, err, (" (%s:%s)" % m[-1]) if m else ""))
             return 1
+        if not (timed_out or "Status: PASSED" in status):
+            tail = "\n".join(status.strip().splitlines()[-12:])
+            print("fight_smoke: NO PASS EVIDENCE for %s (%s): the log has no "
+                  "'Status: PASSED' and there was no runner timeout. Log tail:\n%s"
+                  % (label, where, tail or "(empty)"))
+            return 3
         print("fight_smoke: %s (%s) starts and reaches its command menu without a crash"
               % (label, where))
         return 0

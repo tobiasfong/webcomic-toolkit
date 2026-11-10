@@ -1,6 +1,23 @@
 """Build the browser version of a Ren'Py project, and optionally serve it.
 
-    python build_web.py <project-dir> [--serve [PORT]] [--open]
+    python build_web.py <project-dir> [--serve [PORT]] [--open] [--sdk DIR]
+
+    --serve [PORT]   after a successful build, start serve_web.py DETACHED on
+                     PORT (default 8140) and return. The port is probed BEFORE
+                     the build: if something that is not our own server holds
+                     it, the build is not started. A server of ours already
+                     running on it keeps serving (publishing is by rename, so
+                     it sees the new build without a restart).
+    --open           open a browser once the server answers
+
+    python build_web.py "C:/path/to/vn/<project>" --serve 8140
+
+A build is published only when it is COMPLETE: index.html, renpy.js,
+renpy-pre.js, at least one .wasm, and a game.zip or game.data, each above a
+floor size. Otherwise the live build is left untouched, what is missing is
+printed, and the exit code is 1. If nothing at all appears under the
+distribution folder a few minutes after the launcher exits, it fails then
+rather than waiting out the full limit.
 
 This is the last link in the chain: install_renpy.py puts the engine on the
 machine, renpy_sdk.py finds it again, and this uses it. Nothing here contains
@@ -44,6 +61,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -63,7 +81,7 @@ def project_dir(raw):
 
 
 def build(sdk, project):
-    """Run the launcher's web_build. Returns the process exit code."""
+    """Run the launcher's web_build. Returns (exit code, the process)."""
     cmd = [
         os.path.join(sdk, "renpy.exe" if sys.platform == "win32" else "renpy.sh"),
         os.path.join(sdk, "launcher"),      # absolute -- see the module docstring
@@ -72,8 +90,9 @@ def build(sdk, project):
     ]
     print("Building the web version of %s" % os.path.basename(project))
     print("  %s" % " ".join('"%s"' % c if " " in c else c for c in cmd))
-    proc = subprocess.run(cmd, cwd=sdk)
-    return proc.returncode
+    proc = subprocess.Popen(cmd, cwd=sdk)
+    proc.wait()
+    return proc.returncode, proc
 
 
 ROTATE_MARK = "<!-- rotate-card -->"
@@ -323,7 +342,20 @@ PHONE_PAGE = """<!doctype html>
 </html>
 """
 
-def wait_for_build(root, started, settle=10, limit=1500):
+def _new_dist_folders(root, started):
+    """Web folders under any *-dists that were touched after the build began."""
+    out = []
+    for d in glob.glob(os.path.join(root, "*-dists", "*-web")):
+        try:
+            if os.path.isdir(d) and os.path.getmtime(d) >= started - 1:
+                out.append(d)
+        except OSError:
+            pass
+    return out
+
+
+def wait_for_build(root, started, settle=10, limit=1500, idle_limit=240,
+                   launcher_alive=None, log_hint=None):
     """Block until the launcher's build has actually landed on disk.
 
     The launcher returns long before the build is finished (see the module
@@ -331,6 +363,11 @@ def wait_for_build(root, started, settle=10, limit=1500):
     page written after this build started, and nothing under its folder
     touched for `settle` seconds. A launcher that does wait costs `settle`
     seconds here and nothing else. Returns the page.
+
+    If nothing at all has appeared `idle_limit` seconds in and the launcher
+    process (`launcher_alive`, a callable; None means it has exited) is gone,
+    the build is not coming: fail then instead of sleeping out `limit`.
+    `log_hint` names the launcher's log file, if there is one.
     """
     pattern = os.path.join(root, "*-dists", "*-web", "index.html")
     deadline = time.time() + limit
@@ -355,10 +392,56 @@ def wait_for_build(root, started, settle=10, limit=1500):
             print("  the launcher has returned; waiting for the build to land ...",
                   flush=True)
             waiting = True
+        gone = launcher_alive is None or not launcher_alive()
+        if (gone and time.time() - started > idle_limit
+                and not _new_dist_folders(root, started)):
+            msg = ("The launcher is gone and nothing has appeared under\n"
+                   "  %s\nin %d s, so no build is coming." % (root, idle_limit))
+            if log_hint and os.path.isfile(log_hint):
+                msg += "\n  The launcher's log: %s" % log_hint
+            sys.exit(msg)
         time.sleep(2)
     sys.exit("The launcher returned, but no new distribution settled under\n"
              "  %s\nwithin %d s. Look for a launcher process still running, or"
              " an error it printed above." % (root, limit))
+
+
+# What a Ren'Py web build always produces, measured on a good build and kept
+# loose so a version change does not break it: (label, glob patterns, floor
+# in bytes). A file counts when it matches ANY pattern and is at least the
+# floor. The floors sit far below a real build (index.html 17 KB, renpy.js
+# 396 KB, renpy-pre.js 29 KB, renpy.wasm 21 MB, game.zip 9 MB) and far above
+# a truncated or empty file.
+REQUIRED = [
+    ("index.html", ["index.html"], 2000),
+    ("renpy.js", ["renpy.js"], 50000),
+    ("renpy-pre.js", ["renpy-pre.js"], 5000),
+    ("a .wasm engine file", ["*.wasm"], 1000000),
+    ("game.zip or game.data", ["game.zip", "game.data"], 100000),
+]
+
+
+def check_complete(web):
+    """Problems that make a `-web` folder an implausible build; [] if it is
+    plausible."""
+    if not os.path.isdir(web):
+        return ["%s is not a folder" % web]
+    problems = []
+    for label, patterns, floor in REQUIRED:
+        best = -1
+        for pat in patterns:
+            for f in glob.glob(os.path.join(web, pat)):
+                try:
+                    if os.path.isfile(f):
+                        best = max(best, os.path.getsize(f))
+                except OSError:
+                    pass
+        if best < 0:
+            problems.append("missing: %s" % label)
+        elif best < floor:
+            problems.append("too small: %s (%d bytes, expected at least %d)"
+                            % (label, best, floor))
+    return problems
 
 
 def publish_live(page):
@@ -374,27 +457,64 @@ def publish_live(page):
     settled: live -> live.old, new -> live, old removed. Two renames, a few
     milliseconds, and serve_web.py waits out a missing file for that long.
     The launcher recreates its own folder from scratch on the next build
-    while the live one keeps serving. Returns the live page.
+    while the live one keeps serving.
+
+    There is always a live folder: if the second rename fails after the first
+    succeeded, the old one is moved BACK before retrying or giving up.
+    Removing the old copy afterwards never raises. Returns the live page.
     """
     src = os.path.dirname(page)
     live = src + "-live"
     old = live + ".old"
     if os.path.isdir(old):
-        shutil.rmtree(old)
+        shutil.rmtree(old, ignore_errors=True)
+        if os.path.isdir(old):
+            sys.exit("Could not publish the build: the leftover %s cannot be "
+                     "removed (something holds it open)." % old)
+    last = None
     for attempt in range(20):
+        moved = False
         try:
             if os.path.isdir(live):
                 os.rename(live, old)
+                moved = True
             os.rename(src, live)
             break
-        except OSError:
+        except OSError as exc:
+            last = exc
+            if moved and not os.path.isdir(live) and os.path.isdir(old):
+                try:
+                    os.rename(old, live)        # put the old build back
+                except OSError as exc2:
+                    sys.exit("Could not publish the build, and could not put "
+                             "the old one back: it is at %s (%s)" % (old, exc2))
             # the server may hold a file open inside `live` for a moment
             time.sleep(0.25)
     else:
-        sys.exit("Could not publish the build: %s is busy." % live)
+        sys.exit("Could not publish the build: %s is busy (%s). The previous "
+                 "live build is still in place." % (live, last))
     if os.path.isdir(old):
         shutil.rmtree(old, ignore_errors=True)
+        if os.path.isdir(old):
+            print("  note: could not remove the previous build at %s; it is "
+                  "safe to delete by hand" % old)
     return os.path.join(live, "index.html")
+
+
+def _write_text_atomic(path, text):
+    """Write to a temp file beside `path`, then os.replace() it, so a server
+    reading the page never sees half of it."""
+    fd, tmp = tempfile.mkstemp(prefix=".tmp_", dir=os.path.dirname(path))
+    try:
+        with io.open(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def add_rotate_card(root):
@@ -429,6 +549,8 @@ def add_rotate_card(root):
     """
     done = 0
     for page in glob.glob(os.path.join(root, "*-dists", "*-web*", "index.html")):
+        if ".old" in os.path.basename(os.path.dirname(page)):
+            continue                    # a build being replaced by a publish
         html = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK in html:
             a = html.index(ROTATE_MARK)
@@ -436,7 +558,7 @@ def add_rotate_card(root):
             html = html[:a] + ROTATE_CARD + html[b:]
         else:
             html = html.replace("</body>", ROTATE_CARD + "\n</body>", 1)
-        io.open(page, "w", encoding="utf-8", newline="\n").write(html)
+        _write_text_atomic(page, html)
         check = io.open(page, encoding="utf-8").read()
         if ROTATE_MARK not in check or ROTATE_END not in check:
             sys.exit("The phone block did not land in %s" % page)
@@ -445,7 +567,7 @@ def add_rotate_card(root):
         if m:
             title = m.group(1).strip()
         phone = os.path.join(os.path.dirname(page), "phone.html")
-        io.open(phone, "w", encoding="utf-8", newline="\n").write(PHONE_PAGE % title)
+        _write_text_atomic(phone, PHONE_PAGE % title)
         print("  phone block (inner frame turned in portrait, 16:9 fit, corner"
               " menu hidden) in %s" % os.path.relpath(page, root))
         done += 1
@@ -486,16 +608,33 @@ def warn_png_art(project):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("project", help="the project directory, or its game/ dir")
+    ap.add_argument("project", nargs="?",
+                    help="the project directory, or its game/ dir")
     ap.add_argument("--sdk", default=None,
                     help="override the recorded SDK path")
-    ap.add_argument("--serve", nargs="?", const=DEFAULT_PORT, type=int,
-                    default=None, metavar="PORT",
+    ap.add_argument("--serve", nargs="?", const=str(DEFAULT_PORT), default=None,
+                    metavar="PORT",
                     help="serve the build after it succeeds (default port %d)"
                          % DEFAULT_PORT)
     ap.add_argument("--open", action="store_true",
                     help="open a browser once the server is listening")
     a = ap.parse_args()
+
+    # `--serve <project>` must not eat the project as the port: argparse hands
+    # --serve whatever follows it, so anything that is not a number goes back
+    # to being the project.
+    port = None
+    if a.serve is not None:
+        if a.serve.isdigit():
+            port = int(a.serve)
+        elif a.project is None:
+            a.project, port = a.serve, DEFAULT_PORT
+        else:
+            ap.error("--serve takes a port number, not %r" % a.serve)
+        if not 0 < port < 65536:
+            ap.error("not a port: %d" % port)
+    if a.project is None:
+        ap.error("the project directory is required")
 
     sdk = renpy_sdk.sdk_dir(a.sdk)
     if not renpy_sdk.has_web_support(sdk):
@@ -507,25 +646,57 @@ def main():
         )
 
     project = project_dir(a.project)
+    # The launcher writes `<name>-<version>-dists/` beside the project, not
+    # inside it, so the server is pointed at the parent.
+    root = os.path.dirname(project)
+
+    if port is not None:
+        # Find out BEFORE a multi-minute build that the server cannot start.
+        import serve_web
+        if serve_web.recorded_server(root, port):
+            pass                    # ours: it keeps serving across the publish
+        elif serve_web.port_taken(port):
+            sys.exit("port %d is in use by something that is not this "
+                     "project's server; free it or pick another port with "
+                     "--serve PORT. Nothing was built." % port)
+
     warn_png_art(project)
     started = time.time()
-    code = build(sdk, project)
+    code, proc = build(sdk, project)
     if code != 0:
         explain(code)
         return code
 
-    # The launcher writes `<name>-<version>-dists/` beside the project, not
-    # inside it, so the server is pointed at the parent.
-    root = os.path.dirname(project)
-    page = wait_for_build(root, started)
+    hint = None
+    for cand in (os.path.join(sdk, "log.txt"), os.path.join(project, "log.txt")):
+        if os.path.isfile(cand):
+            hint = cand
+            break
+    page = wait_for_build(root, started, launcher_alive=lambda: proc.poll() is None,
+                          log_hint=hint)
+    # A quiet folder is not a finished one: give a slow tail a minute to land
+    # before calling the build incomplete.
+    problems = check_complete(os.path.dirname(page))
+    for _ in range(12):
+        if not problems:
+            break
+        time.sleep(5)
+        problems = check_complete(os.path.dirname(page))
+    if problems:
+        print("\nThe new build is INCOMPLETE and was NOT published; the live "
+              "build is untouched.")
+        for p_ in problems:
+            print("  " + p_)
+        print("  in %s" % os.path.dirname(page))
+        return 1
     if not add_rotate_card(root):
         sys.exit("No page found under %s to carry the phone block." % root)
     live = publish_live(page)
     print("\nBuilt. Published to %s" % os.path.dirname(live))
 
-    if a.serve is None:
+    if port is None:
         print("Serve it with:")
-        print("  python tools/serve_web.py \"%s\" %d --open" % (root, DEFAULT_PORT))
+        print("  python tools/serve_web.py \"%s\" %d --detach" % (root, DEFAULT_PORT))
         return 0
 
     # ASCII ONLY in anything printed. Under an unattended harness run stdout
@@ -540,15 +711,12 @@ def main():
     cmd = [sys.executable,
            os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "serve_web.py"),
-           root, str(a.serve)]
+           root, str(port), "--detach"]
     if a.open:
         cmd.append("--open")
-    # Handed to a child rather than run here so Ctrl-C stops the server the
-    # way it does when serve_web.py is run directly.
-    try:
-        return subprocess.call(cmd)
-    except KeyboardInterrupt:
-        return 0
+    # Detached, so this command returns and the server outlives the session
+    # that ran it (serve_web.py --stop ends it).
+    return subprocess.call(cmd)
 
 
 if __name__ == "__main__":

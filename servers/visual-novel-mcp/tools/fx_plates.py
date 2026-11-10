@@ -152,8 +152,8 @@ def beam(angle, thickness, hue, offset=0, fill=255):
 
 
 def crescent(hue, seed=7):
-    """The frozen arc: 'a colossal crescent moon descended onto the mortal
-    plane' is the author's own line, so the shape is his, not an invention."""
+    """The frozen arc: a large crescent, after the author's own description,
+    so the shape is his, not an invention."""
     from PIL import ImageChops
     outer = Image.new("L", (W, H), 0)
     inner = Image.new("L", (W, H), 0)
@@ -635,8 +635,8 @@ def fog_bank(seed=53, n=42):
         vert = max(0.0, 1.0 - t * t)
         for x in range(fw):
             # Edge feather for the drift, and a gentle pull toward the middle
-            # of the frame -- the prose puts the fog in the MIDDLE of the lake
-            # and has him point at it, so it should be densest where he points.
+            # of the frame -- the scene puts the fog in the MIDDLE of the lake,
+            # so it should be densest there.
             e = min(1.0, min(x, fw - 1 - x) / (fw * 0.10))
             mid = 1.0 - 0.45 * abs(x - fw * 0.5) / (fw * 0.5)
             px[x, y] = int(px[x, y] * vert * e * mid)
@@ -864,10 +864,9 @@ def shock_rings(hue, center=(0.5, 0.46), n=5, fill=150, seed=11):
 def grasp(hue, n=7, fill=190, seed=17):
     """Hooked strokes closing inward: hands reaching from every side.
 
-    The lesser spirits in this fight both "clutch at the living", so the plate is a
-    GRAB rather than a strike -- curved talons converging on the center from
-    the frame edges, arriving from all around because there are three of
-    them and they surround him.
+    For creatures that clutch at a target, so the plate is a GRAB rather than
+    a strike -- curved talons converging on the center from the frame edges,
+    arriving from all around because the attackers surround the target.
 
     Arcs rather than straight lines: a straight stroke inward is a spear,
     and the hook is what makes it a hand.
@@ -901,35 +900,32 @@ BLAST = (255, 150, 70)
 GOLD = (255, 198, 74)
 YIN = (150, 60, 235)          # the rim of a shadow blade, not its body
 # ⚠ COLOR IS ASSIGNED PER TECHNIQUE, NOT PER CHARACTER, and getting that
-# backwards has already produced two wrong plates. The protagonist's ice is
-# AZURE, his sword style is SILVER, and his yin technique is BLACK -- three
-# different looks for one man. Meanwhile the purple above is a different
-# character's ki entirely. Do not reach for a plate because the shape fits.
+# backwards has already produced two wrong plates. One character's ice is
+# AZURE, a sword style is SILVER and a dark technique is BLACK -- three
+# different looks for one person. Meanwhile the purple above belongs to a
+# different technique entirely. Do not reach for a plate because the shape fits.
 STEEL = (196, 220, 255)       # an enemy's mundane blade: cold, slightly dim
 SILVER = (232, 240, 252)      # the sword style: a bright colorless flash
 AZURE = (64, 150, 255)        # the ice spells
 GRAY = (146, 150, 158)        # a knife in the dark: dull, no ki at all
-# A RIVAL'S LIGHTNING SWORD ART.
+# A LIGHTNING SWORD TECHNIQUE.
 #
 # VIOLET, by the author's call. A gold-white version was drawn first on the
-# reasoning that purple already belongs to another character; he overruled it,
-# and he is right that the collision is theoretical -- that character is not
-# in the scene, and lightning is violet in this genre far more often than it
-# is gold.
+# reasoning that purple already belongs to another technique; he overruled it,
+# and he is right that the collision is theoretical -- the two never share a
+# scene, and lightning is violet in this genre far more often than it is gold.
 #
-# It is deliberately PALER AND PINKER than QI (150, 96, 255), which is that
-# other character's ki, so the two are not the same energy on screen if they
-# ever do share a scene. It also suits the medium better: bloom wants a
-# white-hot core with the hue surviving only in the halo, and a pale violet
-# gives that where a saturated one goes muddy.
+# It is deliberately PALER AND PINKER than QI (150, 96, 255), so the two are
+# not the same energy on screen if they ever do share a scene. It also suits
+# the medium better: bloom wants a white-hot core with the hue surviving only
+# in the halo, and a pale violet gives that where a saturated one goes muddy.
 #
-# ⚠ It still must not be AZURE. The strike lands in the same exchange as the
-# protagonist's ice -- she shatters his trap, he answers with an ice barrier
-# -- and two people trading blows in one color read as one person.
-# The cave chapter. BEAST marks are warm and organic against the cast's cold
-# ki; SPECTER belongs to the spirit boss alone, a sick green-white that answers to
-# none of the existing magic systems so her attacks cannot be mistaken for
-# anyone's technique.
+# ⚠ It still must not be AZURE. If it lands in the same exchange as the ice
+# plates, two combatants trading blows in one color read as one.
+# Creature colors. BEAST marks are warm and organic against a cast of cold
+# ki; SPECTER is a boss-only color, a sick green-white that answers to none
+# of the existing magic systems so its attacks cannot be mistaken for anyone's
+# technique.
 BEAST = (255, 138, 92)
 SPECTER = (176, 255, 214)
 THUNDER = (208, 156, 255)
@@ -1061,7 +1057,7 @@ def coil_crack(hue, fill=236, loops=3, dim=0.34, seed=71):
 
 
 def shell_dome(hue, fill=210, cell=0.085):
-    """A protective dome of DIAMOND LATTICE, the tortoise's own shell pattern
+    """A protective dome of DIAMOND LATTICE, a shell pattern
     raised over the party: SHELL SHIELD. A pattern and a rim, so drawn, like
     the magic circle."""
     cx, cy = 0.5 * W, 0.86 * H
@@ -1093,7 +1089,7 @@ plates = {
                             warm_span=(0.35, 1.15)),
     # The gesture: one blade of light, before anything is described.
     "slash_qi": beam(math.radians(28), 26, QI),
-    # Frost answering, in the bandit fight.
+    # Frost, as a reply to an attack.
     "burst_ice": convergence((W * 0.55, H * 0.46), 130, ICE, seed=202),
     # The defensive ice barrier.
     "crescent_ice": crescent(ICE),
@@ -1104,11 +1100,10 @@ plates = {
     # blacking out a quiet conversation for a thrown object would hit far
     # harder than the moment is.
     "streak_gold": streak(GOLD),
-    # A person crossing the frame at speed, rather than an object thrown --
-    # same shape, the cast's colorless sword-flash hue. For the beat where a
-    # figure "streaks across the cavern, a silvery and gray shape". Its
-    # direction matches the prose: in from the upper right, out at mid-left,
-    # where the man it turns into is then shown.
+    # A figure crossing the frame at speed, rather than an object thrown --
+    # same shape, in the colorless sword-flash hue. Its direction is set by
+    # the staging: in from the upper right, out at mid-left, where the figure
+    # is shown next.
     "streak_silver": streak(SILVER),
     # The ice lance: a rigid spear thrown from the caster's corner of the
     # battle stage toward the enemies' corner.
@@ -1135,11 +1130,10 @@ plates = {
     # gets that axis; the enemy's swing is deliberately CROSSED against it,
     # which is the only cue a symmetric line can carry about who is swinging.
     "slash_steel": beam(math.radians(24), 22, STEEL),
-    # THE SWORD STYLE: silver, which is also the word the prose uses for it.
+    # A SWORD STYLE: silver, which is also the word the prose uses for it.
     #
-    # ⚠ It is NOT the purple above. That belongs to a different character --
-    # the scenes use it for his pressure, and the protagonist answers it with
-    # frost rather than sharing it.
+    # ⚠ It is NOT the purple above. That belongs to a different technique,
+    # and sharing it would blur which side is attacking.
     #
     # This and slash_steel are deliberately close in color, because both are
     # ordinary blades catching light and dressing one of them up would be a
@@ -1158,11 +1152,9 @@ plates = {
     "star_shuriken": shuriken(STEEL),
     # ---- A SWORD FORM PERFORMED RATHER THAN SWUNG -----------------------
     #
-    # TWO MORE SILVER SLASHES, so the DEMONSTRATION can be three
-    # strokes rather than one flash shown three times. He is not hitting
-    # anyone here -- he is performing a form to prove which school trained
-    # him, and the prose describes it as continuous: "The sword coils and
-    # lashes, the blade almost bending from the sharp motions."
+    # TWO MORE SILVER SLASHES, so a DEMONSTRATION can be three
+    # strokes rather than one flash shown three times. Nobody is hit here --
+    # a form is being performed, and it reads as one continuous motion.
     #
     # One plate repeated reads as a stutter. Three ANGLES read as a sequence,
     # and they alternate direction -- steeper "/", then "\\" as the return
@@ -1171,13 +1163,13 @@ plates = {
     # ⚠ Mind the sign: screen y grows DOWNWARD, so POSITIVE leans "\\".
     "slash_silver_2": beam(math.radians(-58), 24, SILVER, offset=-70),
     "slash_silver_3": beam(math.radians(16), 25, SILVER, offset=60),
-    # THE CONJURED ICE SCULPTURE, and deliberately NOT one of the ice attack
-    # plates. He is not striking anything -- he raises a hand and grows a
-    # small frozen thing in front of a hostile stranger to make a point.
+    # A CONJURED ICE ORNAMENT, and deliberately NOT one of the ice attack
+    # plates. Nothing is struck -- a small frozen thing grows in front of
+    # a bystander to make a point.
     #
     # The attack plates are opaque black frames that cut the scene away for
     # 50 ms, which is what sells an impact. Blacking out a street to show
-    # someone conjuring an ornament would land far harder than the beat does,
+    # an ornament being conjured would land far harder than the beat does,
     # so this one is drawn to be shown ADDITIVE: radial, small, contributing
     # only light. Same reasoning as the tossed gold token.
     # ⚠ THE ICE FLOWER IS NOT DRAWN HERE ANY MORE, AND SHOULD NOT BE.
@@ -1201,26 +1193,26 @@ plates = {
     # Clarity is what glass looks like; ice looks CRACKED. Then a second pass
     # on the SAME SEED replaced a furled heart with upright ice needles,
     # because a furled heart is bud-shaped and kept growing an organic bud.
-    # THE RIVAL'S LIGHTNING SWORD ART. A lance rather than a beam: she drops
-    # to a knee and drives the point into the ground, so the shape should
-    # travel and taper rather than cross the frame evenly.
+    # THE LIGHTNING SWORD TECHNIQUE. A lance rather than a beam: the point
+    # is driven into the ground, so the shape should travel and taper rather
+    # than cross the frame evenly.
     "slash_thunder": lance(THUNDER, start=(0.82, 0.12), end=(0.24, 0.82),
                            width=52, seed=29),
-    # --- the cave chapter, 2026-09-05 ---
+    # --- creature attacks, 2026-09-05 ---
     # A beast's claw. Three gashes, angled DOWNWARD across the frame the way
-    # a big cat strikes, and warm against every cold plate the cast owns.
+    # a big cat strikes, and warm against every cold plate.
     "slash_claw": rake(BEAST, math.radians(-34), 30, (-64, 0, 66)),
     # Its bite. The same marks turned near-vertical and pulled tighter, so it
     # reads as jaws closing rather than a swipe -- two rows, not three.
     "bite_beast": jaws(BEAST),
-    # The spirit's rake: her color, wider spacing, thinner strokes. She is a
-    # bigger thing with narrower fingers.
+    # A boss's rake: its own color, wider spacing, thinner strokes. A bigger
+    # creature with narrower fingers.
     "slash_specter": rake(SPECTER, math.radians(-26), 20, (-92, -12, 70, 132),
                           fill=214, seed=41),
-    # Her scream.
+    # Its scream.
     "wail_specter": shock_rings(SPECTER),
-    # The lesser ghosts clutching. Shared by both ghost types: they do the
-    # same thing and the fight already tells them apart by name.
+    # Lesser creatures clutching. Shared by every type that does this: they
+    # do the same thing and the fight already tells them apart by name.
     "grasp_specter": grasp(SPECTER),
     # The death screen's backdrop. Center left clear for the words.
     "blood_splash": blood_splash(),
@@ -1231,7 +1223,7 @@ plates = {
     # technique, and it should sit with the rest of a caster's kit rather
     # than with the ambient frost.
     "icicle_rain": icicle_rain(AZURE),
-    # --- 2026-09-26: tail attacks and the tortoise's shield ---
+    # --- 2026-09-26: tail attacks and a shell shield ---
     "whip_lash": whip(BEAST),
     # ...and the frame after it: the crack where the tip lands.
     "whip_crack": whip_crack(BEAST),

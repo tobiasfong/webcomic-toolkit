@@ -132,7 +132,7 @@ def check_names(project):
             name = m.group(1).strip()
             if name == "black" or name.startswith("screen ") or name in declared:
                 continue
-            # a layeredimage tag may be followed by attributes: "jeon smile"
+            # a layeredimage tag may be followed by attributes: "pc smile"
             if name.split()[0] in declared:
                 continue
             bad.append("%s:%d  %s" % (os.path.basename(f), n, name))
@@ -277,7 +277,11 @@ def main(argv):
     project = argv[0]
     repo = None
     if "--repo" in argv:
-        repo = argv[argv.index("--repo") + 1]
+        i = argv.index("--repo")
+        if i + 1 >= len(argv):
+            sys.exit("static_audit: --repo needs a path\nusage: python "
+                     "static_audit.py <project-dir> [--repo <repo-root>]")
+        repo = argv[i + 1]
     else:
         # vn/<project> sits two levels under the repo root by convention
         cand = os.path.abspath(os.path.join(project, "..", ".."))
