@@ -93,15 +93,45 @@ where something genuinely cannot be generated together.
 6. **Erasing to a flat color before redrawing cuts both ways.** On a pale floor
    it produced a clean new hand. On a dark textured floor the flat patch was
    read as the new hand's SILHOUETTE and filled as a paper cutout.
-7. **Hands are still the weak point -- use `fix_hands`, first.** A hand is
-   ~50 px in a full-body render, too small for fingers. `fix_hands` (character
-   server) redraws each hand at 4x in a box sized to a natural hand and puts
-   four candidates per hand on one sheet; `apply_hand_fix` pastes the picks;
-   `touch_up` fixes one leftover dent at 6x. Measured 2026-11-07: about two
-   hours went to boxed redraws at full size, whole-figure rerolls, a hand
-   drawing as a reference, a transplant and code patches of hand pixels; the
-   4x route got usable hands in one or two sheets. Never patch hand pixels in
-   code -- every such patch made a new defect.
+7. **Hands are still the weak point. PREVENT them in the prompt; repairing one
+   in place does not work.** Measured 2026-11-12 on a fixed set of twelve hard
+   poses (sword grip, salute, crossed arms, wave, point, hands at the sides),
+   one seed each, every hand graded by the author as ship-or-not:
+
+   | how the figure was made | hands he would ship |
+   |---|---|
+   | usual short prompt, 832x1216 | 4 of 21 |
+   | same prompt and seed, 1248x1824 | 9 of 21 |
+   | **each hand spelled out** (see below), 832x1216, text-only | **8 of 12** (short prompt: 2 of 11) |
+   | each hand spelled out, 1248x1824 | 6 of 11 text-only, 3 of 12 from a reference |
+   | a hand drawn as the WHOLE picture, 1024x1024 | 10 of 12 |
+   | `fix_hands` (4x redraw) on rejected hands, 3 seeds each | 1 of 12 |
+   | three other in-place repairs (donor hand + blend; inpaint hand; inpaint sleeve + hand) | 1 of 36 |
+   | finishing a missing thumb on an otherwise good hand (redraw or inpaint of the thumb area) | 0 of 7 |
+
+   - **Spell out each hand.** BFL's own prompt-upsampler instruction (in the
+     v0.41 template) shows the caption Klein was trained on: medium and style
+     FIRST, then scene and light, then the subject, 100-350 words, with frame
+     positions and relations stated. Ours were ~50 words, style last, hands
+     never described. A hand sentence looks like: "Her right arm, at
+     frame-left, is raised with the open palm facing the viewer, four fingers
+     together pointing up and the thumb held out to the side." Add a sentence
+     that the whole figure is in frame down to the shoes, or the long caption
+     pulls the camera in and crops the legs.
+   - **A bigger render adds nothing once the hands are spelled out**, at 2.5x
+     the time. It helped only the short prompt.
+   - **Figures re-posed from a reference stay near one hand in three** under
+     every setting tried. That is the open problem.
+   - **Klein copies its reference's hands, good or bad**: six of six copies of
+     a good-handed sprite passed; none of six from a sprite with a six-fingered
+     hand did. Check a reference's hands before building on it.
+   - **`fix_hands` rebuilds the hand it is shown**, defects included: its
+     record is 1 of 12 here and 2 of 40 on a two-figure CG. The earlier note
+     that it "got usable hands in one or two sheets" was one sprite, not a
+     rate. `touch_up` on one small defect is a different, smaller job.
+   - Never patch hand pixels in code -- every such patch made a new defect.
+   - One seed per pose: differences of two or three hands are within luck.
+     The large gaps are the findings.
 8. **Color words are taken literally.** "Cheeks flushed deep red with fever"
    came back looking like heavy makeup. The author's own sentence — "sick with
    a fever, sleeping, perspiring and breathing heavily" — gave a believable
