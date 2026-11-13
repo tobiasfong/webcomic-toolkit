@@ -432,6 +432,15 @@ FLUX.1 Kontext, the model this replaced, is retired; see the CHANGELOG.
 | `WEBCOMIC_ANIME_KLEIN_AUTOLAUNCH` | `1` |
 | `HF_API_KEY_ID`, `HF_API_KEY_SECRET` | unset — only `animate_shot_cloud` needs them; a Higgsfield API key pair from console.higgsfield.ai (or both as `HF_CREDENTIALS=id:secret`) |
 | `WEBCOMIC_ANIME_HF_URL` | `https://api.higgsfield.ai` |
+| `WEBCOMIC_VOICEVOX_URL` | `http://127.0.0.1:50021` — only `tools/voice.py` needs it |
+| `WEBCOMIC_VOICEVOX_ENGINE` | the winget install's `VOICEVOX\vv-engine\run.exe`, started if nothing answers |
+
+**Japanese dialogue (optional).** `tools/voice.py` renders lines to .wav through
+a local [VOICEVOX](https://voicevox.hiroshiba.jp/) engine (free, Japanese only):
+`say(text, voice, out_wav, speed=, pitch=, intonation=)`, with `find_voice()`
+and `speakers()` to pick a voice. Every voice needs a `VOICEVOX:<character>`
+credit, which `credits()` builds, and each character has its own terms; read
+them before a voice's first use.
 
 ## Tools
 

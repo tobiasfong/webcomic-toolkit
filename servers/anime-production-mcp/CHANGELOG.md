@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Japanese dialogue through VOICEVOX** (`tools/voice.py`, optional). Lines
+render to .wav from a local VOICEVOX engine, started on the GPU if it isn't
+already running, with speed, pitch and intonation exposed. `credits()` builds the
+`VOICEVOX:<character>` lines every video using a voice must carry. Standard
+library only.
+
 ## 3.5.0 — 2026-10-31
 
 **Kling 4.0 replaces Kling O3** on both paid tools: `kling-4.0` for
