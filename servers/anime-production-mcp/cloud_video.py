@@ -345,9 +345,13 @@ def estimate_usd(model: str, body: dict) -> float | None:
     if usd is None and data.get("type") == "description":
         # Seedance prices by the second and answers with a rate sheet ("... $0.4622 at 720p ...") instead
         # of a figure. Rate x duration, at the list price (before discounts), so a cap set from it is safe.
+        # ⚠ The sheet's WORDING changes: by 2026-11-15 it read "... USD per video second: 480p: $0.1177;
+        # 720p: $0.2647; ...", the old pattern matched nothing, and every paid run was refused at its cap with
+        # "Estimated $None". Both wordings are read; anything else still returns None, which refuses the run.
         res = body.get("resolution", "720p")
-        m = re.search(r"\$([\d.]+)(?: per second of generated video)? at " + re.escape(res),
-                      data.get("pricing_description", ""))
+        desc = data.get("pricing_description", "")
+        m = (re.search(r"\$([\d.]+)(?: per second of generated video)? at " + re.escape(res), desc)
+             or re.search(re.escape(res) + r":\s*\$([\d.]+)", desc))
         if m and body.get("duration"):
             usd = float(m.group(1)) * float(body["duration"])
     return round(float(usd), 4) if usd is not None else None
