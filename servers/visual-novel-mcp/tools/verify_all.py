@@ -548,7 +548,13 @@ def step_story(project, docx, slug=None):
 
 
 def step_nvl(project, docx):
-    """No NVL page may run under the quick menu. Measured, not assumed.
+    """Every NVL entry fits the page on its own. Measured, not assumed.
+
+    The page scrolls with its newest line in view (gui.nvl_scroll_height), so
+    a PAGE taller than the space only scrolls, and is counted, not failed --
+    the author accepted that when the page moved into the lower 70% of the
+    screen (2026-11-15). What cannot be allowed is one ENTRY taller than the
+    space: its first lines would sit above the view on the click that shows it.
 
     Uses the SAME page model paginate_nvl.py places the breaks with
     (nvlpage.py): story order across files, branches followed as the game
@@ -571,14 +577,14 @@ def step_nvl(project, docx):
     worst, f, line, n = tallest
     where = "%s:%d (%d entries)" % (os.path.basename(f or "?"), line + 1, n)
     auto = sum(io.open(x, encoding="utf-8").read().count(nvlpage.MARK) for x in files)
-    if worst > metrics.screen_h - 20:
-        raise Fail("tallest page %d px at %s -- runs off a %d px screen"
-                   % (worst, where, metrics.screen_h))
-    if worst > metrics.limit:
-        raise Fail("tallest page %d px at %s -- its text reaches the quick menu "
-                   "(limit %d)" % (worst, where, metrics.limit))
-    return "tallest page %d px of %d at %s; %d automatic breaks" % (
-        worst, metrics.limit, where, auto)
+    one, ef, eline = metrics.tallest_entry
+    ewhere = "%s:%d" % (os.path.basename(ef or "?"), eline + 1)
+    if one > metrics.limit:
+        raise Fail("one entry is %d px at %s -- taller than the %d px page, so its "
+                   "first lines are out of view when it appears" % (one, ewhere, metrics.limit))
+    return ("tallest entry %d px of %d at %s; tallest page %d px at %s; %d page states "
+            "scroll; %d automatic breaks" % (one, metrics.limit, ewhere, worst, where,
+                                             metrics.over_limit, auto))
 
 
 def step_pyflakes(project, docx):

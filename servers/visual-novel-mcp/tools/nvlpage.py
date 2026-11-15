@@ -86,8 +86,16 @@ class Metrics(object):
         self.screen_h = int(m.group(2)) if m else 1080
         quick = _gui_int(gui, "quick_button_text_size", 34)
         # the page's text must end above the quick menu (text + its borders),
-        # and the page has its own bottom border
-        self.limit = self.screen_h - (quick + 16) - 20
+        # and the page has its own bottom border. It STARTS at nvl_page_top
+        # (0 for a page that fills the frame from the top), so that comes off.
+        self.page_top = _gui_int(gui, "nvl_page_top", 0)
+        self.limit = self.screen_h - (quick + 16) - 20 - self.page_top
+        # Filled in by walk(): the tallest single entry as a page of its own,
+        # (height, file, line), and how many page states ran past the limit.
+        # The page scrolls with its newest line in view, so a tall PAGE only
+        # scrolls; a single entry taller than the limit cannot be read whole.
+        self.tallest_entry = (0, None, 0)
+        self.over_limit = 0
         self.font = ImageFont.truetype(
             os.path.join(sdk, "renpy", "common", "DejaVuSans.ttf"), self.size)
         self.line = sum(self.font.getmetrics())
@@ -196,6 +204,12 @@ def walk(files, metrics, insert=True):
         h = metrics.page(pending)
         if h > tallest[0] and pending:
             tallest = (h, pending[-1].file, pending[-1].line, len(pending))
+        if pending:
+            one = metrics.page(pending[-1:])
+            if one > metrics.tallest_entry[0]:
+                metrics.tallest_entry = (one, pending[-1].file, pending[-1].line)
+            if h > metrics.limit:
+                metrics.over_limit += 1
 
     for f in files:
         stack = []                                # [indent, start_page, ends, frame]
