@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Start the game's first fight in a real run and report any crash.
 
-    python fight_smoke.py <project-dir>
+    python fight_smoke.py <project-dir> [battle_label]
 
 WHY THE OTHER CHECKS DID NOT CATCH THIS
 ---------------------------------------
@@ -70,8 +70,10 @@ def first_fight(project):
     return None, None
 
 
-def run(project):
-    label, where = first_fight(project)
+def run(project, label=None):
+    # A named battle_* label checks one fight -- the one a change touched --
+    # instead of the first the scenes call.
+    label, where = (label, "named") if label else first_fight(project)
     if not label:
         print("fight_smoke: no scene calls a battle_* label; nothing to check")
         return 0
@@ -146,4 +148,4 @@ def run(project):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit("usage: python fight_smoke.py <project-dir>")
-    sys.exit(run(os.path.abspath(sys.argv[1])))
+    sys.exit(run(os.path.abspath(sys.argv[1]), *(sys.argv[2:3])))
