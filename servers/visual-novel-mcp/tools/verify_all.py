@@ -96,6 +96,11 @@ class Skip(Exception):
     Printed as `skip` with the reason -- never as `ok`."""
 
 
+
+# The slots a volley_each move lands in (combat.rpy battle_volley_plate): one
+# per enemy slot, and the middle for a lone enemy.
+VOLLEY_LANDINGS = ("0", "1", "2", "lone")
+
 def run(cmd, cwd=None):
     """Run a child and return (exit code, stdout + stderr as text).
 
@@ -488,7 +493,10 @@ def step_sound(project, docx):
                 continue
             # a commented-out `play sound` does not make a sound
             window = [x for x in L[max(0, i - 3):i] if not x.lstrip().startswith("#")]
-            if "play sound" not in "\n".join(window):
+            # `play audio` counts too: the audio channel lets several impacts
+            # overlap (three blasts in a row) where `sound` cuts each one off
+            text = "\n".join(window)
+            if "play sound" not in text and "play audio" not in text:
                 bad.append("%s:%d  %s" % (os.path.basename(f), i + 1, m.group(1)))
     if bad:
         raise Fail("impact plates with no sound in the three lines before:\n  "
@@ -502,6 +510,9 @@ def step_sound(project, docx):
     # way for a month (found 2026-09-11). The declarations
     # in presentation.rpy exist precisely to state the full-screen transform,
     # so a plate that is only automatic is a bug by definition.
+    def landed(plate, pool):
+        return all("%s %s" % (plate, s) in pool for s in VOLLEY_LANDINGS)
+
     used = set()
     for f in glob.glob(os.path.join(project, "game", "scenes", "*.rpy")):
         for m in re.finditer(r"^\s*show (fx [a-z0-9 ]+?)(?: as .+)?\s*$",
@@ -520,7 +531,10 @@ def step_sound(project, docx):
         if table:
             keyed = set(re.findall(r'"(fx [a-z0-9 ]+)"\s*:', table.group(1)))
             thrown = set(re.findall(r'plate="(fx [a-z0-9 ]+)"', src))
-            silent = sorted(thrown - keyed)
+            # A volley_each move's plate is never shown itself: each shot
+            # plays one of its LANDINGS, `<plate> 0/1/2/lone`, and those are
+            # what must be keyed (and declared, below).
+            silent = sorted(p for p in thrown - keyed if not landed(p, keyed))
             if silent:
                 raise Fail("fight plates with no sound in PLATE_SFX -- the "
                            "attack flashes in silence:\n  "
@@ -530,7 +544,7 @@ def step_sound(project, docx):
         for m in re.finditer(r"^image (fx [a-z0-9 ]+?)\s*[=:]",
                              io.open(f, encoding="utf-8").read(), re.M):
             declared.add(m.group(1).strip())
-    auto = sorted(used - declared)
+    auto = sorted(p for p in used - declared if not landed(p, declared))
     if auto:
         raise Fail("plates the game shows but nothing declares -- Ren'Py is "
                    "drawing these at native size from the file name alone; "

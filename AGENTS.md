@@ -143,6 +143,29 @@ where something genuinely cannot be generated together.
    frame edge, which stops dead at Klein's black outline: the outermost 2 px
    fell from a brightness of 51 to 19, the ink itself.
 
+### ⭐ A CG OR NEW POSE FROM AN APPROVED SPRITE — the recipe, every time
+
+The full lesson is "THE EXPRESSION RIDES ON THE REDRAW" in
+`servers/visual-novel-mcp/WORKFLOW.md`. It lives HERE as well because that
+file is not loaded at the start of a session and it was not read: on
+2026-11-24 seven CG takes broke it, one way after another, until the author
+asked what the workflow file was for.
+
+1. **The approved sprite, PADDED on its own backdrop, is the only image.**
+2. **Ask for a VIEW the sprite is not in** — side profile, three-quarter,
+   from behind. Asked for the view it already has, Klein copies it, and the
+   CG reads as the sprite pasted on a background.
+3. **The place goes in WORDS. No plate image.** A plate brings its own
+   camera: given a front-on plate and a front-facing sprite, four layouts in
+   a row came back frontal however the words and boxes asked for a side view.
+4. **One plain sentence.** No layout boxes, no piled-on pose wording.
+5. **For a pose or angle words cannot reach, a SECOND reference supplies the
+   pose** and the prompt names each image's job (BFL's own pose guidance:
+   "The person from image 1 in the exact pose from image 2"). Use a render
+   this stack made, never a found picture.
+
+A creature's back view made this way was approved first time on the same day.
+
 ### Expressions on Klein — a whole new body, rendered from scratch
 
 The author's rule, 2026-10-17: **"Body can move."** An expression is its own

@@ -107,6 +107,15 @@ def engine(project):
             if ident in shared and ident != m.group(1):
                 got.update(shared[ident])
         shared[m.group(1)] = got
+    # ⚠ A NAMED MOVE LIST IS ITS OWNER'S MOVES when no Combatant call spells
+    # that owner out: <NAME>_MOVES are the <name>'s, built in a loop. Without
+    # this the spec's "<Name> / <Move>" found no owner, fell back to the
+    # player's kit, and met a summoned ally's move of the same name
+    # (2026-11-24).
+    list_owners = {}
+    for ident, got in shared.items():
+        if ident.endswith("_MOVES"):
+            list_owners[norm(ident[:-len("_MOVES")].replace("_", " "))] = got
 
     # ⚠ ONE NAME, SEVERAL STATLINES. Enemies SCALE: the same assassins are
     # 10 HP early and 20 HP at the Act 1 boss, and a move keeps its name while
@@ -127,6 +136,10 @@ def engine(project):
         slot = moves.setdefault(norm(name), {})
         for mv, stat in got.items():
             slot.setdefault(mv, set()).add(stat)
+
+    for owner, got in list_owners.items():
+        if owner not in moves:
+            moves[owner] = dict((mv, {stat}) for mv, stat in got.items())
 
     # The player's own kit: base, plus what each technique grants and upgrades.
     kit = {}
@@ -166,6 +179,20 @@ def engine(project):
                         round(float(fields[f]), 4))
         if "reflect" in up:
             fieldvals.setdefault((None, "wall", "reflect"), set()).add(up["reflect"])
+        # TIER IV (2026-11-24), unlocked by its own item like tier III: its
+        # grants are new techniques, and its reflect a further figure. Its
+        # power UPGRADES are left out of `upgrade` on purpose: that table
+        # checks the tier-II lines ("increases to N damage"), which a tier-IV
+        # figure would overwrite.
+        for extra in ("tier3", "tier4"):
+            tier = t.get(extra, {})
+            if extra == "tier4":
+                for g in tier.get("grants", []):
+                    by_key[g["key"]] = g["name"]
+                    kit.setdefault(norm(g["name"]), set()).add(
+                        (g.get("power", 0), g.get("pp")))
+            if "reflect" in tier:
+                fieldvals.setdefault((None, "wall", "reflect"), set()).add(tier["reflect"])
     # re-key from the spell KEY onto the spell NAME, now that every technique
     # has contributed its grants to by_key.
     fieldvals = {(norm(by_key.get(k, k)), f): v
@@ -218,12 +245,52 @@ def _stats(inside):
     return (int(d.group(1)) if d else None, int(p.group(1)) if p else None)
 
 
+WITH_SWORD = {}     # paragraph -> the sword its figures assume (claims())
+
+
+def sword_bonuses(project):
+    """{normalized sword name: its flat damage bonus} from combat.rpy SWORDS."""
+    src = io.open(os.path.join(project, "game", "combat.rpy"), encoding="utf-8").read()
+    try:
+        swords = _literal(src, "SWORDS")
+    except Exception:                            # noqa: BLE001
+        return {}
+    return dict((k, v.get("all_power", 0)) for k, v in swords.items())
+
+
+def _bonus(para, bonuses):
+    name = WITH_SWORD.get(para)
+    if not name:
+        return 0
+    flat = norm(name).replace(" ", "")
+    for key, bonus in bonuses.items():
+        if flat.startswith(key):
+            return bonus
+    return 0
+
+
 def claims(docx_path, patterns):
     import docx
     script_diff.load_patterns(patterns)
     paras = [p.text.strip() for p in docx.Document(docx_path).paragraphs]
     prose = script_diff.prose_mask(paras)
     spec = [(i, t) for i, (t, pr) in enumerate(zip(paras, prose)) if t and not pr]
+
+    # FIGURES STATED WITH A SWORD EQUIPPED (2026-11-24). The author's tier-IV
+    # blocks close on a note -- "I increased the damage based on when player
+    # is equipped with <Sword>, so help me do the math" -- so the
+    # figures in that block are the engine's base plus that sword's bonus.
+    # Each claim paragraph in the block, back to its "appears as an item"
+    # line, is tagged with the sword; main() adds the bonus before comparing.
+    WITH_SWORD.clear()
+    for j, t in enumerate(paras):
+        m = re.search(r"equipped with ([A-Z][\w ]*?)\s*(?:,|so\b|\))", t)
+        if not m:
+            continue
+        for k in range(j - 1, max(-1, j - 16), -1):
+            WITH_SWORD[k] = m.group(1).strip()
+            if "appears as an item" in paras[k]:
+                break
 
     found, unread = [], []
     owner = PLAYER
@@ -370,6 +437,7 @@ def inventory_claims(project):
 def main(docx_path, project, patterns):
     hp, moves, upgrade, fieldvals = engine(project)
     found, unread = claims(docx_path, patterns)
+    bonuses = sword_bonuses(project)
     ok, bad, nomatch = 0, [], []
 
     for kind, key, value, para in found:
@@ -381,7 +449,11 @@ def main(docx_path, project, patterns):
                 seen = set()
                 for who in owners:
                     seen |= hp.get(who, set())
-                if value in seen:
+                if not seen:
+                    # an owner known only by its move list (<NAME>_MOVES):
+                    # its HP is set elsewhere, so there is nothing to compare
+                    nomatch.append(("HP", key, value, para))
+                elif value in seen:
                     ok += 1
                 else:
                     bad.append(("HP", key, value, sorted(seen), para))
@@ -413,9 +485,10 @@ def main(docx_path, project, patterns):
                 bad.append(("upgraded damage", key, value, have, para))
         elif kind == "upgrade_move":
             have = moves[PLAYER].get(norm(key))
+            plus = _bonus(para, bonuses)
             if not have:
                 nomatch.append(("new technique", key, value, para))
-            elif any(_agree(value, v) for v in have):
+            elif any(_agree(value, (v[0] + plus if v[0] is not None else None, v[1])) for v in have):
                 ok += 1
             else:
                 bad.append(("new technique damage/PP", key, value,
