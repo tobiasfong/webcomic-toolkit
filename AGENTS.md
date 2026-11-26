@@ -90,6 +90,76 @@ where something genuinely cannot be generated together.
    **0.000** outside. Feather the paste onto the version being edited, never
    onto an original that still holds the old content, or the old fingertips
    show through the new ones as ghosts.
+5a. **⚠ `edit_region()` does not use the box edit the way BFL built it**
+   (found 2026-11-26 by reading BFL's own template,
+   `image_flux3_klein_distilled_image_edit.json` in the v0.41 template package,
+   and the `Flux3LayoutPrompt` node in `comfy_extras/nodes_flux.py`, after a
+   night of box edits that copied the old hand back or drew blobs). Three
+   differences:
+   1. **The prompt.** The template's note: "write a full caption of the
+      result, with the edit folded in." `edit_region()` sends an INSTRUCTION
+      ("Redraw only the hand ... Keep everything else exactly as it is").
+   2. **The box.** A layout box is an OBJECT with its own description, cited in
+      the prompt as `<obj_1>`, `<obj_2>`. `edit_region()` labels its box "the
+      region to redraw" and never cites it, which tells Klein to place an
+      object called "the region to redraw". The box should carry the
+      description of the new thing ("her slender right hand hanging relaxed
+      below her sleeve cuff, back of the hand outward, thumb in front, four
+      fingers together") and the caption should name it as `<obj_1>`.
+   3. **The reference's name.** The template cites references as
+      `<ref_image_0>`, `<ref_image_1>`, in order; this stack says "image 1".
+      "Image 1" has held identity in hundreds of renders, so this one may not
+      matter; it is listed because it differs from the template.
+
+   What does NOT change: the edit is not masked. Klein regenerates the whole
+   frame with the source as a reference, so the paste-back in rule 5 stays.
+
+   **Tested 2026-11-26: the template's way alone did NOT fix a hand — 0 of 3.**
+   `box_edit_bfl.py` (in a scene's output folder) did all three the template's
+   way on one rejected hanging hand: a full caption, the box described and cited
+   as `<obj_1>`, the source as `<ref_image_0>`. All three seeds returned the
+   OLD hand, near pixel for pixel. That is trap 2 again: the box asked for a
+   hand in the pose the reference already shows, so Klein copied it. The
+   old-method tries on the same hand failed the same way (copies) or, blanked
+   first, drew blobs and flat patches. So the box edit is not "unused right" so
+   much as bound by the same-pose copy rule.
+   Then a box asking for a DIFFERENT pose (the same hand turned palm-out) and
+   one naming "a clearly visible thumb" first: **0 of 6, every one the old hand
+   again** (mean change inside the box 8.9 to 11.6 of 255).
+   ⚠ **Those nine tests are NOT a verdict on the method: their box was only
+   38 px wide**, under the ~40 px floor below which Klein box edits are already
+   known to fail (an orange blob, a gray patch, ghosts; the fix that worked was
+   boxing the WHOLE hand at ~90 px). Box edits of hands at 60-90 px did change
+   the hand the same night (six different sword hands, one of them shipped).
+   Re-test the template's way with a properly sized box before drawing any
+   conclusion.
+
+   **⭐ The real cause (found later the same night, from BFL's bounding-box
+   docs, docs.bfl.ml/flux_3/flux3_image_bounding_boxes): our ROW FORMAT.**
+   `layout()` writes `{id, desc, bbox}`: the GENERATION layout row. An EDIT row
+   is `{"id", "from", "src_bbox", "tgt_bbox", "desc"}`, and its type comes
+   from the fields:
+   - Keep: `from: "ref_image_0"`, `src == tgt`.
+   - Move: `from: "ref_image_0"`, `src != tgt`.
+   - Remove: `from: "ref_image_0"`, `tgt_bbox: null`.
+   - New: `from: null`, `src_bbox: null`, `tgt_bbox` set. This is the only
+     row that asks for FRESH content.
+   Coordinates are `[top, left, bottom, right]`, 0-1000. The prompt is a short
+   INSTRUCTION followed by a space and the JSON rows: "In `<ref_image_0>`,
+   remove ... `<old_1>` and draw ... `<new_1>` in its place. Keep the rest of
+   the image completely unchanged." State the change in both the instruction
+   and the rows.
+   Nothing we sent ever said `from: null`, so Klein carried the reference's
+   content over: that is why every box edit "copied" the old hand.
+   **Measured on the same hand, 3 seeds (`box_edit_rows.py`): a Remove row for
+   the old hand + a New row in the same box changed it by a mean of 30.8,
+   10.1 and 36.9 of 255, against ~6-12 for every earlier format.** Two of
+   three drew a genuinely new hand. Their quality still needs work (stiff,
+   long fingers), but the edit now edits. `edit_region()` must be rewritten
+   to this format.
+   A masked partial redraw (VAE-encoded frame, `SetLatentNoiseMask`, denoise
+   0.3-0.5, `harmonize.py`) changed a pasted hand by only ~6 of 255 at every
+   level: no use for blending on this model.
 6. **Erasing to a flat color before redrawing cuts both ways.** On a pale floor
    it produced a clean new hand. On a dark textured floor the flat patch was
    read as the new hand's SILHOUETTE and filled as a paper cutout.
@@ -1953,9 +2023,19 @@ so late turns were carrying an enormous payload before any work happened.
 SCRATCHPAD.** Two finished floor plates were generated into the session temp
 directory and sent from there; they rendered fine in chat and existed nowhere
 he could open — "I can't find them anywhere". The session scratchpad is for
-intermediate steps only. If it is worth showing him, write it under
-`output/<project>/` first and send it from there, with a name that says what it
-is rather than a seed number.
+intermediate steps only. If it is worth showing him, write it into the output
+folder of the server that owns its kind first and send it from there, with a
+name that says what it is rather than a seed number. His rule (2026-11-26),
+by type:
+
+| kind | folder |
+|---|---|
+| images (renders, masters, comparison sheets) | `servers/character-panel-mcp/output/<project>/` |
+| videos and subtitles (`.mp4`, `.webm`, `.srt`) | `servers/anime-production-mcp/output/<project>/` |
+| music and sound effects | `servers/music-generation-mcp/output/<project>/` |
+
+There is no top-level `output/` any more; the same day, everything in it was
+moved by these rules.
 ## Visual novel — where the rules are
 
 The game lives under a gitignored `vn/<project>/`. **The working rules --
