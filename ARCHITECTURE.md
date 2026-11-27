@@ -32,7 +32,7 @@ A **single local interface** that unifies Tobias's webcomic/animation ecosystem:
 | Anime Production server (LTX image-to-video, frame surgery, VFX overlays, clip assembly) | MCP server (GPU, ComfyUI) | ✅ Shipped | `tobiasfong/webcomic-toolkit` (`servers/anime-production-mcp`) |
 | Novel Translation server (EN⇄JP novel translation, glossary, register bible) | MCP server (CPU) | ✅ Shipped (§8a) | `tobiasfong/webcomic-toolkit` (`servers/novel-translation-mcp`) |
 | Visual Novel server (scene database, branch-graph validation parsed from the scripts, sprite manifest) | MCP server (CPU) | ✅ Shipped | `tobiasfong/webcomic-toolkit` (`servers/visual-novel-mcp`) |
-| Speech Bubble/lettering server | MCP server (CPU) | 🔜 Planned, not built | — |
+| Speech Bubble/lettering server (stills + animated bubbles over video, vertical JP, per-language specs; translation stays with the harness) | MCP server (CPU) | ✅ Built v0.1.0 (2026-11-27) | `tobiasfong/webcomic-toolkit` (`servers/speech-bubble-mcp`) |
 | Publication server (EPUB/CBZ/PDF/webtoon-strip export) | MCP server (CPU) | 🔜 Planned here (§7) | — |
 | Character & Panel server (character bible, consistent characters from references, panel compositing, Concept Genesis, SDXL prototype, 3D mannequin for genuine back views) | MCP server (GPU, ComfyUI) | ✅ Shipped v1.0.0, all 3 tiers + back-view solved (§8b) | `tobiasfong/webcomic-toolkit` (`servers/character-panel-mcp`) |
 | Prose → Storyboard adaptation (bridges novel-translation-mcp chapters to panel generation) | Agent skill or new server | 🔜 Planned, not built (§8a.1) | — |

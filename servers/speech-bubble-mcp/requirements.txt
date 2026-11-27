@@ -1,0 +1,16 @@
+# Upper bound is load-bearing: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+# every server in this repo imports. An unbounded `mcp>=1.2.0` silently resolves
+# to 2.0 on a fresh install and dies at import with ModuleNotFoundError.
+mcp>=1.2.0,<2
+
+# Every bubble, tail, cloud and line of type is drawn with Pillow, and every
+# video frame is composited with it.
+Pillow>=10.0.0
+# Masks for the outline and the dashed whisper, and the "how busy is the art
+# here" map that auto-placement reads.
+numpy>=1.24.0
+
+# NOT pip-installable, and only for video:
+#   * an ffmpeg binary. It only decodes and encodes -- no filters are used --
+#     so a reduced build works. Point the server at one with
+#     SPEECH_BUBBLE_FFMPEG (or WEBCOMIC_ANIME_FFMPEG) if it is not on PATH.

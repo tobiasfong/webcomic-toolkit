@@ -29,6 +29,10 @@ production — see `servers/*` for individually-installable pieces. Each has its
   who aren't artists: register existing character reference art as a Character Bible,
   generate consistent poses (Tier 1 of a three-tier design), and composite panels onto
   `webcomic-background-mcp` plates. Built directly in the monorepo.
+- [`servers/speech-bubble-mcp`](servers/speech-bubble-mcp/README.md) — lettering:
+  speech, thought, caption, shout and whisper bubbles drawn onto a still page or
+  animated over video shots for manga videos, with vertical Japanese and per-language
+  text in one spec. CPU only; ffmpeg only for video.
 
 ## Conventions
 
